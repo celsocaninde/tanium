@@ -181,7 +181,5 @@ GPL-2.0-or-later — see [LICENSE](LICENSE) file.
 <div align="center">
   <img src="public/img/tanium-logo.svg" alt="Tanium" width="100" />
   <br/><br/>
-  Made with ❤️ for <strong>SEBRAE/MS</strong>
-  <br/>
   <sub>GLPI 11 · Tanium · PHP 8.1+</sub>
 </div>
