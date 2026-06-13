@@ -1,0 +1,753 @@
+/*
+ * Tanium Plugin for GLPI 11
+ * Brand: dark navy + Tanium red (#e8212a)
+ */
+
+:root {
+    --t-dark:    #0a1628;
+    --t-darker:  #060f1c;
+    --t-surface: #0f1e33;
+    --t-border:  #1e2d44;
+    --t-red:     #e8212a;
+    --t-red2:    #c41a22;
+    --t-blue:    #1a6dff;
+    --t-green:   #1eb464;
+    --t-orange:  #f0a030;
+    --t-yellow:  #e8c42a;
+    --t-text:    #e8edf5;
+    --t-muted:   #7a8da8;
+    --t-radius:  8px;
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+
+.tanium-page-wrap {
+    width: 100%;
+    padding: 0 16px 32px;
+    font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+    color: var(--t-text);
+}
+
+/* ── Alert ───────────────────────────────────────────────────────────────── */
+
+.tanium-alert {
+    padding: 12px 20px;
+    border-radius: var(--t-radius);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    font-size: .92rem;
+}
+.tanium-alert-warn {
+    background: rgba(240,160,48,.12);
+    border: 1px solid rgba(240,160,48,.4);
+    color: var(--t-orange);
+}
+
+/* ── Dashboard hero ──────────────────────────────────────────────────────── */
+
+.tanium-dashboard-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--t-darker);
+    border: 1px solid var(--t-border);
+    border-bottom: 3px solid var(--t-red);
+    border-radius: var(--t-radius);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.tanium-hero-brand {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.tanium-hero-logo { height: 36px; width: auto; }
+
+.tanium-hero-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--t-text);
+}
+
+.tanium-hero-sub {
+    font-size: .85rem;
+    color: var(--t-muted);
+    margin-top: 2px;
+}
+
+.tanium-hero-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* ── KPI cards ───────────────────────────────────────────────────────────── */
+
+.tanium-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+.tanium-kpi-card {
+    background: var(--t-surface);
+    border: 1px solid var(--t-border);
+    border-radius: var(--t-radius);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+    overflow: hidden;
+}
+
+.tanium-kpi-icon {
+    font-size: 1.4rem;
+    margin-bottom: 6px;
+}
+
+.tanium-kpi-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--t-text);
+    line-height: 1;
+}
+
+.tanium-kpi-label {
+    font-size: .78rem;
+    color: var(--t-muted);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+
+.tanium-kpi-link {
+    font-size: .78rem;
+    color: var(--t-red);
+    text-decoration: none;
+    margin-top: 6px;
+}
+.tanium-kpi-link:hover { text-decoration: underline; }
+
+.tanium-kpi-blue   { color: var(--t-blue);   }
+.tanium-kpi-red    { color: var(--t-red);    }
+.tanium-kpi-orange { color: var(--t-orange); }
+.tanium-kpi-yellow { color: var(--t-yellow); }
+.tanium-kpi-muted  { color: var(--t-muted);  }
+
+/* ── Dashboard grid ──────────────────────────────────────────────────────── */
+
+.tanium-dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.tanium-dashboard-panel { /* single column */ }
+
+.tanium-dashboard-wide {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+    .tanium-dashboard-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Bar chart ───────────────────────────────────────────────────────────── */
+
+.tanium-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.tanium-bar-label {
+    flex: 0 0 130px;
+    font-size: .82rem;
+    color: var(--t-text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tanium-bar-label-sm { flex: 0 0 160px; }
+
+.tanium-sev-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.tanium-bar-track {
+    flex: 1;
+    background: var(--t-border);
+    border-radius: 4px;
+    height: 10px;
+    overflow: hidden;
+}
+
+.tanium-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width .4s ease;
+}
+
+.tanium-bar-count {
+    flex: 0 0 36px;
+    text-align: right;
+    font-size: .82rem;
+    color: var(--t-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Card ────────────────────────────────────────────────────────────────── */
+
+.tanium-card {
+    background: var(--t-surface);
+    border: 1px solid var(--t-border);
+    border-radius: var(--t-radius);
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,.35);
+    margin-bottom: 16px;
+}
+
+.tanium-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--t-darker);
+    border-bottom: 2px solid var(--t-red);
+    padding: 13px 20px;
+    color: var(--t-text);
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: .3px;
+}
+
+.tanium-card-header-dark {
+    border-bottom-color: var(--t-border);
+    color: var(--t-muted);
+    font-size: .88rem;
+    font-weight: 500;
+}
+
+.tanium-card-body { padding: 20px; color: var(--t-text); }
+.tanium-p0        { padding: 0; }
+
+.tanium-header-logo { height: 30px; width: auto; }
+
+/* ── Filter bar ──────────────────────────────────────────────────────────── */
+
+.tanium-filter-bar {
+    background: var(--t-dark);
+    border-bottom: 1px solid var(--t-border);
+    padding: 12px 20px;
+}
+
+.tanium-filter-form {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.tanium-input-filter { max-width: 280px; }
+
+.tanium-select {
+    width: auto !important;
+    padding-right: 32px;
+}
+
+/* ── Form fields ─────────────────────────────────────────────────────────── */
+
+.tanium-field {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.tanium-label {
+    flex: 0 0 240px;
+    padding-top: 8px;
+    color: var(--t-muted);
+    font-size: .9rem;
+    font-weight: 500;
+}
+
+.tanium-input-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tanium-input {
+    width: 100%;
+    background: var(--t-dark);
+    border: 1px solid var(--t-border);
+    border-radius: 6px;
+    color: var(--t-text);
+    padding: 8px 12px;
+    font-size: .95rem;
+    transition: border-color .2s;
+    box-sizing: border-box;
+}
+.tanium-input:focus {
+    outline: none;
+    border-color: var(--t-red);
+    box-shadow: 0 0 0 3px rgba(232,33,42,.15);
+}
+.tanium-input-sm { max-width: 140px !important; width: 140px; }
+
+.tanium-hint { font-size: .8rem; color: var(--t-muted); }
+
+/* ── Section titles ──────────────────────────────────────────────────────── */
+
+.tanium-section-title {
+    font-size: .78rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--t-red);
+    margin: 22px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--t-border);
+}
+
+/* ── Toggle checkboxes ───────────────────────────────────────────────────── */
+
+.tanium-checkbox-row   { margin-bottom: 10px; }
+
+.tanium-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    color: var(--t-text);
+    font-size: .92rem;
+}
+
+.tanium-checkbox {
+    appearance: none;
+    width: 40px;
+    height: 22px;
+    background: var(--t-border);
+    border-radius: 11px;
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: background .2s;
+}
+.tanium-checkbox::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform .2s;
+}
+.tanium-checkbox:checked            { background: var(--t-red); }
+.tanium-checkbox:checked::after     { transform: translateX(18px); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.tanium-actions { display: flex; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+
+.tanium-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 20px;
+    border-radius: 6px;
+    font-size: .9rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background .2s, transform .1s;
+    white-space: nowrap;
+}
+.tanium-btn:hover  { transform: translateY(-1px); text-decoration: none; }
+.tanium-btn:active { transform: none; }
+
+.tanium-btn-sm  { padding: 5px 12px; font-size: .8rem; }
+.tanium-btn-lg  { padding: 12px 28px; font-size: 1rem; }
+
+.tanium-btn-primary   { background: var(--t-red);   color: #fff; }
+.tanium-btn-primary:hover { background: var(--t-red2); color: #fff; }
+
+.tanium-btn-secondary { background: var(--t-border); color: var(--t-text); }
+.tanium-btn-secondary:hover { background: #2a3d5e; color: var(--t-text); }
+
+.tanium-btn-success { background: var(--t-blue); color: #fff; }
+.tanium-btn-success:hover { background: #0055d4; color: #fff; }
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
+
+.tanium-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: .76rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.tanium-badge-success  { background: rgba(30,180,100,.2);  color: #1eb464; }
+.tanium-badge-error    { background: rgba(232,33,42,.2);   color: #e8212a; }
+.tanium-badge-warning  { background: rgba(240,160,48,.2);  color: #f0a030; }
+.tanium-badge-muted    { background: rgba(122,141,168,.15); color: #7a8da8; }
+.tanium-badge-critical { background: rgba(232,33,42,.25);  color: #ff4d57; }
+.tanium-badge-high     { background: rgba(240,160,48,.25); color: #f0a030; }
+
+/* ── CVSS score badges ───────────────────────────────────────────────────── */
+
+.tanium-cvss          { font-weight: 700; }
+.tanium-cvss-critical { color: #ff4d57; }
+.tanium-cvss-high     { color: #f0a030; }
+.tanium-cvss-medium   { color: #e8c42a; }
+.tanium-cvss-low      { color: #1eb464; }
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+
+.tanium-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .87rem;
+    color: var(--t-text);
+}
+.tanium-table thead tr {
+    background: var(--t-dark);
+    border-bottom: 2px solid var(--t-border);
+}
+.tanium-table th {
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--t-muted);
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+.tanium-table td             { padding: 9px 14px; border-bottom: 1px solid var(--t-border); }
+.tanium-table tbody tr:last-child td { border-bottom: none; }
+.tanium-table tbody tr:hover { background: rgba(255,255,255,.03); }
+
+/* ── Pagination ──────────────────────────────────────────────────────────── */
+
+.tanium-pagination {
+    display: flex;
+    gap: 6px;
+    padding: 14px 20px;
+    flex-wrap: wrap;
+}
+
+.tanium-page-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: var(--t-dark);
+    border: 1px solid var(--t-border);
+    color: var(--t-muted);
+    font-size: .8rem;
+    text-decoration: none;
+    transition: background .2s;
+}
+.tanium-page-btn:hover { background: var(--t-border); color: var(--t-text); }
+.tanium-page-btn.active { background: var(--t-red); color: #fff; border-color: var(--t-red); }
+
+/* ── Last sync notice ────────────────────────────────────────────────────── */
+
+.tanium-last-sync {
+    margin-top: 18px;
+    padding: 10px 14px;
+    background: rgba(232,33,42,.06);
+    border-left: 3px solid var(--t-red);
+    border-radius: 4px;
+    font-size: .88rem;
+    color: var(--t-text);
+}
+
+/* ── Computer tab summary ────────────────────────────────────────────────── */
+
+.tanium-tab-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1px;
+    background: var(--t-border);
+    border-bottom: 1px solid var(--t-border);
+}
+
+.tanium-tab-item {
+    background: var(--t-surface);
+    padding: 12px 16px;
+}
+
+.tanium-tab-label {
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--t-muted);
+    margin-bottom: 4px;
+}
+
+.tanium-tab-value {
+    font-size: .88rem;
+    color: var(--t-text);
+    word-break: break-all;
+}
+
+.tanium-tab-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--t-border);
+}
+.tanium-tab-section:last-child { border-bottom: none; }
+
+.tanium-tab-section-title {
+    font-size: .8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--t-red);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+}
+
+.tanium-tab-cve-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.tanium-tab-cve-box {
+    text-align: center;
+    padding: 10px;
+    border-radius: var(--t-radius);
+    border: 1px solid var(--t-border);
+}
+
+.tanium-tab-cve-count { font-size: 1.6rem; font-weight: 800; }
+.tanium-tab-cve-label { font-size: .72rem; color: var(--t-muted); margin-top: 2px; }
+
+.tanium-sev-critical { background: rgba(232,33,42,.1);  border-color: rgba(232,33,42,.4); }
+.tanium-sev-critical .tanium-tab-cve-count { color: #ff4d57; }
+
+.tanium-sev-high { background: rgba(240,160,48,.1); border-color: rgba(240,160,48,.4); }
+.tanium-sev-high .tanium-tab-cve-count { color: #f0a030; }
+
+.tanium-sev-medium { background: rgba(232,196,42,.1); border-color: rgba(232,196,42,.4); }
+.tanium-sev-medium .tanium-tab-cve-count { color: #e8c42a; }
+
+.tanium-sev-low { background: rgba(30,180,100,.1); border-color: rgba(30,180,100,.4); }
+.tanium-sev-low .tanium-tab-cve-count { color: #1eb464; }
+
+/* ── Stat boxes (sync page) ──────────────────────────────────────────────── */
+
+.tanium-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.tanium-stat-box {
+    background: var(--t-dark);
+    border: 1px solid var(--t-border);
+    border-radius: var(--t-radius);
+    padding: 14px 16px;
+}
+
+.tanium-stat-label {
+    font-size: .73rem;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--t-muted);
+    margin-bottom: 6px;
+}
+
+.tanium-stat-value { color: var(--t-text); font-size: .93rem; word-break: break-all; }
+
+.tanium-stat-big { font-size: 2rem; font-weight: 700; color: var(--t-red); line-height: 1; }
+
+/* ── Utilities ───────────────────────────────────────────────────────────── */
+
+.tanium-link        { color: var(--t-red); text-decoration: none; }
+.tanium-link:hover  { text-decoration: underline; }
+
+.tanium-mono        { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: .85rem; }
+.tanium-small       { font-size: .8rem; }
+.tanium-center      { text-align: center; }
+.tanium-muted       { color: var(--t-muted); }
+.tanium-empty       { padding: 28px; text-align: center; color: var(--t-muted); font-size: .9rem; }
+
+.tanium-text-green  { color: #1eb464; font-weight: 600; }
+.tanium-text-blue   { color: var(--t-blue); font-weight: 600; }
+.tanium-text-red    { color: var(--t-red);  font-weight: 600; }
+
+/* ── Profile rights panel ────────────────────────────────────────────────── */
+
+.tanium-rights {
+    background: var(--t-surface);
+    border: 1px solid var(--t-border);
+    border-radius: var(--t-radius);
+    overflow: hidden;
+    margin: 16px 0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: var(--t-text);
+}
+
+.tanium-rights-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--t-darker);
+    border-bottom: 2px solid var(--t-red);
+    padding: 16px 20px;
+}
+
+.tanium-rights-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--t-red);
+    color: #fff;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+}
+
+.tanium-rights-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--t-text);
+    margin: 0 0 2px;
+}
+
+.tanium-rights-sub {
+    font-size: .82rem;
+    color: var(--t-muted);
+    margin: 0;
+}
+
+.tanium-rights-list {
+    padding: 8px 0;
+}
+
+.tanium-right-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--t-border);
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.tanium-right-row:last-child { border-bottom: none; }
+
+.tanium-right-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.tanium-right-ico {
+    font-size: 1.1rem;
+    color: var(--t-red);
+    flex-shrink: 0;
+}
+
+.tanium-right-label {
+    display: block;
+    font-size: .9rem;
+    color: var(--t-text);
+}
+
+.tanium-right-field {
+    display: block;
+    font-size: .72rem;
+    color: var(--t-muted);
+    font-family: 'Consolas', monospace;
+    margin-top: 2px;
+}
+
+.tanium-right-perms {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.tanium-right-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: .85rem;
+    color: var(--t-text);
+    user-select: none;
+}
+
+.tanium-right-toggle input[type=checkbox] { display: none; }
+
+.tanium-toggle-track {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 20px;
+    background: var(--t-border);
+    border-radius: 10px;
+    transition: background .2s;
+    flex-shrink: 0;
+}
+.tanium-toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform .2s;
+}
+.tanium-right-toggle input:checked ~ .tanium-toggle-track {
+    background: var(--t-red);
+}
+.tanium-right-toggle input:checked ~ .tanium-toggle-track::after {
+    transform: translateX(18px);
+}
+
+.tanium-right-perm-label {
+    font-size: .8rem;
+    color: var(--t-muted);
+}
+
+.tanium-right-disabled { opacity: .5; cursor: not-allowed; }
+.tanium-right-na       { color: var(--t-border); font-size: .8rem; padding: 0 6px; }
+
+.tanium-rights-footer {
+    padding: 14px 20px;
+    background: var(--t-dark);
+    border-top: 1px solid var(--t-border);
+}

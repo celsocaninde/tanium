@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+   <name>tanium</name>
+   <key>tanium</key>
+   <state>stable</state>
+   <logo>img/tanium-logo.svg</logo>
+   <description>
+      <en>
+         <short>Tanium integration for GLPI — sync endpoints, software, hardware and vulnerabilities from Tanium Cloud into GLPI assets.</short>
+         <long>This plugin integrates GLPI with the Tanium platform using the REST API v2. It synchronizes endpoint inventory, installed software, hardware details and vulnerability data (Comply module) automatically via GLPI cron tasks.</long>
+      </en>
+      <pt_BR>
+         <short>Integração Tanium para o GLPI — sincronize endpoints, software, hardware e vulnerabilidades do Tanium Cloud nos ativos do GLPI.</short>
+         <long>Este plugin integra o GLPI com a plataforma Tanium usando a REST API v2. Ele sincroniza inventário de endpoints, softwares instalados, dados de hardware e vulnerabilidades (módulo Comply) automaticamente via tarefas cron do GLPI.</long>
+      </pt_BR>
+   </description>
+   <versions>
+      <version>
+         <num>1.0.0</num>
+         <compatibility>~11.0</compatibility>
+      </version>
+   </versions>
+   <langs>
+      <lang>en_GB</lang>
+      <lang>pt_BR</lang>
+   </langs>
+   <license>GPLv2+</license>
+   <tags>
+      <en>
+         <tag>tanium</tag>
+         <tag>inventory</tag>
+         <tag>endpoint</tag>
+         <tag>asset management</tag>
+         <tag>vulnerability</tag>
+      </en>
+   </tags>
+   <homepage>https://developer.tanium.com</homepage>
+   <bugtracker></bugtracker>
+   <screenshots></screenshots>
+</root>

@@ -1,0 +1,14 @@
+{
+  "name": "internal/glpi-tanium",
+  "description": "GLPI plugin to integrate Tanium Cloud endpoints into GLPI assets.",
+  "type": "glpi-plugin",
+  "license": "GPL-2.0-or-later",
+  "autoload": {
+    "psr-4": {
+      "GlpiPlugin\\Tanium\\": "src/"
+    }
+  },
+  "require": {
+    "php": ">=8.2"
+  }
+}
