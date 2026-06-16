@@ -267,7 +267,7 @@ function plugin_tanium_install(): bool {
                 `id`               int {$sign} NOT NULL AUTO_INCREMENT,
                 `tanium_eid`       varchar(100) NOT NULL DEFAULT '',
                 `computers_id`     int {$sign} DEFAULT NULL,
-                `patch_id`         varchar(100) NOT NULL DEFAULT '',
+                `patch_id`         text NOT NULL,
                 `patch_title`      varchar(500) NOT NULL DEFAULT '',
                 `severity`         varchar(20) NOT NULL DEFAULT 'unknown',
                 `status`           varchar(30) NOT NULL DEFAULT 'missing',
@@ -275,7 +275,7 @@ function plugin_tanium_install(): bool {
                 `release_date`     date DEFAULT NULL,
                 `date_mod`         timestamp NULL DEFAULT NULL,
                 PRIMARY KEY (`id`),
-                UNIQUE KEY `eid_patch` (`tanium_eid`, `patch_id`),
+                UNIQUE KEY `eid_patch` (`tanium_eid`, `patch_id`(191)),
                 KEY `tanium_eid` (`tanium_eid`),
                 KEY `computers_id` (`computers_id`),
                 KEY `severity` (`severity`)
@@ -287,6 +287,15 @@ function plugin_tanium_install(): bool {
         $col = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_patches` LIKE 'kb_id'")->fetch_assoc();
         if ($col && stripos($col['Type'], 'varchar') !== false) {
             $DB->doQuery("ALTER TABLE `glpi_plugin_tanium_patches` MODIFY `kb_id` text DEFAULT NULL");
+        }
+        // Widen patch_id to TEXT — same overflow (Launchpad patches concatenate every
+        // advisory ID). It belongs to the UNIQUE index, so the index must be dropped
+        // and recreated with a key-length prefix (TEXT cannot be indexed in full).
+        $pcol = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_patches` LIKE 'patch_id'")->fetch_assoc();
+        if ($pcol && stripos($pcol['Type'], 'text') === false) {
+            $hasIdx = $DB->doQuery("SHOW INDEX FROM `glpi_plugin_tanium_patches` WHERE Key_name = 'eid_patch'")->fetch_assoc();
+            $drop   = $hasIdx ? "DROP INDEX `eid_patch`, " : "";
+            $DB->doQuery("ALTER TABLE `glpi_plugin_tanium_patches` {$drop}MODIFY `patch_id` text NOT NULL, ADD UNIQUE KEY `eid_patch` (`tanium_eid`, `patch_id`(191))");
         }
     }
 
