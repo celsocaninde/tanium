@@ -751,3 +751,147 @@
     background: var(--t-dark);
     border-top: 1px solid var(--t-border);
 }
+
+/* ── Sync progress bar ───────────────────────────────────────────────────── */
+
+.tanium-sync-progress {
+    background: var(--t-surface);
+    border: 1px solid var(--t-border);
+    border-radius: var(--t-radius);
+    padding: 14px 20px;
+    margin-bottom: 16px;
+}
+
+.tanium-sync-progress-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: .88rem;
+    color: var(--t-text);
+    margin-bottom: 10px;
+}
+
+.tanium-sync-progress-label strong { color: #fff; }
+
+.tanium-sync-progress-pct {
+    margin-left: auto;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--t-blue);
+    min-width: 44px;
+    text-align: right;
+}
+
+.tanium-sync-track {
+    height: 8px;
+    background: var(--t-border);
+    border-radius: 99px;
+    overflow: hidden;
+    margin-bottom: 2px;
+}
+
+.tanium-sync-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--t-blue), #63b3ff);
+    border-radius: 99px;
+    transition: width .6s ease;
+}
+
+.tanium-sync-fill.tanium-sync-fill-error {
+    background: linear-gradient(90deg, var(--t-red), #ff6b72);
+}
+
+.tanium-sync-fill.tanium-sync-fill-success {
+    background: linear-gradient(90deg, var(--t-green), #4ade80);
+}
+
+.tanium-sync-footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: .75rem;
+    color: var(--t-muted);
+    margin-top: 7px;
+}
+
+@keyframes tanium-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: .4; transform: scale(.7); }
+}
+
+.tanium-pulse-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--t-blue);
+    animation: tanium-pulse 1.4s ease-in-out infinite;
+    flex-shrink: 0;
+}
+
+/* ── SLA Compliance page ─────────────────────────────────────────────────── */
+
+.tanium-sla-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+@media (max-width: 1100px) {
+    .tanium-sla-grid { grid-template-columns: 1fr; }
+}
+
+.tanium-sla-row { margin-bottom: 18px; }
+.tanium-sla-row:last-child { margin-bottom: 0; }
+
+.tanium-sla-row-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 7px;
+}
+.tanium-sla-row-deadline {
+    font-size: .78rem;
+    color: var(--t-muted);
+}
+.tanium-sla-row-pct {
+    margin-left: auto;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.tanium-sla-track {
+    height: 10px;
+    background: var(--t-border);
+    border-radius: 99px;
+    overflow: hidden;
+}
+.tanium-sla-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width .6s ease;
+}
+
+.tanium-sla-row-foot {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+.tanium-sla-chip {
+    font-size: .72rem;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 99px;
+}
+.tanium-sla-chip-ok   { background: rgba(30,180,100,.16);  color: #1eb464; }
+.tanium-sla-chip-soon { background: rgba(240,160,48,.16);  color: #f0a030; }
+.tanium-sla-chip-bad  { background: rgba(232,33,42,.16);   color: #ff4d57; }
+
+.tanium-sla-overdue {
+    display: inline-block;
+    font-weight: 700;
+    font-size: .82rem;
+    color: #ff4d57;
+    background: rgba(232,33,42,.14);
+    padding: 2px 9px;
+    border-radius: 6px;
+}

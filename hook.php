@@ -153,12 +153,18 @@ function plugin_tanium_install(): bool {
                 `updated`      int NOT NULL DEFAULT 0,
                 `errors`       int NOT NULL DEFAULT 0,
                 `message`      text DEFAULT NULL,
+                `processed`    int NOT NULL DEFAULT 0,
+                `total_estimated` int NOT NULL DEFAULT 0,
                 PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
         );
     } else {
         _tanium_migrate_to_timestamp($DB, 'glpi_plugin_tanium_sync_logs', 'started_at',  'timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP');
         _tanium_migrate_to_timestamp($DB, 'glpi_plugin_tanium_sync_logs', 'finished_at', 'timestamp NULL DEFAULT NULL');
+        $syncCol = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_sync_logs` LIKE 'processed'")->fetch_assoc();
+        if (!$syncCol) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_tanium_sync_logs` ADD `processed` int NOT NULL DEFAULT 0, ADD `total_estimated` int NOT NULL DEFAULT 0");
+        }
     }
 
     // ── Risk history table (trend data per sync) ──────────────────────────
@@ -265,7 +271,7 @@ function plugin_tanium_install(): bool {
                 `patch_title`      varchar(500) NOT NULL DEFAULT '',
                 `severity`         varchar(20) NOT NULL DEFAULT 'unknown',
                 `status`           varchar(30) NOT NULL DEFAULT 'missing',
-                `kb_id`            varchar(50) DEFAULT NULL,
+                `kb_id`            text DEFAULT NULL,
                 `release_date`     date DEFAULT NULL,
                 `date_mod`         timestamp NULL DEFAULT NULL,
                 PRIMARY KEY (`id`),
@@ -277,6 +283,11 @@ function plugin_tanium_install(): bool {
         );
     } else {
         _tanium_migrate_to_timestamp($DB, 'glpi_plugin_tanium_patches', 'date_mod', 'timestamp NULL DEFAULT NULL');
+        // Widen kb_id to TEXT — Linux patches can carry many USN advisory IDs, exceeding varchar(50)
+        $col = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_patches` LIKE 'kb_id'")->fetch_assoc();
+        if ($col && stripos($col['Type'], 'varchar') !== false) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_tanium_patches` MODIFY `kb_id` text DEFAULT NULL");
+        }
     }
 
     // ── CVE exceptions table (accepted risk) ─────────────────────────────

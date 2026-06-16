@@ -210,6 +210,7 @@ class Dashboard {
         $stats      = self::getStats();
         $topVulnEps = self::getTopVulnerableEndpoints(8);
         $recentSync = self::getRecentSyncs(5);
+        $slaStats   = Sla::getStats();
         $config     = Config::getConfig();
         $configured = !empty($config['api_url']) && !empty($config['api_token']);
         $logoUrl    = Plugin::getWebDir('tanium') . '/public/img/tanium-logo.svg';
@@ -257,6 +258,140 @@ class Dashboard {
                 </a>
             </div>
         </div>
+
+        <!-- Sync progress widget (always visible) -->
+        <?php
+        $syncStatus  = $stats['sync_status'];   // 'never' | 'running' | 'success' | 'error'
+        $isRunning   = ($syncStatus === 'running');
+        $progressUrl = Plugin::getWebDir('tanium') . '/ajax/sync_progress.php';
+        $lastCount   = (int) $stats['last_sync_count'];
+
+        if ($syncStatus === 'running') {
+            $spLabel    = __('Syncing endpoints...', 'tanium');
+            $spPct      = 0;
+            $spFillCls  = 'tanium-sync-fill';
+            $spDot      = true;
+            $spCounts   = '';
+            $spTime     = '';
+        } elseif ($syncStatus === 'success') {
+            $spLabel    = __('Last sync completed successfully', 'tanium');
+            $spPct      = 100;
+            $spFillCls  = 'tanium-sync-fill tanium-sync-fill-success';
+            $spDot      = false;
+            $spCounts   = $lastCount . ' endpoints';
+            $spTime     = $stats['last_sync'] ? Html::convDateTime($stats['last_sync']) : '';
+        } elseif ($syncStatus === 'error') {
+            $spLabel    = __('Last sync finished with errors', 'tanium');
+            $spPct      = 100;
+            $spFillCls  = 'tanium-sync-fill tanium-sync-fill-error';
+            $spDot      = false;
+            $spCounts   = $lastCount . ' endpoints';
+            $spTime     = $stats['last_sync'] ? Html::convDateTime($stats['last_sync']) : '';
+        } else {
+            $spLabel    = __('No sync performed yet', 'tanium');
+            $spPct      = 0;
+            $spFillCls  = 'tanium-sync-fill';
+            $spDot      = false;
+            $spCounts   = __('Click "Sync now" to start the first synchronization', 'tanium');
+            $spTime     = '';
+        }
+        ?>
+        <div id="tanium-sync-progress" class="tanium-sync-progress">
+            <div class="tanium-sync-progress-label">
+                <span class="tanium-pulse-dot" id="tsp-dot" style="<?= $spDot ? '' : 'display:none' ?>"></span>
+                <span id="tsp-label"><?= htmlspecialchars($spLabel) ?></span>
+                <span class="tanium-sync-progress-pct" id="tsp-pct"><?= $spPct > 0 ? $spPct . '%' : '' ?></span>
+            </div>
+            <div class="tanium-sync-track">
+                <div class="<?= $spFillCls ?>" id="tsp-fill" style="width:<?= $spPct ?>%"></div>
+            </div>
+            <div class="tanium-sync-footer">
+                <span id="tsp-counts"><?= htmlspecialchars($spCounts) ?></span>
+                <span id="tsp-time"><?= htmlspecialchars($spTime) ?></span>
+            </div>
+        </div>
+        <script>
+        (function () {
+            var dot    = document.getElementById('tsp-dot');
+            var label  = document.getElementById('tsp-label');
+            var pct    = document.getElementById('tsp-pct');
+            var fill   = document.getElementById('tsp-fill');
+            var counts = document.getElementById('tsp-counts');
+            var timeEl = document.getElementById('tsp-time');
+            var url    = <?= json_encode($progressUrl) ?>;
+            var timer  = null;
+            var reloading  = false;
+            var wasRunning = false;
+
+            function fmt(n) { return Number(n).toLocaleString(); }
+
+            function render(d, initial) {
+                if (d.status === 'running') {
+                    wasRunning = true;
+                    var p = d.percent || 0;
+                    dot.style.display  = 'inline-block';
+                    label.textContent  = '<?= __('Syncing endpoints...', 'tanium') ?>';
+                    pct.textContent    = p + '%';
+                    fill.style.width   = p + '%';
+                    fill.className     = 'tanium-sync-fill';
+                    counts.textContent = fmt(d.processed) + (d.total > 0 ? ' / ' + fmt(d.total) + ' endpoints' : ' endpoints');
+                    timeEl.textContent = d.started_at ? '<?= __('Started', 'tanium') ?>: ' + d.started_at : '';
+                    timer = setTimeout(poll, 3000);
+
+                } else if (d.status === 'success') {
+                    clearTimeout(timer);
+                    dot.style.display  = 'none';
+                    label.textContent  = '<?= __('Last sync completed successfully', 'tanium') ?>';
+                    pct.textContent    = '100%';
+                    fill.style.width   = '100%';
+                    fill.className     = 'tanium-sync-fill tanium-sync-fill-success';
+                    counts.textContent = fmt(d.processed) + ' endpoints'
+                                      + (d.errors > 0 ? ' — ' + d.errors + ' <?= __('errors', 'tanium') ?>' : '');
+                    timeEl.textContent = d.finished_at || '';
+                    if (!initial && wasRunning && !reloading) {
+                        reloading = true;
+                        setTimeout(function () { location.reload(); }, 3000);
+                    }
+
+                } else if (d.status === 'error') {
+                    clearTimeout(timer);
+                    dot.style.display  = 'none';
+                    label.textContent  = '<?= __('Last sync finished with errors', 'tanium') ?>';
+                    pct.textContent    = '';
+                    fill.style.width   = '100%';
+                    fill.className     = 'tanium-sync-fill tanium-sync-fill-error';
+                    counts.textContent = d.errors + ' <?= __('errors', 'tanium') ?>';
+                    timeEl.textContent = d.finished_at || '';
+                    if (!initial && wasRunning && !reloading) {
+                        reloading = true;
+                        setTimeout(function () { location.reload(); }, 3000);
+                    }
+                }
+                // 'never': keep the PHP-rendered placeholder
+            }
+
+            function poll() {
+                clearTimeout(timer);
+                fetch(url, { credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) { render(d, false); })
+                    .catch(function () { timer = setTimeout(poll, 5000); });
+            }
+
+            // On load: fetch once immediately to sync the bar with real DB state.
+            // This corrects the PHP-rendered initial state (e.g. 'never' while DB has 'success').
+            fetch(url, { credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    render(d, true);
+                    // Keep polling every 5 s when idle to detect sync started from cron or another tab
+                    if (d.status !== 'running') {
+                        setInterval(poll, 5000);
+                    }
+                })
+                .catch(function () { setInterval(poll, 5000); });
+        }());
+        </script>
 
         <!-- KPI cards -->
         <div class="tanium-kpi-grid">
@@ -308,6 +443,26 @@ class Dashboard {
                     <span class="tanium-kpi-link tanium-muted" style="font-size:.75rem"><?= !empty($config['sync_patches']) ? __('No patch data yet — run a sync', 'tanium') : __('Enable patch sync', 'tanium') ?></span>
                 <?php else: ?>
                     <a href="<?= $webDir ?>/front/patches.php" class="tanium-kpi-link"><?= __('Details', 'tanium') ?> →</a>
+                <?php endif; ?>
+            </div>
+            <div class="tanium-kpi-card">
+                <?php
+                $slaComp = $slaStats['compliance'];
+                if ($slaComp === null) {
+                    $slaColor = '#7a8da8';
+                    $slaLabel = '—';
+                } else {
+                    $slaColor = $slaComp >= 90 ? '#1eb464' : ($slaComp >= 70 ? '#e8c42a' : '#e8212a');
+                    $slaLabel = $slaComp . '%';
+                }
+                ?>
+                <div class="tanium-kpi-icon" style="background:<?= $slaColor ?>22;color:<?= $slaColor ?>">&#9201;</div>
+                <div class="tanium-kpi-value" style="color:<?= $slaColor ?>"><?= $slaLabel ?></div>
+                <div class="tanium-kpi-label"><?= __('SLA compliance', 'tanium') ?></div>
+                <?php if ($slaComp === null): ?>
+                    <span class="tanium-kpi-link tanium-muted" style="font-size:.75rem"><?= __('No CVEs to measure yet', 'tanium') ?></span>
+                <?php else: ?>
+                    <a href="<?= $webDir ?>/front/sla.php" class="tanium-kpi-link"><?= number_format($slaStats['breached']) ?> <?= __('overdue', 'tanium') ?> →</a>
                 <?php endif; ?>
             </div>
         </div>

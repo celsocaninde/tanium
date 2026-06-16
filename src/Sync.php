@@ -69,6 +69,11 @@ class Sync extends CommonGLPI {
                     'page'  => Plugin::getWebDir('tanium') . '/front/coverage.php',
                     'icon'  => 'ti ti-radar',
                 ],
+                'sla'             => [
+                    'title' => __('SLA Compliance', 'tanium'),
+                    'page'  => Plugin::getWebDir('tanium') . '/front/sla.php',
+                    'icon'  => 'ti ti-clock-check',
+                ],
                 'exceptions'      => [
                     'title' => __('CVE Exceptions', 'tanium'),
                     'page'  => Plugin::getWebDir('tanium') . '/front/exceptions.php',
@@ -188,11 +193,16 @@ class Sync extends CommonGLPI {
             // next. Holding the whole fleet plus CVE/software/patch enrichment in
             // memory at once can exceed 1 GB and take the container down — this
             // keeps peak memory bounded regardless of fleet size.
+            $fleetSize = 0;
             $api->eachEndpointPage($limit, $withCves, $withApps, $withPatches,
-                function (array $page) use (
-                    &$created, &$updated, &$errors, &$total,
-                    $withCves, $withApps, $withPatches, $minSev, $sinceTs, $config
+                function (array $page, int $totalRecords) use (
+                    &$created, &$updated, &$errors, &$total, &$fleetSize,
+                    $withCves, $withApps, $withPatches, $minSev, $sinceTs, $config, $logId
                 ): void {
+                    if ($fleetSize === 0 && $totalRecords > 0) {
+                        $fleetSize = $totalRecords;
+                    }
+
                     // Incremental: keep only endpoints seen since the cursor.
                     if ($sinceTs > 0) {
                         $page = array_values(array_filter(
@@ -243,6 +253,8 @@ class Sync extends CommonGLPI {
                             Toolbox::logInFile('tanium', '[Tanium] Error syncing endpoint: ' . $e->getMessage());
                         }
                     }
+
+                    self::updateLogProgress($logId, $total, $fleetSize ?: $total);
                 }
             );
 
@@ -1048,6 +1060,14 @@ class Sync extends CommonGLPI {
             'status'     => 'running',
         ]);
         return (int) $DB->insertId();
+    }
+
+    private static function updateLogProgress(int $logId, int $processed, int $totalEstimated): void {
+        global $DB;
+        $DB->update('glpi_plugin_tanium_sync_logs', [
+            'processed'       => $processed,
+            'total_estimated' => $totalEstimated,
+        ], ['id' => $logId]);
     }
 
     private static function finishLog(int $logId, string $status, int $total, int $created, int $updated, int $errors, string $message = ''): void {

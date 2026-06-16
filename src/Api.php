@@ -94,7 +94,7 @@ GQL;
                 $page[] = self::mapEndpointNode($edge['node'] ?? []);
             }
             if ($page) {
-                $onPage($page);
+                $onPage($page, (int)($conn['totalRecords'] ?? 0));
                 $count += count($page);
             }
 
