@@ -31,12 +31,12 @@ class Notification {
         curl_close($ch);
 
         if ($error) {
-            Toolbox::logError('[Tanium] Webhook error: ' . $error);
+            Toolbox::logInFile('tanium','[Tanium] Webhook error: ' . $error);
             return false;
         }
 
         if ($httpCode < 200 || $httpCode >= 300) {
-            Toolbox::logError("[Tanium] Webhook HTTP {$httpCode}: " . substr((string)$response, 0, 200));
+            Toolbox::logInFile('tanium',"[Tanium] Webhook HTTP {$httpCode}: " . substr((string)$response, 0, 200));
             return false;
         }
 
@@ -124,7 +124,7 @@ class Notification {
             $mailing = new \NotificationMailing();
             return $mailing->sendNotification($to, $subject, $body);
         } catch (\Throwable $e) {
-            Toolbox::logError('[Tanium] Email send failed: ' . $e->getMessage());
+            Toolbox::logInFile('tanium','[Tanium] Email send failed: ' . $e->getMessage());
             return false;
         }
     }

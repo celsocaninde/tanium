@@ -60,7 +60,7 @@ class WeeklyReport {
         // Endpoint counts
         $row = $DB->doQuery("SELECT COUNT(*) AS cnt, ROUND(AVG(risk_score),1) AS avg_risk,
                                     COUNT(CASE WHEN risk_score >= 70 THEN 1 END) AS crit
-                             FROM glpi_plugin_tanium_assets")->current();
+                             FROM glpi_plugin_tanium_assets")->fetch_assoc();
         $stats['total_endpoints']    = (int)($row['cnt']      ?? 0);
         $stats['avg_risk']           = (float)($row['avg_risk'] ?? 0);
         $stats['critical_endpoints'] = (int)($row['crit']     ?? 0);
@@ -69,13 +69,13 @@ class WeeklyReport {
         $cveRow = $DB->doQuery("SELECT COUNT(*) AS total,
                                        COUNT(CASE WHEN severity='critical' THEN 1 END) AS crit,
                                        COUNT(CASE WHEN severity='high' THEN 1 END) AS hi
-                                FROM glpi_plugin_tanium_vulnerabilities")->current();
+                                FROM glpi_plugin_tanium_vulnerabilities")->fetch_assoc();
         $stats['total_cves']    = (int)($cveRow['total'] ?? 0);
         $stats['critical_cves'] = (int)($cveRow['crit']  ?? 0);
         $stats['high_cves']     = (int)($cveRow['hi']    ?? 0);
 
         // Patch compliance
-        $pRow = $DB->doQuery("SELECT COUNT(*) AS total, COUNT(CASE WHEN status='missing' THEN 1 END) AS missing FROM glpi_plugin_tanium_patches")->current();
+        $pRow = $DB->doQuery("SELECT COUNT(*) AS total, COUNT(CASE WHEN status='missing' THEN 1 END) AS missing FROM glpi_plugin_tanium_patches")->fetch_assoc();
         $stats['patches_missing'] = (int)($pRow['missing'] ?? 0);
         if (($pRow['total'] ?? 0) > 0) {
             $stats['patch_compliance'] = (int)round((1 - $pRow['missing'] / $pRow['total']) * 100);
@@ -110,15 +110,15 @@ class WeeklyReport {
                 OR (v.severity = 'high'   AND ec.detected_at < DATE_SUB(NOW(), INTERVAL {$highDays} DAY))
                 OR (v.severity = 'medium' AND ec.detected_at < DATE_SUB(NOW(), INTERVAL {$medDays} DAY))
             )
-        ")->current();
+        ")->fetch_assoc();
         $stats['sla_breaches'] = (int)($slaRow['cnt'] ?? 0);
 
         // Open assignments
-        $aRow = $DB->request(['FROM' => 'glpi_plugin_tanium_cve_assignments', 'WHERE' => ['status' => ['!=', 'resolved']], 'COUNT' => 'id'])->current();
+        $aRow = $DB->request(['FROM' => 'glpi_plugin_tanium_cve_assignments', 'WHERE' => ['status' => ['!=', 'resolved']], 'COUNT' => 'cpt'])->current();
         $stats['new_assignments'] = (int)($aRow['cpt'] ?? 0);
 
         // Open exceptions
-        $eRow = $DB->request(['FROM' => 'glpi_plugin_tanium_cve_exceptions', 'COUNT' => 'id'])->current();
+        $eRow = $DB->request(['FROM' => 'glpi_plugin_tanium_cve_exceptions', 'COUNT' => 'cpt'])->current();
         $stats['open_exceptions'] = (int)($eRow['cpt'] ?? 0);
 
         return $stats;

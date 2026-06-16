@@ -8,17 +8,30 @@ include('../../../inc/includes.php');
 Session::checkRight('config', UPDATE);
 
 if (isset($_POST['run_sync'])) {
-    $result = TaniumSync::run();
+    // A full sync can take several minutes for a large fleet — running it inside
+    // this web request risks an HTTP timeout and a tied-up worker. Instead we
+    // queue the GLPI external cron task (mode = CLI); the automatic-action
+    // scheduler picks it up within ~1 minute and runs it in the background,
+    // entirely outside any web request. See front/cron.php / src/Cron.php.
+    $cron   = new CronTask();
+    $queued = $cron->getFromDBByCrit([
+        'itemtype' => 'GlpiPlugin\\Tanium\\Cron',
+        'name'     => 'taniumsync',
+    ]) && $cron->resetDate();
 
-    $level = $result['errors'] > 0 && $result['total'] === 0 ? ERROR : INFO;
-    $msg   = sprintf(
-        __('Tanium sync complete — %d endpoints processed: %d created, %d updated, %d errors.', 'tanium'),
-        $result['total'],
-        $result['created'],
-        $result['updated'],
-        $result['errors']
-    );
-    Session::addMessageAfterRedirect($msg, true, $level);
+    if ($queued) {
+        Session::addMessageAfterRedirect(
+            __('Synchronization queued — it runs in the background within a minute (no risk to the web server). Watch the history below; refresh to see progress.', 'tanium'),
+            true,
+            INFO
+        );
+    } else {
+        Session::addMessageAfterRedirect(
+            __('Could not queue the Tanium sync task. Make sure GLPI automatic actions (cron) are running.', 'tanium'),
+            true,
+            ERROR
+        );
+    }
     Html::redirect('sync.form.php');
 }
 

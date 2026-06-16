@@ -113,7 +113,7 @@ function plugin_version_tanium(): array {
     return [
         'name'         => 'Tanium',
         'version'      => PLUGIN_TANIUM_VERSION,
-        'author'       => 'Celso Caninde / Claude &lt;celsokadoshi@gmail.com&gt;',
+        'author'       => 'Celso Caninde / Claude',
         'license'      => 'GPLv2+',
         'homepage'     => 'https://developer.tanium.com',
         'requirements' => [

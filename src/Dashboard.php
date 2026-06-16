@@ -30,7 +30,7 @@ class Dashboard {
         ];
 
         // Endpoint count
-        $row = $DB->request(['FROM' => 'glpi_plugin_tanium_assets', 'COUNT' => 'id'])->current();
+        $row = $DB->request(['FROM' => 'glpi_plugin_tanium_assets', 'COUNT' => 'cpt'])->current();
         $stats['total_endpoints'] = (int) ($row['cpt'] ?? 0);
 
         // CVE counts by severity
@@ -48,12 +48,12 @@ class Dashboard {
         $pRow = $DB->request([
             'FROM'  => 'glpi_plugin_tanium_patches',
             'WHERE' => ['status' => 'missing'],
-            'COUNT' => 'id',
+            'COUNT' => 'cpt',
         ])->current();
         $stats['patches_missing'] = (int) ($pRow['cpt'] ?? 0);
 
         // Patch compliance %
-        $totalPatches = (int) ($DB->request(['FROM' => 'glpi_plugin_tanium_patches', 'COUNT' => 'id'])->current()['cpt'] ?? 0);
+        $totalPatches = (int) ($DB->request(['FROM' => 'glpi_plugin_tanium_patches', 'COUNT' => 'cpt'])->current()['cpt'] ?? 0);
         if ($totalPatches > 0) {
             $installed = $totalPatches - $stats['patches_missing'];
             $stats['patch_compliance'] = (int) round($installed / $totalPatches * 100);
@@ -156,43 +156,51 @@ class Dashboard {
             return '<p class="tanium-empty">' . __('No sync history yet. Risk timeline will appear after the first sync.', 'tanium') . '</p>';
         }
 
-        $maxRisk = max(1, max(array_column($timeline, 'avg_risk')));
-        $w = 100; $h = 80; $n = count($timeline);
-        $stepX = $n > 1 ? $w / ($n - 1) : $w;
+        $w = 100; $h = 80;
+        $n = count($timeline);
+        $stepX   = $n > 1 ? $w / ($n - 1) : 0;
+        $maxCrit = max(1, max(array_column($timeline, 'critical_count')));
 
         $avgPoints  = '';
         $critPoints = '';
-
-        foreach ($timeline as $i => $row) {
-            $x    = round($i * $stepX, 1);
-            $yAvg = round($h - ($row['avg_risk'] / 100 * $h), 1);
-            $yCrt = round($h - ($row['critical_count'] / max(1, max(array_column($timeline, 'critical_count'))) * $h), 1);
+        $lastX      = 0;
+        foreach (array_values($timeline) as $i => $row) {
+            $x    = $n > 1 ? round($i * $stepX, 2) : ($w / 2);
+            $yAvg = round($h - (max(0.0, min(100.0, (float)$row['avg_risk'])) / 100 * $h), 2);
+            $yCrt = round($h - ((float)$row['critical_count'] / $maxCrit * $h), 2);
             $avgPoints  .= "{$x},{$yAvg} ";
             $critPoints .= "{$x},{$yCrt} ";
+            $lastX = $x;
         }
+        $avgPoints  = trim($avgPoints);
+        $critPoints = trim($critPoints);
 
-        $labels = '';
-        foreach ($timeline as $i => $row) {
-            if ($i % max(1, (int)($n / 5)) === 0 || $i === $n - 1) {
-                $x   = round($i * $stepX, 1);
-                $lbl = date('d/m', strtotime($row['recorded_at']));
-                $labels .= "<text x='{$x}' y='92' text-anchor='middle' font-size='7' fill='#7a8da8'>{$lbl}</text>";
-            }
+        // Filled area under the average-risk line (uses the gradient defined below).
+        $areaPoints = "{$avgPoints} {$lastX},{$h} 0,{$h}";
+
+        // X-axis labels are rendered as HTML *below* the SVG. Drawing <text> inside an
+        // SVG that uses preserveAspectRatio='none' stretches glyphs ~10x horizontally —
+        // that is what made the old timeline look garbled and overlapping.
+        $labelCells = '';
+        foreach (array_values($timeline) as $row) {
+            $lbl = date('d/m H:i', strtotime($row['recorded_at']));
+            $labelCells .= "<span style='flex:1 1 0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{$lbl}</span>";
         }
 
         return "
-        <svg viewBox='0 -5 100 100' width='100%' height='140' preserveAspectRatio='none' style='overflow:visible'>
+        <svg viewBox='0 0 {$w} {$h}' width='100%' height='140' preserveAspectRatio='none' style='display:block'>
             <defs>
                 <linearGradient id='tg1' x1='0' y1='0' x2='0' y2='1'>
-                    <stop offset='0%' stop-color='#e8212a' stop-opacity='.3'/>
+                    <stop offset='0%' stop-color='#e8212a' stop-opacity='.28'/>
                     <stop offset='100%' stop-color='#e8212a' stop-opacity='0'/>
                 </linearGradient>
             </defs>
-            <polyline points='{$avgPoints}' fill='none' stroke='#e8212a' stroke-width='1.5' stroke-linejoin='round'/>
-            <polyline points='{$critPoints}' fill='none' stroke='#f97316' stroke-width='1' stroke-dasharray='2,2'/>
-            {$labels}
+            <polygon points='{$areaPoints}' fill='url(#tg1)' stroke='none'/>
+            <polyline points='{$avgPoints}' fill='none' stroke='#e8212a' stroke-width='2' vector-effect='non-scaling-stroke' stroke-linejoin='round' stroke-linecap='round'/>
+            <polyline points='{$critPoints}' fill='none' stroke='#f97316' stroke-width='1.5' vector-effect='non-scaling-stroke' stroke-dasharray='4,3' stroke-linejoin='round' stroke-linecap='round'/>
         </svg>
-        <div style='display:flex;gap:16px;font-size:.72rem;color:var(--t-muted);margin-top:4px'>
+        <div style='display:flex;font-size:.68rem;color:var(--t-muted);margin-top:6px;padding:0 2px'>{$labelCells}</div>
+        <div style='display:flex;gap:16px;font-size:.72rem;color:var(--t-muted);margin-top:6px'>
             <span style='color:#e8212a'>— Risk score médio</span>
             <span style='color:#f97316'>⋯ Endpoints críticos</span>
         </div>";
@@ -297,7 +305,7 @@ class Dashboard {
                 <div class="tanium-kpi-value" style="color:<?= $compColor ?>"><?= $compLabel ?></div>
                 <div class="tanium-kpi-label"><?= __('Patch compliance', 'tanium') ?></div>
                 <?php if ($compliance === null): ?>
-                    <span class="tanium-kpi-link tanium-muted" style="font-size:.75rem"><?= __('Enable patch sync', 'tanium') ?></span>
+                    <span class="tanium-kpi-link tanium-muted" style="font-size:.75rem"><?= !empty($config['sync_patches']) ? __('No patch data yet — run a sync', 'tanium') : __('Enable patch sync', 'tanium') ?></span>
                 <?php else: ?>
                     <a href="<?= $webDir ?>/front/patches.php" class="tanium-kpi-link"><?= __('Details', 'tanium') ?> →</a>
                 <?php endif; ?>

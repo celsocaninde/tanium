@@ -17,6 +17,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 global $DB;
 
+// Wrap the whole handler so any error (bad query, schema mismatch, etc.) returns
+// JSON instead of an HTML error page — an HTML response makes the browser throw
+// "Unexpected token '<'" when it tries to parse the reply as JSON.
+try {
+
 $body     = json_decode(file_get_contents('php://input'), true) ?? [];
 $eid      = trim($body['eid'] ?? '');
 $patchIds = array_values(array_filter((array)($body['patch_ids'] ?? []), fn($p) => trim($p) !== ''));
@@ -80,7 +85,6 @@ $patchCount   = count($patches);
 $title        = sprintf('[Tanium] Patch Remediation — %s (%d patch%s)', $endpointName, $patchCount, $patchCount > 1 ? 'es' : '');
 
 // ── Create GLPI ticket ────────────────────────────────────────────────────────
-try {
     $ticket = new Ticket();
     $ticketData = [
         'name'             => $title,
@@ -130,6 +134,9 @@ try {
         'message'    => sprintf('Ticket #%d created successfully. Set it to "Processing (Assigned)" to trigger Tanium deployment.', $ticketId),
     ]);
 
-} catch (\Exception $e) {
+} catch (\Throwable $e) {
+    if (!headers_sent()) {
+        header('Content-Type: application/json');
+    }
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }

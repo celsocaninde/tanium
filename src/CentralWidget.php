@@ -35,8 +35,8 @@ class CentralWidget extends CommonGLPI {
         $webDir = Plugin::getWebDir('tanium');
 
         // Quick stats
-        $epRow = $DB->doQuery("SELECT COUNT(*) AS total, COUNT(CASE WHEN risk_score >= 70 THEN 1 END) AS crit, ROUND(AVG(risk_score),1) AS avg_risk FROM glpi_plugin_tanium_assets")->current();
-        $cveRow = $DB->doQuery("SELECT COUNT(CASE WHEN severity='critical' AND status!='remediated' THEN 1 END) AS crit_cves FROM glpi_plugin_tanium_endpoint_cves")->current();
+        $epRow = $DB->doQuery("SELECT COUNT(*) AS total, COUNT(CASE WHEN risk_score >= 70 THEN 1 END) AS crit, ROUND(AVG(risk_score),1) AS avg_risk FROM glpi_plugin_tanium_assets")->fetch_assoc();
+        $cveRow = $DB->doQuery("SELECT COUNT(CASE WHEN severity='critical' AND status!='remediated' THEN 1 END) AS crit_cves FROM glpi_plugin_tanium_endpoint_cves")->fetch_assoc();
         $slaRow = $DB->doQuery("
             SELECT COUNT(*) AS breaches FROM glpi_plugin_tanium_endpoint_cves ec
             JOIN glpi_plugin_tanium_vulnerabilities v ON ec.cve_id = v.cve_id
@@ -46,7 +46,7 @@ class CentralWidget extends CommonGLPI {
                 OR (v.severity='high'   AND ec.detected_at < DATE_SUB(NOW(), INTERVAL 30 DAY))
                 OR (v.severity='medium' AND ec.detected_at < DATE_SUB(NOW(), INTERVAL 90 DAY))
             )
-        ")->current();
+        ")->fetch_assoc();
 
         $total     = (int)($epRow['total']     ?? 0);
         $critical  = (int)($epRow['crit']      ?? 0);

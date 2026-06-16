@@ -151,7 +151,7 @@ const _csrf = <?= json_encode(Session::getNewCSRFToken()) ?>;
 function updateAssignmentStatus(sel) {
     fetch('<?= $webDir ?>/ajax/assign.php', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': _csrf},
+        headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
         body: JSON.stringify({action: 'update_status', id: parseInt(sel.dataset.id), status: sel.value})
     }).then(r => r.json()).then(d => { if (!d.success) alert(d.error || 'Error'); });
 }
@@ -159,7 +159,7 @@ function deleteAssignment(id) {
     if (!confirm('<?= __('Delete this assignment?', 'tanium') ?>')) return;
     fetch('<?= $webDir ?>/ajax/assign.php', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': _csrf},
+        headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
         body: JSON.stringify({action: 'delete', id: id})
     }).then(r => r.json()).then(d => { if (d.success) location.reload(); else alert(d.error || 'Error'); });
 }

@@ -332,7 +332,7 @@ if ($eid) {
 
         fetch(_webDir + '/ajax/patch_ticket.php', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': _csrf},
+            headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
             body: JSON.stringify({eid: _eid, patch_ids: _selectedForDeploy})
         })
         .then(r => r.json())
@@ -354,7 +354,7 @@ if ($eid) {
         if (!confirm('Retry this deployment?')) return;
         fetch(_webDir + '/ajax/patch_deploy.php', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': _csrf},
+            headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
             body: JSON.stringify({action: 'trigger', dep_id: depId})
         }).then(r => r.json()).then(d => {
             if (d.success) location.reload();
@@ -365,7 +365,7 @@ if ($eid) {
     function checkStatus(depId) {
         fetch(_webDir + '/ajax/patch_deploy.php', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': _csrf},
+            headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
             body: JSON.stringify({action: 'status', dep_id: depId})
         }).then(r => r.json()).then(d => {
             alert('Tanium status: ' + (d.tanium_status || d.error || 'Unknown'));

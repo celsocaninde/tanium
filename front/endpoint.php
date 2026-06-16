@@ -422,7 +422,7 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                 <label class="tanium-form-label" style="margin-top:12px"><?= __('Category', 'tanium') ?></label>
                 <select name="itilcategories_id" class="tanium-input tanium-select" style="width:100%">
                     <option value="0"><?= __('(no category)', 'tanium') ?></option>
-                    <?php foreach ($DB->request(['FROM' => 'glpi_itilcategories', 'WHERE' => ['is_deleted' => 0], 'ORDER' => 'name ASC', 'LIMIT' => 100]) as $cat): ?>
+                    <?php foreach ($DB->request(['FROM' => 'glpi_itilcategories', 'ORDER' => 'name ASC', 'LIMIT' => 100]) as $cat): ?>
                     <option value="<?= (int)$cat['id'] ?>"><?= htmlspecialchars($cat['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
@@ -555,7 +555,7 @@ function openExceptionModal(cveId) {
 function revokeException(cveId, exId) {
     if (!confirm('Revogar esta exceção? O CVE voltará a ser tratado como ativo.')) return;
     fetch(_webDir + '/ajax/exception.php', {
-        method: 'POST', headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': _csrf},
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
         body: JSON.stringify({action: 'delete', id: exId})
     }).then(r => r.json()).then(d => { if (d.success) location.reload(); else alert(d.error||'Error'); });
 }
@@ -563,7 +563,7 @@ function submitException() {
     const reason = document.getElementById('exc-reason').value.trim();
     if (!reason) { alert('Por favor informe a justificativa.'); return; }
     fetch(_webDir + '/ajax/exception.php', {
-        method: 'POST', headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': _csrf},
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
         body: JSON.stringify({
             action: 'create',
             tanium_eid: _eid,
@@ -585,7 +585,7 @@ function openAssignModal(cveId) {
 }
 function submitAssignment() {
     fetch(_webDir + '/ajax/assign.php', {
-        method: 'POST', headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': _csrf},
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
         body: JSON.stringify({
             action: 'create',
             tanium_eid: _eid,

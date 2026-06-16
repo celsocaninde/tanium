@@ -109,10 +109,10 @@ if ($mode === 'endpoint') {
 
 } else {
     $config       = $DB->request(['FROM' => 'glpi_plugin_tanium_configs', 'LIMIT' => 1])->current() ?? [];
-    $totalEp      = (int)($DB->request(['FROM' => 'glpi_plugin_tanium_assets',          'COUNT' => 'id'])->current()['cpt'] ?? 0);
-    $totalCve     = (int)($DB->request(['FROM' => 'glpi_plugin_tanium_vulnerabilities',  'COUNT' => 'id'])->current()['cpt'] ?? 0);
-    $totalMissing = (int)($DB->request(['FROM' => 'glpi_plugin_tanium_patches', 'WHERE' => ['status' => 'missing'], 'COUNT' => 'id'])->current()['cpt'] ?? 0);
-    $totalPatches = (int)($DB->request(['FROM' => 'glpi_plugin_tanium_patches',          'COUNT' => 'id'])->current()['cpt'] ?? 0);
+    $totalEp      = (int)($DB->request(['FROM' => 'glpi_plugin_tanium_assets',          'COUNT' => 'cpt'])->current()['cpt'] ?? 0);
+    $totalCve     = (int)($DB->request(['FROM' => 'glpi_plugin_tanium_vulnerabilities',  'COUNT' => 'cpt'])->current()['cpt'] ?? 0);
+    $totalMissing = (int)($DB->request(['FROM' => 'glpi_plugin_tanium_patches', 'WHERE' => ['status' => 'missing'], 'COUNT' => 'cpt'])->current()['cpt'] ?? 0);
+    $totalPatches = (int)($DB->request(['FROM' => 'glpi_plugin_tanium_patches',          'COUNT' => 'cpt'])->current()['cpt'] ?? 0);
     $compliance   = $totalPatches > 0 ? round(($totalPatches - $totalMissing) / $totalPatches * 100) : null;
 
     $sev = ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];

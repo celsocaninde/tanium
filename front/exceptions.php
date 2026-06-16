@@ -121,7 +121,7 @@ function revokeException(id) {
     if (!confirm('<?= __('Revoke this exception? The CVE will become active again.', 'tanium') ?>')) return;
     fetch('<?= $webDir ?>/ajax/exception.php', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': _csrf},
+        headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
         body: JSON.stringify({action: 'delete', id: id})
     }).then(r => r.json()).then(d => {
         if (d.success) location.reload();

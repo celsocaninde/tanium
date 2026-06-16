@@ -173,7 +173,7 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                         OR (v.severity='high'   AND ec.detected_at < DATE_SUB(NOW(), INTERVAL {$highDays} DAY))
                         OR (v.severity='medium' AND ec.detected_at < DATE_SUB(NOW(), INTERVAL {$medDays} DAY))
                     )
-                ")->current();
+                ")->fetch_assoc();
                 $slaBreaches = (int)($slaBreachRow['cnt'] ?? 0);
             ?>
                 <tr>
@@ -314,7 +314,7 @@ function submitBulkTicket() {
     const eids = getSelectedEids();
     if (!eids.length) return;
     fetch(_webDir + '/ajax/bulk_ticket.php', {
-        method: 'POST', headers: {'Content-Type': 'application/json', 'X-Glpi-Csrf-Token': _csrf},
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
         body: JSON.stringify({
             eids: eids,
             title: document.getElementById('ep-bulk-title').value,
