@@ -60,9 +60,14 @@ function plugin_init_tanium(): void {
     Plugin::registerClass(TaniumWeeklyReport::class);
     Plugin::registerClass(TaniumPatchDeploy::class);
 
-    // Ticket update hook — triggers Tanium patch deployment on approval
+    // Approval workflow hook — a pending patch deployment is sent to Tanium only
+    // when the GLPI ticket approval (TicketValidation) is ACCEPTED, and is marked
+    // rejected when REFUSED. Fires on both add and update of the validation record.
     $PLUGIN_HOOKS[Hooks::ITEM_UPDATE]['tanium'] = [
-        'Ticket' => 'plugin_tanium_ticket_update',
+        'TicketValidation' => 'plugin_tanium_validation_update',
+    ];
+    $PLUGIN_HOOKS[Hooks::ITEM_ADD]['tanium'] = [
+        'TicketValidation' => 'plugin_tanium_validation_update',
     ];
 
     // Central dashboard widget
@@ -105,8 +110,9 @@ function plugin_init_tanium(): void {
 }
 
 // ── Hook callback — must be a named function, not a closure ──────────────────
-function plugin_tanium_ticket_update(Ticket $ticket): void {
-    \GlpiPlugin\Tanium\PatchDeploy::onTicketUpdate($ticket);
+// Fired when a Ticket approval request (TicketValidation) is created or updated.
+function plugin_tanium_validation_update($validation): void {
+    \GlpiPlugin\Tanium\PatchDeploy::onValidationUpdate($validation);
 }
 
 function plugin_version_tanium(): array {

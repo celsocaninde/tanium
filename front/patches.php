@@ -77,6 +77,8 @@ if ($eid) {
         'deploying'       => 'tanium-badge-warning',
         'pending_approval'=> 'tanium-badge-muted',
         'failed'          => 'tanium-badge-error',
+        'rejected'        => 'tanium-badge-error',
+        'cancelled'       => 'tanium-badge-muted',
         default           => 'tanium-badge-muted',
     };
 
@@ -265,7 +267,7 @@ if ($eid) {
                 <span class="ti ti-rocket"></span> <?= __('Create Patch Remediation Ticket', 'tanium') ?>
             </div>
             <div class="tanium-muted tanium-small" style="margin-bottom:20px">
-                <?= __('A GLPI ticket will be created. Approving it (setting to Assigned) triggers automatic Tanium patch deployment.', 'tanium') ?>
+                <?= __('A GLPI ticket will be created. Once its approval request is accepted by an approver, the Tanium patch deployment is triggered automatically.', 'tanium') ?>
             </div>
             <div style="margin-bottom:16px">
                 <label class="tanium-small" style="display:block;margin-bottom:6px;font-weight:600"><?= __('Patches to deploy', 'tanium') ?></label>

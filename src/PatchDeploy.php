@@ -3,7 +3,7 @@
 namespace GlpiPlugin\Tanium;
 
 use CommonGLPI;
-use CommonITILObject;
+use CommonITILValidation;
 use CronTask;
 use Html;
 use ITILFollowup;
@@ -11,6 +11,7 @@ use ITILSolution;
 use Item_Ticket;
 use Session;
 use Ticket;
+use TicketValidation;
 
 class PatchDeploy extends CommonGLPI {
 
@@ -18,29 +19,37 @@ class PatchDeploy extends CommonGLPI {
         return __('Tanium Patch Deployment', 'tanium');
     }
 
-    // ── GLPI Ticket hook ────────────────────────────────────────────────────
+    // ── GLPI approval (TicketValidation) hook ────────────────────────────────
 
     /**
-     * Called by plugin_tanium_ticket_update hook when a Ticket is updated.
-     * When status changes to ASSIGNED/PLANNED, trigger pending Tanium deployment.
+     * Called by plugin_tanium_validation_update hook when a Ticket approval
+     * request (TicketValidation) is created or updated.
+     *
+     * Flow: the patch deployment waits in 'pending_approval' until the GLPI
+     * approver responds to the validation request.
+     *   • ACCEPTED → send the deployment to Tanium (triggerDeploy)
+     *   • REFUSED  → mark the deployment 'rejected' and notify on the ticket
+     *
+     * Reading $validation->fields['status'] is correct here: on item_update the
+     * record already holds the new (post-decision) status.
      */
-    public static function onTicketUpdate(Ticket $ticket): void {
+    public static function onValidationUpdate($validation): void {
         global $DB;
 
-        $input = $ticket->input ?? [];
-        if (!isset($input['status'])) return;
+        if (!($validation instanceof TicketValidation)) return;
 
-        $newStatus = (int)$input['status'];
-        $oldStatus = (int)($ticket->fields['status'] ?? 0);
+        $ticketId = (int)($validation->fields['tickets_id'] ?? 0);
+        $status   = (int)($validation->fields['status'] ?? 0);
+        if (!$ticketId) return;
 
-        // Only trigger on transition INTO assigned/planned
-        if (!in_array($newStatus, [CommonITILObject::ASSIGNED, CommonITILObject::PLANNED])) return;
-        // Don't re-trigger if already processing/solved
-        if (in_array($oldStatus, [CommonITILObject::ASSIGNED, CommonITILObject::PLANNED,
-                                   CommonITILObject::SOLVED, CommonITILObject::CLOSED])) return;
+        // Act only on a final decision (accepted/refused), not on "waiting".
+        if (!in_array($status, [CommonITILValidation::ACCEPTED, CommonITILValidation::REFUSED], true)) {
+            return;
+        }
 
-        $ticketId = (int)$ticket->fields['id'];
-
+        // Find a deployment still awaiting approval for this ticket.
+        // triggerDeploy/markRejected are idempotent (they only act on
+        // 'pending_approval'), so multiple validators cannot double-deploy.
         $res = $DB->doQuery(
             "SELECT * FROM `glpi_plugin_tanium_patch_deployments`
              WHERE ticket_id = {$ticketId} AND status = 'pending_approval'
@@ -48,7 +57,39 @@ class PatchDeploy extends CommonGLPI {
         );
         if (!$res || !($dep = $res->fetch_assoc())) return;
 
-        self::triggerDeploy((int)$dep['id'], (int)Session::getLoginUserID());
+        if ($status === CommonITILValidation::ACCEPTED) {
+            $approver = (int)($validation->fields['users_id_validate'] ?? 0);
+            if ($approver <= 0) {
+                $approver = (int)Session::getLoginUserID();
+            }
+            self::triggerDeploy((int)$dep['id'], $approver);
+        } else { // REFUSED
+            self::markRejected((int)$dep['id'], $dep, $validation);
+        }
+    }
+
+    // ── Approval refused — cancel the deployment ─────────────────────────────
+
+    private static function markRejected(int $depId, array $dep, TicketValidation $validation): void {
+        global $DB;
+
+        $DB->doQuery(
+            "UPDATE `glpi_plugin_tanium_patch_deployments`
+             SET status = 'rejected', updated_at = NOW()
+             WHERE id = {$depId} AND status = 'pending_approval'"
+        );
+
+        if (!empty($dep['ticket_id'])) {
+            $comment = trim((string)($validation->fields['comment_validation'] ?? ''));
+            $fu = new ITILFollowup();
+            $fu->add([
+                'itemtype'   => 'Ticket',
+                'items_id'   => (int)$dep['ticket_id'],
+                'content'    => __('❌ The patch deployment approval was REFUSED. No deployment was sent to Tanium.', 'tanium')
+                    . ($comment !== '' ? '<br><br><em>' . htmlspecialchars($comment) . '</em>' : ''),
+                'is_private' => 0,
+            ]);
+        }
     }
 
     // ── Trigger Tanium deployment ───────────────────────────────────────────
@@ -427,12 +468,12 @@ class PatchDeploy extends CommonGLPI {
                 <tr>
                     <td style="text-align:center;padding:0 8px;vertical-align:top">
                         <div style="width:38px;height:38px;background:#2d3748;border:2px solid #4a5568;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#e2e8f0;margin-bottom:8px">1</div>
-                        <div style="font-size:11px;color:#a0aec0;line-height:1.5">Review patches<br>listed above</div>
+                        <div style="font-size:11px;color:#a0aec0;line-height:1.5">Review patches &amp;<br>request approval</div>
                     </td>
                     <td style="color:#4a5568;font-size:20px;vertical-align:middle;padding-bottom:20px;text-align:center">→</td>
                     <td style="text-align:center;padding:0 8px;vertical-align:top">
                         <div style="width:38px;height:38px;background:#276749;border:2px solid #48bb78;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;margin-bottom:8px">2</div>
-                        <div style="font-size:11px;color:#68d391;font-weight:600;line-height:1.5">Set status to<br><strong>"Processing (Assigned)"</strong></div>
+                        <div style="font-size:11px;color:#68d391;font-weight:600;line-height:1.5">Approver <strong>accepts</strong><br>the GLPI approval</div>
                     </td>
                     <td style="color:#4a5568;font-size:20px;vertical-align:middle;padding-bottom:20px;text-align:center">→</td>
                     <td style="text-align:center;padding:0 8px;vertical-align:top">

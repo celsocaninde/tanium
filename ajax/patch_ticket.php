@@ -3,7 +3,8 @@
 /**
  * Creates a GLPI ticket with professional HTML content for patch remediation.
  * Also creates a glpi_plugin_tanium_patch_deployments record in pending_approval state.
- * When the ticket is set to "Processing (Assigned)", the hook auto-triggers Tanium deploy.
+ * When the ticket's GLPI approval request (TicketValidation) is ACCEPTED, the hook
+ * auto-triggers the Tanium deploy; if REFUSED, the deployment is marked rejected.
  */
 
 include('../../../inc/includes.php');
@@ -131,7 +132,7 @@ $title        = sprintf('[Tanium] Patch Remediation — %s (%d patch%s)', $endpo
         'success'    => true,
         'ticket_id'  => $ticketId,
         'ticket_url' => $ticketUrl,
-        'message'    => sprintf('Ticket #%d created successfully. Set it to "Processing (Assigned)" to trigger Tanium deployment.', $ticketId),
+        'message'    => sprintf('Ticket #%d created successfully. Submit a GLPI approval request — once it is approved, the Tanium deployment is triggered automatically.', $ticketId),
     ]);
 
 } catch (\Throwable $e) {
