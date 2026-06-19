@@ -367,21 +367,164 @@ GQL;
 
     /**
      * Create a patch deployment for a specific endpoint.
-     * Returns the full API response (data.id = deployment ID).
+     *
+     * Tanium Patch deployments use a FLAT schema (not a nested `schedule`),
+     * target by computer NAME / group (not endpoint id), and reference patches
+     * by their catalog `taniumUid` (not KB article). We therefore resolve the
+     * caller's KB/title patch ids to UIDs against the osType-filtered catalog.
+     *
+     * @param string   $eid            Tanium endpoint id (kept for reference/logging)
+     * @param string[] $patchIds       KB articles or titles (as stored by sync)
+     * @param string   $deploymentName Human-readable deployment name
+     * @param array    $opts           osType, computerName, restart, windowHours, timezone, contentSetId
+     * @return array   Created deployment object (contains `id`)
      */
-    public function deployPatches(string $eid, array $patchIds, string $deploymentName): array {
+    public function deployPatches(string $eid, array $patchIds, string $deploymentName, array $opts = []): array {
+        $osType   = strtolower(trim((string)($opts['osType'] ?? 'windows'))) ?: 'windows';
+        $computer = trim((string)($opts['computerName'] ?? ''));
+        if ($computer === '') {
+            throw new \RuntimeException(__('Cannot deploy: the endpoint computer name is unknown. Run a sync first.', 'tanium'));
+        }
+
+        $uids = $this->resolvePatchUids($patchIds, $osType);
+
+        $tz       = trim((string)($opts['timezone'] ?? '')) ?: (date_default_timezone_get() ?: 'America/Sao_Paulo');
+        $windowH  = max(1, (int)($opts['windowHours'] ?? 24));
+        $start    = gmdate('Y-m-d\TH:i:s.000\Z');
+        $end      = gmdate('Y-m-d\TH:i:s.000\Z', time() + $windowH * 3600);
+        $contentSetId = isset($opts['contentSetId']) ? (int)$opts['contentSetId'] : $this->detectContentSetId();
+
         $payload = [
-            'name'   => $deploymentName,
-            'type'   => 'INSTALL',
-            'target' => ['endpointIds' => [$eid]],
-            'patches' => $patchIds,
-            'schedule' => [
-                'startTime'           => gmdate('Y-m-d\TH:i:s\Z'),
-                'endTime'             => gmdate('Y-m-d\TH:i:s\Z', time() + 86400 * 7),
-                'distributeOverTime'  => false,
-            ],
+            'name'                       => mb_substr($deploymentName, 0, 255),
+            'osType'                     => $osType,
+            'contentSetId'               => $contentSetId,
+            'type'                       => 'install',
+            'frequencyType'              => 'single',
+            'startTime'                  => $start,
+            'endTime'                    => $end,
+            'issuerTimezone'             => $tz,
+            'useTaniumClientTimeZone'    => false,
+            'downloadImmediately'        => true,
+            'distributeOverTimeMinutes'  => 0,
+            'overrideBlacklists'         => false,
+            // User chose "install immediately after approval", so don't wait for
+            // the endpoint's maintenance window.
+            'overrideMaintenanceWindows' => true,
+            'restart'                    => (bool)($opts['restart'] ?? true),
+            'eussAvailableBeforeStart'   => false,
+            'targetedComputerNames'      => [$computer],
+            'patches'                    => array_map(static fn(string $u) => ['taniumUid' => $u], $uids),
         ];
+
         return $this->post('/plugin/products/patch/v1/deployments', $payload);
+    }
+
+    /** Cache so repeated deploys in one request don't re-query. */
+    private ?int $contentSetIdCache = null;
+
+    /**
+     * Tanium deployments require a contentSetId. It is tenant-specific, so detect
+     * it from an existing deployment; fall back to 48 ("Patch Content Set").
+     */
+    private function detectContentSetId(): int {
+        if ($this->contentSetIdCache !== null) {
+            return $this->contentSetIdCache;
+        }
+        try {
+            $r  = $this->get('/plugin/products/patch/v1/deployments', ['limit' => 1]);
+            $cs = $r['deployments'][0]['contentSetId'] ?? null;
+            $this->contentSetIdCache = (int)($cs ?: 48);
+        } catch (\Throwable $e) {
+            $this->contentSetIdCache = 48;
+        }
+        return $this->contentSetIdCache;
+    }
+
+    /**
+     * Resolve patch descriptors to Tanium catalog `taniumUid`s.
+     *
+     * The catalog has no usable text filter, but DOES honour `?osType=`, which
+     * keeps the payload manageable. A single KB article often maps to MANY
+     * versioned patches (e.g. KB890830 → v5.131…v5.142), each with its own UID,
+     * so we match by exact TITLE first (which carries the version) and only fall
+     * back to KB when that KB resolves to exactly one UID. Anything that cannot
+     * be resolved unambiguously aborts the deploy — we never guess a version.
+     *
+     * @param array $patches Each item: ['kb' => string, 'title' => string] (a plain
+     *                       string is treated as both kb and title).
+     * @return string[] resolved unique taniumUids
+     */
+    private function resolvePatchUids(array $patches, string $osType): array {
+        // Normalise descriptors.
+        $want = [];
+        foreach ($patches as $p) {
+            if (is_array($p)) {
+                $kb    = strtoupper(trim((string)($p['kb'] ?? '')));
+                $title = strtoupper(trim((string)($p['title'] ?? '')));
+            } else {
+                $kb = $title = strtoupper(trim((string)$p));
+            }
+            if ($kb === '' && $title === '') {
+                continue;
+            }
+            $want[] = ['kb' => $kb, 'title' => $title, 'label' => $title ?: $kb];
+        }
+        if (empty($want)) {
+            return [];
+        }
+
+        // The osType-filtered catalog can be tens of MB; allow more time/memory.
+        if (function_exists('ini_set')) {
+            @ini_set('memory_limit', '512M');
+        }
+        $catalog = $this->get('/plugin/products/patch/v1/patches', ['osType' => $osType], 180);
+
+        // Build lookup maps from the catalog.
+        $byTitle = [];          // TITLE => uid
+        $byKb    = [];          // KB    => [uid, ...]
+        foreach ($catalog['patches'] ?? [] as $patch) {
+            $uid = (string)($patch['taniumUid'] ?? '');
+            if ($uid === '') {
+                continue;
+            }
+            $title = strtoupper(trim((string)($patch['title'] ?? '')));
+            if ($title !== '' && !isset($byTitle[$title])) {
+                $byTitle[$title] = $uid;
+            }
+            foreach (preg_split('/\s+/', (string)($patch['kbArticles'] ?? '')) as $kb) {
+                $kb = strtoupper(trim($kb));
+                if ($kb !== '' && $kb !== 'N/A' && $kb !== 'AVAILABLE' && stripos($kb, 'KB') === 0) {
+                    $byKb[$kb][$uid] = true;
+                }
+            }
+        }
+
+        $resolved   = [];
+        $unresolved = [];
+        foreach ($want as $w) {
+            if ($w['title'] !== '' && isset($byTitle[$w['title']])) {
+                $resolved[$byTitle[$w['title']]] = true;
+                continue;
+            }
+            if ($w['kb'] !== '' && isset($byKb[$w['kb']]) && count($byKb[$w['kb']]) === 1) {
+                $resolved[array_key_first($byKb[$w['kb']])] = true;
+                continue;
+            }
+            // Ambiguous (KB → many versions) or not found at all.
+            $reason = ($w['kb'] !== '' && isset($byKb[$w['kb']]))
+                ? sprintf(__('matches %d catalog versions — title required', 'tanium'), count($byKb[$w['kb']]))
+                : __('not found in Tanium catalog', 'tanium');
+            $unresolved[] = $w['label'] . ' (' . $reason . ')';
+        }
+
+        if (!empty($unresolved)) {
+            throw new \RuntimeException(sprintf(
+                __('Could not resolve these patches to a Tanium UID: %s', 'tanium'),
+                implode('; ', $unresolved)
+            ));
+        }
+
+        return array_keys($resolved);
     }
 
     /**
@@ -539,7 +682,7 @@ GQL;
         return $data ?? [];
     }
 
-    private function get(string $path, array $query = []): array {
+    private function get(string $path, array $query = [], ?int $timeout = null): array {
         $url = $this->baseUrl . $path;
         if ($query) {
             $url .= '?' . http_build_query($query);
@@ -549,7 +692,7 @@ GQL;
         curl_setopt_array($ch, [
             CURLOPT_URL            => $url,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => $this->timeout,
+            CURLOPT_TIMEOUT        => $timeout ?? $this->timeout,
             CURLOPT_HTTPHEADER     => [
                 'session: ' . $this->token,
                 'Content-Type: application/json',

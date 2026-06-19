@@ -118,10 +118,43 @@ class PatchDeploy extends CommonGLPI {
             return ['success' => false, 'error' => 'No patches selected for this deployment'];
         }
 
+        // Tanium targets by computer name + osType, so load them from the asset.
+        $asset = null;
+        $ar = $DB->doQuery(
+            "SELECT tanium_name, os_name, os_platform FROM `glpi_plugin_tanium_assets`
+             WHERE tanium_eid = '" . $DB->escape($dep['tanium_eid']) . "' LIMIT 1"
+        );
+        if ($ar) {
+            $asset = $ar->fetch_assoc();
+        }
+
+        // Build patch descriptors — the title carries the exact version Tanium
+        // needs (a single KB can map to many versioned patches).
+        $titleByKb = [];
+        $inList = "'" . implode("','", array_map([$DB, 'escape'], $patches)) . "'";
+        $prr = $DB->doQuery(
+            "SELECT patch_id, patch_title FROM `glpi_plugin_tanium_patches`
+             WHERE tanium_eid = '" . $DB->escape($dep['tanium_eid']) . "'
+               AND patch_id IN ({$inList})"
+        );
+        if ($prr) {
+            while ($row = $prr->fetch_assoc()) {
+                $titleByKb[$row['patch_id']] = $row['patch_title'];
+            }
+        }
+        $patchDescriptors = [];
+        foreach ($patches as $kb) {
+            $patchDescriptors[] = ['kb' => $kb, 'title' => $titleByKb[$kb] ?? ''];
+        }
+
         $api = new Api($config['api_url'], $config['api_token']);
 
         try {
-            $result      = $api->deployPatches($dep['tanium_eid'], $patches, 'GLPI-Ticket-' . $dep['ticket_id']);
+            $result      = $api->deployPatches($dep['tanium_eid'], $patchDescriptors, 'GLPI-Ticket-' . $dep['ticket_id'], [
+                'osType'       => self::mapOsType(($asset['os_platform'] ?? '') . ' ' . ($asset['os_name'] ?? '')),
+                'computerName' => $asset['tanium_name'] ?? '',
+                'restart'      => true,
+            ]);
             $taniumDepId = $result['data']['id'] ?? $result['id'] ?? null;
             $newStatus   = $taniumDepId ? 'deploying' : 'failed';
             $errMsg      = $taniumDepId ? null : 'No deployment ID returned from Tanium API';
@@ -165,6 +198,17 @@ class PatchDeploy extends CommonGLPI {
             ));
             return ['success' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    /** Map a GLPI/Tanium OS string to the Tanium Patch `osType` value. */
+    private static function mapOsType(string $os): string {
+        $o = strtolower($os);
+        if (str_contains($o, 'win'))                              return 'windows';
+        if (str_contains($o, 'mac') || str_contains($o, 'darwin')) return 'mac';
+        if (str_contains($o, 'lin') || str_contains($o, 'ubuntu')
+            || str_contains($o, 'debian') || str_contains($o, 'red hat')
+            || str_contains($o, 'centos') || str_contains($o, 'suse')) return 'linux';
+        return 'windows';
     }
 
     // ── Cron: poll deploying records ────────────────────────────────────────
