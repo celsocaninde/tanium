@@ -412,7 +412,9 @@ GQL;
             'overrideMaintenanceWindows' => true,
             'restart'                    => (bool)($opts['restart'] ?? true),
             'eussAvailableBeforeStart'   => false,
-            'targetedComputerNames'      => [$computer],
+            // Tanium calls .split(',') on this server-side, so it must be a
+            // comma-separated STRING, not an array.
+            'targetedComputerNames'      => $computer,
             'patches'                    => array_map(static fn(string $u) => ['taniumUid' => $u], $uids),
         ];
 
