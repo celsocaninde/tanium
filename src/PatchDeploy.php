@@ -151,9 +151,10 @@ class PatchDeploy extends CommonGLPI {
 
         try {
             $result      = $api->deployPatches($dep['tanium_eid'], $patchDescriptors, 'GLPI-Ticket-' . $dep['ticket_id'], [
-                'osType'       => self::mapOsType(($asset['os_platform'] ?? '') . ' ' . ($asset['os_name'] ?? '')),
-                'computerName' => $asset['tanium_name'] ?? '',
-                'restart'      => true,
+                'osType'          => self::mapOsType(($asset['os_platform'] ?? '') . ' ' . ($asset['os_name'] ?? '')),
+                'computerName'    => $asset['tanium_name'] ?? '',
+                'limitingGroupId' => (int)($config['patch_limiting_group_id'] ?? 0),
+                'restart'         => true,
             ]);
             $taniumDepId = $result['data']['id'] ?? $result['id'] ?? null;
             $newStatus   = $taniumDepId ? 'deploying' : 'failed';

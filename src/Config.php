@@ -44,6 +44,7 @@ class Config extends CommonDBTM {
             'sla_critical_days'    => 7,
             'sla_high_days'        => 30,
             'sla_medium_days'      => 90,
+            'patch_limiting_group_id' => 0,
         ];
     }
 
@@ -183,6 +184,14 @@ class Config extends CommonDBTM {
             </div>";
         endforeach;
         echo "</div><br>";
+
+        // ── Patch Deployment ──────────────────────────────────────────────
+        echo "<div class='tanium-section-title'>" . __('Patch Deployment', 'tanium') . "</div>";
+        $this->renderField(
+            __('Patch deployment scope group (ID)', 'tanium'),
+            "<input type='number' name='patch_limiting_group_id' class='tanium-input tanium-input-sm' value='" . (int)($config['patch_limiting_group_id'] ?? 0) . "' min='0'/>",
+            __('Tanium computer group ID that limits which endpoints a patch deployment may target (required to deploy). Find the ID in Tanium → Administration → Computer Groups.', 'tanium')
+        );
 
         echo "<div class='tanium-actions'>";
         echo "<button type='submit' name='save' class='tanium-btn tanium-btn-primary'>&#128190; " . __('Save configuration', 'tanium') . "</button> ";

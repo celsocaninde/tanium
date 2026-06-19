@@ -366,59 +366,92 @@ GQL;
     // ── Patch Deployments ─────────────────────────────────────────────────
 
     /**
-     * Create a patch deployment for a specific endpoint.
+     * Create a patch deployment for a single endpoint via the GraphQL API
+     * Gateway mutation `patchCreateDeployment` (the REST create endpoint is
+     * undocumented and far stricter). Patches are referenced by catalog
+     * `taniumUid`, which we resolve from the caller's KB/title identifiers.
      *
-     * Tanium Patch deployments use a FLAT schema (not a nested `schedule`),
-     * target by computer NAME / group (not endpoint id), and reference patches
-     * by their catalog `taniumUid` (not KB article). We therefore resolve the
-     * caller's KB/title patch ids to UIDs against the osType-filtered catalog.
+     * Targeting: a `questionCriteria` filter "Computer Name == <name>", scoped
+     * by a required limiting computer group (configured per tenant).
      *
-     * @param string   $eid            Tanium endpoint id (kept for reference/logging)
-     * @param string[] $patchIds       KB articles or titles (as stored by sync)
-     * @param string   $deploymentName Human-readable deployment name
-     * @param array    $opts           osType, computerName, restart, windowHours, timezone, contentSetId
-     * @return array   Created deployment object (contains `id`)
+     * @param string $eid            Tanium endpoint id (reference/logging only)
+     * @param array  $patches        Descriptors ['kb'=>, 'title'=>] (or plain strings)
+     * @param string $deploymentName Human-readable deployment name
+     * @param array  $opts           osType, computerName, limitingGroupId, restart, windowHours, timezone, contentSetId
+     * @return array  ['id' => deploymentId]
      */
-    public function deployPatches(string $eid, array $patchIds, string $deploymentName, array $opts = []): array {
+    public function deployPatches(string $eid, array $patches, string $deploymentName, array $opts = []): array {
         $osType   = strtolower(trim((string)($opts['osType'] ?? 'windows'))) ?: 'windows';
         $computer = trim((string)($opts['computerName'] ?? ''));
         if ($computer === '') {
             throw new \RuntimeException(__('Cannot deploy: the endpoint computer name is unknown. Run a sync first.', 'tanium'));
         }
 
-        $uids = $this->resolvePatchUids($patchIds, $osType);
+        $limitingGroupId = (int)($opts['limitingGroupId'] ?? 0);
+        if ($limitingGroupId <= 0) {
+            throw new \RuntimeException(__('Cannot deploy: set the "Patch deployment scope group" (target limiting group) in the Tanium plugin configuration.', 'tanium'));
+        }
 
-        $tz       = trim((string)($opts['timezone'] ?? '')) ?: (date_default_timezone_get() ?: 'America/Sao_Paulo');
-        $windowH  = max(1, (int)($opts['windowHours'] ?? 24));
-        $start    = gmdate('Y-m-d\TH:i:s.000\Z');
-        $end      = gmdate('Y-m-d\TH:i:s.000\Z', time() + $windowH * 3600);
+        $uids = $this->resolvePatchUids($patches, $osType);
+
+        $platform = match ($osType) {
+            'mac', 'macos', 'darwin' => 'MACOS',
+            'linux'                  => 'LINUX',
+            default                  => 'WINDOWS',
+        };
+        $tz           = trim((string)($opts['timezone'] ?? '')) ?: (date_default_timezone_get() ?: 'America/Sao_Paulo');
+        $windowH      = max(1, (int)($opts['windowHours'] ?? 24));
+        $start        = gmdate('Y-m-d\TH:i:s\Z');
+        $end          = gmdate('Y-m-d\TH:i:s\Z', time() + $windowH * 3600);
         $contentSetId = isset($opts['contentSetId']) ? (int)$opts['contentSetId'] : $this->detectContentSetId();
 
-        $payload = [
-            'name'                       => mb_substr($deploymentName, 0, 255),
-            'osType'                     => $osType,
-            'contentSetId'               => $contentSetId,
-            'type'                       => 'install',
-            'frequencyType'              => 'single',
-            'startTime'                  => $start,
-            'endTime'                    => $end,
-            'issuerTimezone'             => $tz,
-            'useTaniumClientTimeZone'    => false,
-            'downloadImmediately'        => true,
-            'distributeOverTimeMinutes'  => 0,
-            'overrideBlacklists'         => false,
-            // User chose "install immediately after approval", so don't wait for
-            // the endpoint's maintenance window.
-            'overrideMaintenanceWindows' => true,
-            'restart'                    => (bool)($opts['restart'] ?? true),
-            'eussAvailableBeforeStart'   => false,
-            // Tanium calls .split(',') on this server-side, so it must be a
-            // comma-separated STRING, not an array.
-            'targetedComputerNames'      => $computer,
-            'patches'                    => array_map(static fn(string $u) => ['taniumUid' => $u], $uids),
+        $input = [
+            'name'                  => mb_substr($deploymentName, 0, 255),
+            'type'                  => 'INSTALL',
+            'platform'              => $platform,
+            'contentSet'            => ['id' => (string)$contentSetId],
+            'contentDeploymentType' => 'MANUAL_SELECTION',
+            'patches'               => array_map(static fn(string $u) => ['id' => $u], $uids),
+            'targets'               => [
+                'questionCriteria' => [
+                    'filter'         => [
+                        'sensor'  => ['name' => 'Computer Name'],
+                        'op'      => 'EQ',
+                        'value'   => $computer,
+                        'negated' => false,
+                        'any'     => false,
+                    ],
+                    'limitingGroups' => [['id' => (string)$limitingGroupId]],
+                ],
+            ],
+            'schedule'              => [
+                'type'                       => 'SINGLE',
+                'timeZone'                   => $tz,
+                'startTime'                  => $start,
+                'endTime'                    => $end,
+                // User chose "install immediately after approval".
+                'overrideMaintenanceWindows' => true,
+            ],
+            'downloadImmediately'   => true,
+            'overrideBlocklists'    => false,
+            'restart'               => (bool)($opts['restart'] ?? true),
         ];
 
-        return $this->post('/plugin/products/patch/v1/deployments', $payload);
+        $mutation = 'mutation($input: PatchCreateDeploymentInput!) {'
+                  . ' patchCreateDeployment(input: $input) { deployment { id } error { message } } }';
+
+        $data = $this->graphql($mutation, ['input' => $input]);
+
+        $err = $data['patchCreateDeployment']['error']['message'] ?? null;
+        if ($err) {
+            throw new \RuntimeException(sprintf(__('Tanium rejected the deployment: %s', 'tanium'), $err));
+        }
+        $id = $data['patchCreateDeployment']['deployment']['id'] ?? null;
+        if (!$id) {
+            throw new \RuntimeException(__('Tanium did not return a deployment id.', 'tanium'));
+        }
+
+        return ['id' => (string)$id];
     }
 
     /** Cache so repeated deploys in one request don't re-query. */

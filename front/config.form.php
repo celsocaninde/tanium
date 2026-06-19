@@ -33,6 +33,7 @@ if (isset($_POST['save'])) {
         'sla_critical_days'    => max(1, (int)($_POST['sla_critical_days'] ?? 7)),
         'sla_high_days'        => max(1, (int)($_POST['sla_high_days']     ?? 30)),
         'sla_medium_days'      => max(1, (int)($_POST['sla_medium_days']   ?? 90)),
+        'patch_limiting_group_id' => max(0, (int)($_POST['patch_limiting_group_id'] ?? 0)),
     ]);
 
     Session::addMessageAfterRedirect(__('Tanium configuration saved.', 'tanium'), true, INFO);
