@@ -45,6 +45,7 @@ class Config extends CommonDBTM {
             'sla_high_days'        => 30,
             'sla_medium_days'      => 90,
             'patch_limiting_group_id' => 0,
+            'ticket_entity_id'        => 0,
         ];
     }
 
@@ -188,9 +189,26 @@ class Config extends CommonDBTM {
         // ── Patch Deployment ──────────────────────────────────────────────
         echo "<div class='tanium-section-title'>" . __('Patch Deployment', 'tanium') . "</div>";
         $this->renderField(
-            __('Patch deployment scope group (ID)', 'tanium'),
+            __('Patch deployment scope group (ID — fallback)', 'tanium'),
             "<input type='number' name='patch_limiting_group_id' class='tanium-input tanium-input-sm' value='" . (int)($config['patch_limiting_group_id'] ?? 0) . "' min='0'/>",
-            __('Tanium computer group ID that limits which endpoints a patch deployment may target (required to deploy). Find the ID in Tanium → Administration → Computer Groups.', 'tanium')
+            __('ID de fallback usado quando nenhum grupo é selecionado no modal de deploy. Com a lista de grupos sincronizada, este campo raramente é necessário.', 'tanium')
+            . ' &nbsp;<a href="' . Plugin::getWebDir('tanium') . '/front/computergroups.php" class="tanium-link">Gerenciar grupos ↗</a>'
+        );
+
+        ob_start();
+        \Entity::dropdown([
+            'name'                => 'ticket_entity_id',
+            'value'               => (int)($config['ticket_entity_id'] ?? 0),
+            'entity'              => $_SESSION['glpiactiveentities'] ?? [],
+            'class'               => 'tanium-input',
+            'display_emptychoice' => false,
+        ]);
+        $entityDropdown = ob_get_clean();
+
+        $this->renderField(
+            __('Ticket entity', 'tanium'),
+            $entityDropdown,
+            __('Entity where Tanium tickets (CVE, patch remediation) will be created. Choose the entity that owns the security team or service desk queue.', 'tanium')
         );
 
         echo "<div class='tanium-actions'>";

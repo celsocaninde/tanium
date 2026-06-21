@@ -133,6 +133,7 @@ class WeeklyReport {
         $compliance = $s['patch_compliance'] !== null ? $s['patch_compliance'] . '%' : 'N/A';
         $compColor  = $s['patch_compliance'] === null ? '#7a8da8' : ($s['patch_compliance'] >= 90 ? '#1eb464' : ($s['patch_compliance'] >= 70 ? '#e8c42a' : '#e8212a'));
         $slaColor   = $s['sla_breaches'] > 0 ? '#e8212a' : '#1eb464';
+        $generatedAt = date('d/m/Y H:i');
 
         $topEpRows = '';
         foreach ($s['top_endpoints'] as $ep) {
@@ -170,7 +171,7 @@ class WeeklyReport {
       <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-.5px">TANIUM</div>
       <div style="color:rgba(255,255,255,.7);font-size:13px">Weekly Security Report — {$baseUrl}</div>
     </div>
-    <div style="color:rgba(255,255,255,.6);font-size:12px;margin-top:4px">{$s['total_endpoints']} endpoints monitored · Generated {date('d/m/Y H:i')}</div>
+    <div style="color:rgba(255,255,255,.6);font-size:12px;margin-top:4px">{$s['total_endpoints']} endpoints monitorados · Gerado em {$generatedAt}</div>
   </div>
 
   <!-- KPIs -->

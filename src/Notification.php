@@ -106,8 +106,8 @@ class Notification {
             return false;
         }
 
-        // Use GLPI's mail system if available
-        if (class_exists('NotificationMailing') || function_exists('sendMailWithErrorHandling')) {
+        // Prefer GLPI's own mailer (respects the configured SMTP transport)
+        if (class_exists('GLPIMailer')) {
             return self::sendViaGLPI($to, $subject, $body);
         }
 
@@ -119,12 +119,43 @@ class Notification {
         return @mail($to, $subject, $body, $headers);
     }
 
+    /**
+     * Send a one-off HTML email through GLPI's configured mail transport
+     * (GLPIMailer wraps Symfony Mailer and uses the SMTP settings from
+     * Configuração → Notificações). Returns false and logs a clear reason
+     * on failure (invalid address, transport error, etc.).
+     */
     private static function sendViaGLPI(string $to, string $subject, string $body): bool {
+        global $CFG_GLPI;
+
+        $from     = (string) ($CFG_GLPI['admin_email'] ?? '');
+        $fromName = (string) ($CFG_GLPI['admin_email_name'] ?? 'GLPI');
+
+        if ($from === '' || !\GLPIMailer::validateAddress($from)) {
+            Toolbox::logInFile('tanium', '[Tanium] Remetente inválido. Defina o "E-mail do administrador" em Configurar → Notificações → Configurações de e-mail.');
+            return false;
+        }
+        if (!\GLPIMailer::validateAddress($to)) {
+            Toolbox::logInFile('tanium', "[Tanium] Endereço de destino inválido: {$to}");
+            return false;
+        }
+
         try {
-            $mailing = new \NotificationMailing();
-            return $mailing->sendNotification($to, $subject, $body);
+            $mailer = new \GLPIMailer();
+            $email  = $mailer->getEmail();
+            $email->from(new \Symfony\Component\Mime\Address($from, $fromName));
+            $email->to($to);
+            $email->subject($subject);
+            $email->html($body);
+            $email->text(trim(strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>', '</tr>'], "\n", $body))));
+
+            if (!$mailer->send()) {
+                Toolbox::logInFile('tanium', '[Tanium] Falha no envio do e-mail para ' . $to . ': ' . ($mailer->getError() ?? 'erro desconhecido'));
+                return false;
+            }
+            return true;
         } catch (\Throwable $e) {
-            Toolbox::logInFile('tanium','[Tanium] Email send failed: ' . $e->getMessage());
+            Toolbox::logInFile('tanium', '[Tanium] Exceção no envio do e-mail: ' . $e->getMessage());
             return false;
         }
     }

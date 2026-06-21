@@ -262,25 +262,54 @@ if ($eid) {
 
     <!-- Deploy modal -->
     <div id="deploy-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center">
-        <div style="background:var(--tanium-card-bg,#1a1e2e);border:1px solid var(--tanium-border);border-radius:12px;padding:28px;max-width:500px;width:90%;box-shadow:0 25px 60px rgba(0,0,0,.5)">
+        <div style="background:var(--tanium-card-bg,#1a1e2e);border:1px solid var(--tanium-border);border-radius:12px;padding:28px;max-width:520px;width:90%;box-shadow:0 25px 60px rgba(0,0,0,.5)">
             <div style="font-size:16px;font-weight:700;margin-bottom:6px">
-                <span class="ti ti-rocket"></span> <?= __('Create Patch Remediation Ticket', 'tanium') ?>
+                <span class="ti ti-rocket"></span> Criar chamado de remediação de patches
             </div>
             <div class="tanium-muted tanium-small" style="margin-bottom:20px">
-                <?= __('A GLPI ticket will be created. Once its approval request is accepted by an approver, the Tanium patch deployment is triggered automatically.', 'tanium') ?>
+                Um chamado GLPI será criado. Após aprovação, o deploy é acionado automaticamente no Tanium.
             </div>
             <div style="margin-bottom:16px">
-                <label class="tanium-small" style="display:block;margin-bottom:6px;font-weight:600"><?= __('Patches to deploy', 'tanium') ?></label>
+                <label class="tanium-small" style="display:block;margin-bottom:6px;font-weight:600">Patches selecionados</label>
                 <div id="modal-patch-count" class="tanium-small tanium-muted"></div>
             </div>
+            <?php
+            $modalGroups = \GlpiPlugin\Tanium\ComputerGroup::getAll();
+            if (!empty($modalGroups)):
+            ?>
             <div style="margin-bottom:16px">
-                <label class="tanium-small" style="display:block;margin-bottom:6px;font-weight:600"><?= __('GLPI Category (optional)', 'tanium') ?></label>
-                <input type="text" id="modal-category" class="tanium-input" style="width:100%" placeholder="Security / Patch Management">
+                <label class="tanium-small" style="display:block;margin-bottom:6px;font-weight:600">
+                    Grupo de deploy (Tanium) <span style="color:#e53e3e">*</span>
+                </label>
+                <select id="modal-group" class="tanium-input" style="width:100%" required>
+                    <option value="0">— Selecione o grupo —</option>
+                    <?php foreach ($modalGroups as $g):
+                        $gid      = (int)$g['tanium_group_id'];
+                        $dispName = htmlspecialchars(\GlpiPlugin\Tanium\ComputerGroup::displayName($g));
+                    ?>
+                    <option value="<?= $gid ?>"><?= $dispName ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <div class="tanium-small tanium-muted" style="margin-top:4px">
+                    Define o escopo de endpoints que o deploy pode atingir no Tanium.
+                    <a href="<?= $webDir ?>/front/computergroups.php" target="_blank" class="tanium-link">Gerenciar grupos ↗</a>
+                </div>
             </div>
+            <?php else: ?>
+            <div style="margin-bottom:16px;padding:12px;background:rgba(237,137,54,.1);border:1px solid rgba(237,137,54,.3);border-radius:8px">
+                <div class="tanium-small" style="color:#ed8936">
+                    <span class="ti ti-alert-triangle"></span>
+                    Nenhum grupo de computadores importado.
+                    <a href="<?= $webDir ?>/front/computergroups.php" target="_blank" class="tanium-link">Sincronizar grupos ↗</a>
+                    antes de fazer o deploy.
+                </div>
+            </div>
+            <input type="hidden" id="modal-group" value="0">
+            <?php endif; ?>
             <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
-                <button class="tanium-btn tanium-btn-secondary" onclick="closeDeployModal()"><?= __('Cancel', 'tanium') ?></button>
+                <button class="tanium-btn tanium-btn-secondary" onclick="closeDeployModal()">Cancelar</button>
                 <button class="tanium-btn tanium-btn-primary" id="btn-confirm-deploy" onclick="confirmDeploy()">
-                    <span class="ti ti-ticket"></span> <?= __('Create ticket', 'tanium') ?>
+                    <span class="ti ti-ticket"></span> Criar chamado
                 </button>
             </div>
         </div>
@@ -327,15 +356,18 @@ if ($eid) {
     }
 
     function confirmDeploy() {
-        if (!_selectedForDeploy.length) { alert('No patches selected.'); return; }
+        if (!_selectedForDeploy.length) { alert('Nenhum patch selecionado.'); return; }
+        const groupId = parseInt(document.getElementById('modal-group').value, 10);
+        if (!groupId) { alert('Selecione o grupo de deploy do Tanium antes de continuar.'); return; }
+
         const btn = document.getElementById('btn-confirm-deploy');
         btn.disabled = true;
-        btn.textContent = 'Creating…';
+        btn.innerHTML = '<span class="ti ti-loader-2"></span> Criando…';
 
         fetch(_webDir + '/ajax/patch_ticket.php', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
-            body: JSON.stringify({eid: _eid, patch_ids: _selectedForDeploy})
+            body: JSON.stringify({eid: _eid, patch_ids: _selectedForDeploy, limiting_group_id: groupId})
         })
         .then(r => r.json())
         .then(d => {
@@ -344,12 +376,16 @@ if ($eid) {
                 window.open(d.ticket_url, '_blank');
                 location.reload();
             } else {
-                alert('Error: ' + (d.error || 'Unknown error'));
+                alert('Erro: ' + (d.error || 'Erro desconhecido'));
                 btn.disabled = false;
-                btn.textContent = 'Create ticket';
+                btn.innerHTML = '<span class="ti ti-ticket"></span> Criar chamado';
             }
         })
-        .catch(err => { alert('Network error: ' + err); btn.disabled = false; btn.textContent = 'Create ticket'; });
+        .catch(err => {
+            alert('Erro de rede: ' + err);
+            btn.disabled = false;
+            btn.innerHTML = '<span class="ti ti-ticket"></span> Criar chamado';
+        });
     }
 
     function retryDeploy(depId) {

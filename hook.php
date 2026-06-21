@@ -40,6 +40,7 @@ function plugin_tanium_install(): bool {
                 `sla_high_days`         int NOT NULL DEFAULT 30,
                 `sla_medium_days`       int NOT NULL DEFAULT 90,
                 `patch_limiting_group_id` int NOT NULL DEFAULT 0,
+                `ticket_entity_id`      int NOT NULL DEFAULT 0,
                 `date_mod`              timestamp NULL DEFAULT NULL,
                 PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
@@ -82,6 +83,7 @@ function plugin_tanium_install(): bool {
             'sla_high_days'      => "int NOT NULL DEFAULT 30",
             'sla_medium_days'    => "int NOT NULL DEFAULT 90",
             'patch_limiting_group_id' => "int NOT NULL DEFAULT 0",
+            'ticket_entity_id'        => "int NOT NULL DEFAULT 0",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_configs` LIKE '{$col}'");
@@ -372,6 +374,7 @@ function plugin_tanium_install(): bool {
                 `tanium_eid`            varchar(100) NOT NULL DEFAULT '',
                 `computers_id`          int {$sign} DEFAULT NULL,
                 `patch_ids`             text NOT NULL,
+                `limiting_group_id`     int NOT NULL DEFAULT 0,
                 `tanium_deployment_id`  varchar(255) DEFAULT NULL,
                 `status`                varchar(30) NOT NULL DEFAULT 'pending_approval',
                 `requested_by`          int {$sign} DEFAULT NULL,
@@ -385,6 +388,25 @@ function plugin_tanium_install(): bool {
                 KEY `ticket_id`  (`ticket_id`),
                 KEY `tanium_eid` (`tanium_eid`),
                 KEY `status`     (`status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
+        );
+    } else {
+        $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_patch_deployments` LIKE 'limiting_group_id'");
+        if ($res && $DB->numrows($res) === 0) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_tanium_patch_deployments` ADD COLUMN `limiting_group_id` int NOT NULL DEFAULT 0 AFTER `patch_ids`");
+        }
+    }
+
+    if (!$DB->tableExists('glpi_plugin_tanium_computer_groups')) {
+        $DB->doQuery(
+            "CREATE TABLE `glpi_plugin_tanium_computer_groups` (
+                `id`                int unsigned NOT NULL AUTO_INCREMENT,
+                `tanium_group_id`   int unsigned NOT NULL DEFAULT 0,
+                `tanium_group_name` varchar(255) NOT NULL DEFAULT '',
+                `label`             varchar(255) NOT NULL DEFAULT '',
+                `date_mod`          timestamp NULL DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `tanium_group_id` (`tanium_group_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
         );
     }
@@ -413,6 +435,7 @@ function plugin_tanium_uninstall(): bool {
         'glpi_plugin_tanium_cve_assignments',
         'glpi_plugin_tanium_saved_filters',
         'glpi_plugin_tanium_patch_deployments',
+        'glpi_plugin_tanium_computer_groups',
     ] as $table) {
         if ($DB->tableExists($table)) {
             $DB->dropTable($table);

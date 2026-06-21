@@ -67,12 +67,17 @@ if ($content) {
 
 $ticketContent = implode("\n", $lines);
 
+$config   = \GlpiPlugin\Tanium\Config::getConfig();
+$entityId = (int)($config['ticket_entity_id'] ?? 0) > 0
+    ? (int)$config['ticket_entity_id']
+    : ($_SESSION['glpiactive_entity'] ?? 0);
+
 // Create the ticket
 $ticket = new \Ticket();
 $ticketId = $ticket->add([
     'name'            => $title,
     'content'         => $ticketContent,
-    'entities_id'     => 0,
+    'entities_id'     => $entityId,
     'type'            => \Ticket::INCIDENT_TYPE,
     'priority'        => $priority,
     'urgency'         => $totalCritical > 0 ? 5 : ($totalHigh > 0 ? 4 : 3),

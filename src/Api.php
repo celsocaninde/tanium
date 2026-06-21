@@ -570,6 +570,56 @@ GQL;
         return $this->get('/plugin/products/patch/v1/deployments/' . urlencode($deploymentId));
     }
 
+    // ── Computer groups ───────────────────────────────────────────────────
+
+    private const COMPUTER_GROUPS_QUERY = <<<'GQL'
+query($first: Int!, $after: Cursor) {
+  computerGroups(first: $first, after: $after) {
+    totalRecords
+    pageInfo { hasNextPage endCursor }
+    edges { node { id name } }
+  }
+}
+GQL;
+
+    /**
+     * Returns [{id, name}] of all Tanium computer groups, following cursor
+     * pagination. Returns [] on any error so callers can degrade gracefully.
+     */
+    public function getComputerGroups(): array {
+        $prevTimeout   = $this->timeout;
+        $this->timeout = 20;
+        try {
+            $groups = [];
+            $after  = null;
+            $guard  = 0;
+
+            do {
+                $data = $this->graphql(self::COMPUTER_GROUPS_QUERY, [
+                    'first' => 500,
+                    'after' => $after,
+                ]);
+                $conn  = $data['computerGroups'] ?? [];
+                $edges = $conn['edges'] ?? [];
+                foreach ($edges as $edge) {
+                    $node = $edge['node'] ?? null;
+                    if ($node && isset($node['id'])) {
+                        $groups[] = ['id' => $node['id'], 'name' => $node['name'] ?? ''];
+                    }
+                }
+                $hasNext = (bool)($conn['pageInfo']['hasNextPage'] ?? false);
+                $after   = $conn['pageInfo']['endCursor'] ?? null;
+            } while ($hasNext && $after !== null && ++$guard < 50);
+
+            usort($groups, static fn($a, $b) => strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
+            return $groups;
+        } catch (\Throwable) {
+            return [];
+        } finally {
+            $this->timeout = $prevTimeout;
+        }
+    }
+
     // ── Connection test ───────────────────────────────────────────────────
 
     public function testConnection(): array {

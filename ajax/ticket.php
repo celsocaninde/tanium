@@ -31,6 +31,8 @@ if ($title === '') {
     Html::displayErrorAndDie(__('Ticket title is required.', 'tanium'));
 }
 
+$config = \GlpiPlugin\Tanium\Config::getConfig();
+
 $ticket = new Ticket();
 
 $ticketData = [
@@ -39,7 +41,9 @@ $ticketData = [
     'priority'            => $priority,
     'status'              => Ticket::INCOMING,
     'type'                => Ticket::INCIDENT_TYPE,
-    'entities_id'         => $_SESSION['glpiactive_entity'] ?? 0,
+    'entities_id'         => (int)($config['ticket_entity_id'] ?? 0) > 0
+                                ? (int)$config['ticket_entity_id']
+                                : ($_SESSION['glpiactive_entity'] ?? 0),
     '_users_id_requester' => Session::getLoginUserID(),
 ];
 
@@ -59,24 +63,37 @@ $ticketId = $ticket->add($ticketData);
 if ($ticketId) {
     // Add a follow-up with Tanium context details
     if ($taniumEid || $refId) {
-        $note  = "**Criado automaticamente pelo plugin Tanium para GLPI**\n\n";
-        $note .= "EID: {$taniumEid}\n";
-        if ($refType === 'cve')   $note .= "CVE ID: {$refId}\n";
-        if ($refType === 'patch') $note .= "Patch ID: {$refId}\n";
-        $note .= "\n_Este ticket foi gerado a partir de uma detecção do Tanium._";
+        $refRow = '';
+        if ($refType === 'cve' && $refId) {
+            $refRow = "<tr><td style='color:#718096;padding:4px 0;padding-right:20px;white-space:nowrap'>CVE ID</td>"
+                    . "<td><a href='https://nvd.nist.gov/vuln/detail/" . htmlspecialchars($refId) . "' style='color:#63b3ed'>" . htmlspecialchars($refId) . "</a></td></tr>";
+        } elseif ($refType === 'patch' && $refId) {
+            $refRow = "<tr><td style='color:#718096;padding:4px 0;padding-right:20px;white-space:nowrap'>Patch ID</td>"
+                    . "<td style='font-family:monospace;font-size:12px;color:#e2e8f0'>" . htmlspecialchars($refId) . "</td></tr>";
+        }
+
+        $note = "
+<div style='font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#1a202c;border:1px solid #2d3748;border-radius:8px;padding:16px 20px;max-width:640px'>
+  <div style='font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#63b3ed;margin-bottom:14px'>🛡️ Contexto Tanium — Detecção Automática</div>
+  <table style='border-collapse:collapse;font-size:13px'>
+    <tr><td style='color:#718096;padding:4px 0;padding-right:20px;white-space:nowrap'>Tanium EID</td><td style='font-family:monospace;font-size:11px;color:#68d391'>" . htmlspecialchars($taniumEid) . "</td></tr>
+    {$refRow}
+  </table>
+  <div style='margin-top:12px;font-size:.78rem;color:#4a5568'>Chamado gerado automaticamente pelo plugin Tanium para GLPI.</div>
+</div>";
 
         $fup = new ITILFollowup();
         $fup->add([
-            'items_id'     => $ticketId,
-            'itemtype'     => 'Ticket',
-            'content'      => nl2br(htmlspecialchars($note)),
-            'is_private'   => 0,
-            'users_id'     => Session::getLoginUserID(),
+            'items_id'   => $ticketId,
+            'itemtype'   => 'Ticket',
+            'content'    => $note,
+            'is_private' => 0,
+            'users_id'   => Session::getLoginUserID(),
         ]);
     }
 
     // Redirect to the new ticket
     Html::redirect('/front/ticket.form.php?id=' . $ticketId);
 } else {
-    Html::displayErrorAndDie(__('Failed to create ticket. Check your GLPI permissions.', 'tanium'));
+    Html::displayErrorAndDie(__('Falha ao criar chamado. Verifique as permissões no GLPI.', 'tanium'));
 }

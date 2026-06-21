@@ -23,9 +23,10 @@ global $DB;
 // "Unexpected token '<'" when it tries to parse the reply as JSON.
 try {
 
-$body     = json_decode(file_get_contents('php://input'), true) ?? [];
-$eid      = trim($body['eid'] ?? '');
-$patchIds = array_values(array_filter((array)($body['patch_ids'] ?? []), fn($p) => trim($p) !== ''));
+$body           = json_decode(file_get_contents('php://input'), true) ?? [];
+$eid            = trim($body['eid'] ?? '');
+$patchIds       = array_values(array_filter((array)($body['patch_ids'] ?? []), fn($p) => trim($p) !== ''));
+$limitingGroupId = (int)($body['limiting_group_id'] ?? 0);
 
 if (!$eid || empty($patchIds)) {
     echo json_encode(['success' => false, 'error' => 'eid and patch_ids are required']); exit;
@@ -83,9 +84,13 @@ $priority     = $urgency; // GLPI calculates this but we set it directly
 
 $endpointName = $endpoint['tanium_name'] ?? $eid;
 $patchCount   = count($patches);
-$title        = sprintf('[Tanium] Patch Remediation — %s (%d patch%s)', $endpointName, $patchCount, $patchCount > 1 ? 'es' : '');
+$title        = sprintf('[Tanium] Remediação de Patches — %s (%d patch%s)', $endpointName, $patchCount, $patchCount > 1 ? 'es' : '');
 
 // ── Create GLPI ticket ────────────────────────────────────────────────────────
+    $entityId = (int)($config['ticket_entity_id'] ?? 0) > 0
+        ? (int)$config['ticket_entity_id']
+        : ($_SESSION['glpiactive_entity'] ?? 0);
+
     $ticket = new Ticket();
     $ticketData = [
         'name'             => $title,
@@ -95,6 +100,7 @@ $title        = sprintf('[Tanium] Patch Remediation — %s (%d patch%s)', $endpo
         'impact'           => $impact,
         'priority'         => $priority,
         'type'             => Ticket::INCIDENT_TYPE,
+        'entities_id'      => $entityId,
         'requesttypes_id'  => 1, // Direct
         '_users_id_requester' => Session::getLoginUserID(),
     ];
@@ -116,13 +122,14 @@ $title        = sprintf('[Tanium] Patch Remediation — %s (%d patch%s)', $endpo
 
     // ── Create deployment record ──────────────────────────────────────────────
     $DB->insert('glpi_plugin_tanium_patch_deployments', [
-        'ticket_id'    => $ticketId,
-        'tanium_eid'   => $eid,
-        'computers_id' => $endpoint['computers_id'] ?: null,
-        'patch_ids'    => json_encode($patchIds),
-        'status'       => 'pending_approval',
-        'requested_by' => Session::getLoginUserID(),
-        'created_at'   => date('Y-m-d H:i:s'),
+        'ticket_id'        => $ticketId,
+        'tanium_eid'       => $eid,
+        'computers_id'     => $endpoint['computers_id'] ?: null,
+        'patch_ids'        => json_encode($patchIds),
+        'limiting_group_id'=> $limitingGroupId,
+        'status'           => 'pending_approval',
+        'requested_by'     => Session::getLoginUserID(),
+        'created_at'       => date('Y-m-d H:i:s'),
     ]);
 
     $ticketUrl = \Plugin::getWebDir('tanium', false, true);
@@ -132,7 +139,7 @@ $title        = sprintf('[Tanium] Patch Remediation — %s (%d patch%s)', $endpo
         'success'    => true,
         'ticket_id'  => $ticketId,
         'ticket_url' => $ticketUrl,
-        'message'    => sprintf('Ticket #%d created successfully. Submit a GLPI approval request — once it is approved, the Tanium deployment is triggered automatically.', $ticketId),
+        'message'    => sprintf('Chamado #%d criado com sucesso. Envie uma solicitação de aprovação no GLPI — quando aprovado, o deploy no Tanium é acionado automaticamente.', $ticketId),
     ]);
 
 } catch (\Throwable $e) {
