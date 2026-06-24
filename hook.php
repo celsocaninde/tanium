@@ -39,8 +39,8 @@ function plugin_tanium_install(): bool {
                 `sla_critical_days`     int NOT NULL DEFAULT 7,
                 `sla_high_days`         int NOT NULL DEFAULT 30,
                 `sla_medium_days`       int NOT NULL DEFAULT 90,
-                `patch_limiting_group_id` int NOT NULL DEFAULT 0,
-                `ticket_entity_id`      int NOT NULL DEFAULT 0,
+                `patch_limiting_group_id` int unsigned NOT NULL DEFAULT 0,
+                `ticket_entity_id`      int unsigned NOT NULL DEFAULT 0,
                 `date_mod`              timestamp NULL DEFAULT NULL,
                 PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
@@ -82,8 +82,8 @@ function plugin_tanium_install(): bool {
             'sla_critical_days'  => "int NOT NULL DEFAULT 7",
             'sla_high_days'      => "int NOT NULL DEFAULT 30",
             'sla_medium_days'    => "int NOT NULL DEFAULT 90",
-            'patch_limiting_group_id' => "int NOT NULL DEFAULT 0",
-            'ticket_entity_id'        => "int NOT NULL DEFAULT 0",
+            'patch_limiting_group_id' => "int unsigned NOT NULL DEFAULT 0",
+            'ticket_entity_id'        => "int unsigned NOT NULL DEFAULT 0",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_configs` LIKE '{$col}'");
