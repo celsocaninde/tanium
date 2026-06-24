@@ -37,9 +37,13 @@ class Sync extends CommonGLPI {
         return __('Tanium', 'tanium');
     }
 
+    public static function canView(): bool {
+        return Profile::hasReadRight();
+    }
+
     public static function getMenuContent(): array {
         $menu = [];
-        if (Session::haveRight('config', UPDATE)) {
+        if (self::canView()) {
             $menu['title']   = self::getMenuName();
             $menu['page']    = Plugin::getWebDir('tanium') . '/front/dashboard.php';
             $menu['icon']    = self::getIcon();
