@@ -374,7 +374,7 @@ function plugin_tanium_install(): bool {
                 `tanium_eid`            varchar(100) NOT NULL DEFAULT '',
                 `computers_id`          int {$sign} DEFAULT NULL,
                 `patch_ids`             text NOT NULL,
-                `limiting_group_id`     int NOT NULL DEFAULT 0,
+                `limiting_group_id`     int unsigned NOT NULL DEFAULT 0,
                 `tanium_deployment_id`  varchar(255) DEFAULT NULL,
                 `status`                varchar(30) NOT NULL DEFAULT 'pending_approval',
                 `requested_by`          int {$sign} DEFAULT NULL,
@@ -393,7 +393,7 @@ function plugin_tanium_install(): bool {
     } else {
         $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_patch_deployments` LIKE 'limiting_group_id'");
         if ($res && $DB->numrows($res) === 0) {
-            $DB->doQuery("ALTER TABLE `glpi_plugin_tanium_patch_deployments` ADD COLUMN `limiting_group_id` int NOT NULL DEFAULT 0 AFTER `patch_ids`");
+            $DB->doQuery("ALTER TABLE `glpi_plugin_tanium_patch_deployments` ADD COLUMN `limiting_group_id` int unsigned NOT NULL DEFAULT 0 AFTER `patch_ids`");
         }
     }
 
