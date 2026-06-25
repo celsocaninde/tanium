@@ -192,9 +192,13 @@ class Profile extends \Profile {
 
     // ── GLPI Profile tab ──────────────────────────────────────────────────
 
+    public static function getIcon(): string {
+        return 'ti ti-cpu';
+    }
+
     public function getTabNameForItem(\CommonGLPI $item, $withtemplate = 0): string {
         if ($item instanceof \Profile) {
-            return 'Tanium';
+            return self::createTabEntry('Tanium', 0, null, self::getIcon());
         }
         return '';
     }
