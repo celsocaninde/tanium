@@ -17,6 +17,8 @@ Html::header(__('Tanium — Grupos de Computadores', 'tanium'), $_SERVER['PHP_SE
 .tg-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
 .tg-flash{animation:tgflash 1.1s ease-out}
 @keyframes tgflash{0%{background:rgba(34,197,94,.28)}100%{background:transparent}}
+.tanium-btn.tg-saved{background:#22c55e!important;border-color:#22c55e!important;color:#fff!important}
+.tanium-btn.tg-saved:hover{background:#16a34a!important;border-color:#16a34a!important;color:#fff!important}
 </style>
 <div class="tanium-page-wrap">
 
@@ -85,12 +87,13 @@ Html::header(__('Tanium — Grupos de Computadores', 'tanium'), $_SERVER['PHP_SE
                     placeholder="<?= $gname ?>"
                     value="<?= $label ?>"
                     data-gid="<?= $gid ?>"
+                    oninput="markChosen(<?= $gid ?>, this)"
                     onkeydown="if(event.key==='Enter'){saveLabel(<?= $gid ?>,this)}"
                 />
             </td>
             <td>
                 <button
-                    class="tanium-btn tanium-btn-xs tanium-btn-primary"
+                    class="tanium-btn tanium-btn-xs <?= $hasLbl ? 'tg-saved' : 'tanium-btn-primary' ?>"
                     onclick="saveLabel(<?= $gid ?>, this.closest('tr').querySelector('input'))">
                     <span class="ti ti-check"></span> Salvar
                 </button>
@@ -137,6 +140,15 @@ async function syncGroups(btn) {
     btn.innerHTML = '<span class="ti ti-refresh"></span> Sincronizar com Tanium';
 }
 
+// Feedback imediato: ao escolher/editar o rótulo, o botão Salvar fica verde.
+function markChosen(gid, input) {
+    const row = document.getElementById('row-' + gid);
+    const btn = row.querySelector('button');
+    const has = input.value.trim() !== '';
+    btn.classList.toggle('tg-saved', has);
+    btn.classList.toggle('tanium-btn-primary', !has);
+}
+
 async function saveLabel(gid, input) {
     const label  = input.value.trim();
     const row    = document.getElementById('row-' + gid);
@@ -160,6 +172,10 @@ async function saveLabel(gid, input) {
             row.classList.toggle('tg-on', hasLabel);
             status.className = 'tg-badge ' + (hasLabel ? 'on' : 'off');
             status.innerHTML = '<span class="tg-dot"></span>' + (hasLabel ? 'Ativo' : 'Padrão');
+
+            // Botão fica verde quando o grupo está escolhido (rótulo definido)
+            btn.classList.toggle('tg-saved', hasLabel);
+            btn.classList.toggle('tanium-btn-primary', !hasLabel);
 
             // Quick flash + button confirmation
             row.classList.remove('tg-flash'); void row.offsetWidth; row.classList.add('tg-flash');

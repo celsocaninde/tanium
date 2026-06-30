@@ -275,20 +275,38 @@ if ($eid) {
             </div>
             <?php
             $modalGroups = \GlpiPlugin\Tanium\ComputerGroup::getAll();
+            // Agrupa os grupos por Content Set (prefixo do nome, ex.: "Sebrae - MS")
+            $groupsByCs = [];
+            foreach ($modalGroups as $g) {
+                $cs = \GlpiPlugin\Tanium\ComputerGroup::contentSet($g);
+                $groupsByCs[$cs][] = [
+                    'id'    => (int)$g['tanium_group_id'],
+                    'label' => \GlpiPlugin\Tanium\ComputerGroup::displayName($g),
+                ];
+            }
+            ksort($groupsByCs);
             if (!empty($modalGroups)):
             ?>
+            <div style="margin-bottom:16px">
+                <label class="tanium-small" style="display:block;margin-bottom:6px;font-weight:600">
+                    Content Set <span style="color:#e53e3e">*</span>
+                </label>
+                <select id="modal-contentset" class="tanium-input" style="width:100%" required onchange="onContentSetChange()">
+                    <option value="">— Selecione o Content Set —</option>
+                    <?php foreach (array_keys($groupsByCs) as $cs): ?>
+                    <option value="<?= htmlspecialchars($cs) ?>"><?= htmlspecialchars($cs) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <div class="tanium-small tanium-muted" style="margin-top:4px">
+                    Determinado pelo grupo escolhido. Filtra os grupos abaixo.
+                </div>
+            </div>
             <div style="margin-bottom:16px">
                 <label class="tanium-small" style="display:block;margin-bottom:6px;font-weight:600">
                     Grupo de deploy (Tanium) <span style="color:#e53e3e">*</span>
                 </label>
                 <select id="modal-group" class="tanium-input" style="width:100%" required>
-                    <option value="0">— Selecione o grupo —</option>
-                    <?php foreach ($modalGroups as $g):
-                        $gid      = (int)$g['tanium_group_id'];
-                        $dispName = htmlspecialchars(\GlpiPlugin\Tanium\ComputerGroup::displayName($g));
-                    ?>
-                    <option value="<?= $gid ?>"><?= $dispName ?></option>
-                    <?php endforeach; ?>
+                    <option value="0">— Selecione o Content Set primeiro —</option>
                 </select>
                 <div class="tanium-small tanium-muted" style="margin-top:4px">
                     Define o escopo de endpoints que o deploy pode atingir no Tanium.
@@ -320,7 +338,24 @@ if ($eid) {
     const _webDir = <?= json_encode($webDir) ?>;
     const _eid    = <?= json_encode($eid) ?>;
     const _allPatchIds = <?= json_encode(array_column($patches, 'patch_id')) ?>;
+    const _groupsByCs  = <?= json_encode($groupsByCs ?? new \stdClass()) ?>;
     let _selectedForDeploy = [];
+
+    // Filtra o seletor de grupo de acordo com o Content Set escolhido.
+    function onContentSetChange() {
+        const csEl = document.getElementById('modal-contentset');
+        const sel  = document.getElementById('modal-group');
+        if (!csEl || !sel) return;
+        const cs = csEl.value;
+        const groups = (cs && _groupsByCs[cs]) ? _groupsByCs[cs] : [];
+        if (!groups.length) {
+            sel.innerHTML = '<option value="0">— Selecione o Content Set primeiro —</option>';
+            return;
+        }
+        sel.innerHTML = '<option value="0">— Selecione o grupo —</option>' +
+            groups.map(g => `<option value="${g.id}">${g.label}</option>`).join('');
+        if (groups.length === 1) sel.value = String(groups[0].id);
+    }
 
     function selectAllPatches(checked) {
         document.querySelectorAll('.patch-chk').forEach(c => c.checked = checked);
@@ -348,6 +383,15 @@ if ($eid) {
         _selectedForDeploy = selected;
         const countEl = document.getElementById('modal-patch-count');
         countEl.textContent = selected.length + ' patches selected';
+
+        // Se houver apenas um Content Set, pré-seleciona e já filtra os grupos.
+        const csEl = document.getElementById('modal-contentset');
+        if (csEl) {
+            const sets = Object.keys(_groupsByCs);
+            if (sets.length === 1 && !csEl.value) csEl.value = sets[0];
+            onContentSetChange();
+        }
+
         document.getElementById('deploy-modal').style.display = 'flex';
     }
 
@@ -357,6 +401,8 @@ if ($eid) {
 
     function confirmDeploy() {
         if (!_selectedForDeploy.length) { alert('Nenhum patch selecionado.'); return; }
+        const csEl = document.getElementById('modal-contentset');
+        if (csEl && !csEl.value) { alert('Selecione o Content Set antes de continuar.'); return; }
         const groupId = parseInt(document.getElementById('modal-group').value, 10);
         if (!groupId) { alert('Selecione o grupo de deploy do Tanium antes de continuar.'); return; }
 
@@ -490,6 +536,9 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
 <!-- Filter + list -->
 <div class="tanium-card">
     <div class="tanium-card-header">
+        <a href="<?= $webDir ?>/front/dashboard.php" class="tanium-btn tanium-btn-secondary" style="padding:4px 12px;font-size:.75rem;margin-right:12px" title="<?= __('Back', 'tanium') ?>">
+            <span class="ti ti-arrow-left"></span> <?= __('Back', 'tanium') ?>
+        </a>
         <span class="ti ti-shield-exclamation"></span> <?= __('Patch Inventory', 'tanium') ?>
         <span class="tanium-muted" style="font-size:.8rem;margin-left:8px"><?= number_format($total) ?> <?= __('records', 'tanium') ?></span>
     </div>

@@ -74,6 +74,9 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
 <div class="tanium-page-wrap">
 <div class="tanium-card">
     <div class="tanium-card-header">
+        <a href="<?= $webDir ?>/front/dashboard.php" class="tanium-btn tanium-btn-secondary" style="padding:4px 12px;font-size:.75rem;margin-right:12px" title="<?= __('Back', 'tanium') ?>">
+            <span class="ti ti-arrow-left"></span> <?= __('Back', 'tanium') ?>
+        </a>
         <span>&#128187; <?= __('Synced Endpoints', 'tanium') ?></span>
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
             <span class="tanium-muted" style="font-size:.8rem"><?= number_format($total) ?> <?= __('endpoints', 'tanium') ?></span>

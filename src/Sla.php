@@ -232,6 +232,9 @@ class Sla {
                 </div>
             </div>
             <div class="tanium-hero-actions">
+                <a href="<?= $webDir ?>/front/dashboard.php" class="tanium-btn tanium-btn-secondary" title="<?= __('Back', 'tanium') ?>">
+                    <span class="ti ti-arrow-left"></span> <?= __('Back', 'tanium') ?>
+                </a>
                 <a href="<?= $webDir ?>/front/vulnerabilities.php" class="tanium-btn tanium-btn-secondary">
                     &#9762; <?= __('Vulnerabilities', 'tanium') ?>
                 </a>

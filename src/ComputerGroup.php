@@ -113,4 +113,18 @@ class ComputerGroup extends CommonGLPI {
         $label = trim((string)($group['label'] ?? ''));
         return $label !== '' ? $label : (string)($group['tanium_group_name'] ?? '#' . $group['tanium_group_id']);
     }
+
+    /**
+     * Derives the "Content Set" (organizational prefix) from a Tanium group name.
+     *
+     * Tanium groups follow the convention "<Org> - <Role> [Env]" — e.g.
+     * "Sebrae - MS - Linux Server [HML]" → Content Set "Sebrae - MS".
+     * The rule is generic: everything before the final " - " segment. Groups
+     * without that separator are their own Content Set.
+     */
+    public static function contentSet(array $group): string {
+        $name = trim((string)($group['tanium_group_name'] ?? ''));
+        $pos  = mb_strrpos($name, ' - ');
+        return $pos !== false ? trim(mb_substr($name, 0, $pos)) : $name;
+    }
 }

@@ -34,6 +34,7 @@ if (isset($_POST['save'])) {
         'sla_high_days'        => max(1, (int)($_POST['sla_high_days']     ?? 30)),
         'sla_medium_days'      => max(1, (int)($_POST['sla_medium_days']   ?? 90)),
         'patch_limiting_group_id' => max(0, (int)($_POST['patch_limiting_group_id'] ?? 0)),
+        'ticket_entity_id'        => max(0, (int)($_POST['ticket_entity_id'] ?? 0)),
     ]);
 
     Session::addMessageAfterRedirect(__('Tanium configuration saved.', 'tanium'), true, INFO);
@@ -96,7 +97,24 @@ if (isset($_POST['test_webhook'])) {
 }
 
 Html::header(__('Tanium — Configuration', 'tanium'), $_SERVER['PHP_SELF'], 'config', 'plugins');
-echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
+echo <<<'CSS'
+<style>
+.container-xl,.container-lg{max-width:100%!important}
+/* Entity (select2) dropdown — legível no tema escuro do plugin.
+   O popup do select2 é montado no <body>, então as regras não podem ficar
+   sob .tanium-page-wrap; este <style> é local desta página, sem vazar para o GLPI. */
+.select2-container--default .select2-dropdown,
+.select2-dropdown{background:#0f1e33!important;border:1px solid #1e2d44!important}
+.select2-container--default .select2-results__option{color:#e8edf5!important;background:#0f1e33!important}
+.select2-container--default .select2-results__option--highlighted,
+.select2-container--default .select2-results__option--highlighted[aria-selected]{background:#e8212a!important;color:#fff!important}
+.select2-container--default .select2-results__option[aria-selected=true]{background:#1e2d44!important;color:#e8edf5!important}
+.select2-container--default .select2-results__group{color:#7a8da8!important}
+.select2-container--default .select2-search--dropdown .select2-search__field{background:#0a1628!important;border:1px solid #1e2d44!important;color:#e8edf5!important}
+.select2-container--default .select2-selection--single{background:#0a1628!important;border:1px solid #1e2d44!important}
+.select2-container--default .select2-selection--single .select2-selection__rendered{color:#e8edf5!important}
+</style>
+CSS;
 echo "<div class='tanium-page-wrap'>";
 $config->showConfigForm();
 echo "</div>";
