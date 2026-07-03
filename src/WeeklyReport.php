@@ -19,13 +19,26 @@ class WeeklyReport {
             return 0;
         }
 
+        global $CFG_GLPI;
+        $baseUrl = $CFG_GLPI['url_base'] ?? '';
+
         $stats  = self::gatherStats();
         $html   = self::buildHtml($stats);
         $subject = sprintf('[Tanium] Weekly Security Report — %s', date('d/m/Y'));
 
+        $attachments = [];
+        $pdf = PdfReport::weekly($stats, $baseUrl);
+        if ($pdf !== null) {
+            $attachments[] = [
+                'filename' => 'tanium-relatorio-semanal-' . date('Y-m-d') . '.pdf',
+                'content'  => $pdf,
+                'mime'     => 'application/pdf',
+            ];
+        }
+
         $sent = 0;
         foreach ($emails as $to) {
-            if (Notification::sendEmail($to, $subject, $html)) {
+            if (Notification::sendEmail($to, $subject, $html, $attachments)) {
                 $sent++;
             }
         }

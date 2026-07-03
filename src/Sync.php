@@ -29,6 +29,9 @@ class Sync extends CommonGLPI {
 
     private static int $newCriticalCves = 0;
 
+    /** @var array<int,array{cve_id:string,endpoint:string,cvss:mixed}> */
+    private static array $newCriticalCveDetails = [];
+
     public static function getTypeName($nb = 0): string {
         return __('Tanium Sync', 'tanium');
     }
@@ -145,6 +148,7 @@ class Sync extends CommonGLPI {
         @set_time_limit(0);
 
         self::$newCriticalCves = 0;
+        self::$newCriticalCveDetails = [];
         $logId = self::startLog();
 
         // If a fatal (OOM/timeout) kills the request mid-sync, don't leave a
@@ -295,15 +299,28 @@ class Sync extends CommonGLPI {
             $recipients = Config::resolveNotifyRecipients($config);
             if ($recipients !== []) {
                 global $CFG_GLPI;
+                $glpiUrl = $CFG_GLPI['url_base'] ?? '';
                 $subject = sprintf('[Tanium] %d new critical CVE(s) detected', self::$newCriticalCves);
-                $body    = Notification::buildCriticalEmailBody(self::$newCriticalCves, [], $CFG_GLPI['url_base'] ?? '');
+                $body    = Notification::buildCriticalEmailBody(self::$newCriticalCves, self::$newCriticalCveDetails, $glpiUrl);
+
+                $attachments = [];
+                $pdf = PdfReport::critical(self::$newCriticalCveDetails, self::$newCriticalCves, $glpiUrl);
+                if ($pdf !== null) {
+                    $attachments[] = [
+                        'filename' => 'tanium-cves-criticos-' . date('Y-m-d') . '.pdf',
+                        'content'  => $pdf,
+                        'mime'     => 'application/pdf',
+                    ];
+                }
+
                 foreach ($recipients as $to) {
-                    Notification::sendEmail($to, $subject, $body);
+                    Notification::sendEmail($to, $subject, $body, $attachments);
                 }
             }
         }
 
         self::$newCriticalCves = 0;
+        self::$newCriticalCveDetails = [];
         return self::result($total, $created, $updated, $errors);
     }
 
@@ -371,7 +388,7 @@ class Sync extends CommonGLPI {
         }
 
         if (!empty($config['sync_vulnerabilities']) && !empty($cves)) {
-            self::syncEndpointCVEs($eid, $computerId, $cves);
+            self::syncEndpointCVEs($eid, $computerId, $cves, $computerName);
         }
 
         if (!empty($config['sync_patches']) && !empty($patches)) {
@@ -717,7 +734,7 @@ class Sync extends CommonGLPI {
         }
     }
 
-    private static function syncEndpointCVEs(string $eid, int $computerId, array $cves): void {
+    private static function syncEndpointCVEs(string $eid, int $computerId, array $cves, string $computerName = ''): void {
         global $DB;
 
         $now = date('Y-m-d H:i:s');
@@ -762,6 +779,11 @@ class Sync extends CommonGLPI {
                 // New CVE finding
                 if (($record['severity'] ?? '') === 'critical') {
                     self::$newCriticalCves++;
+                    self::$newCriticalCveDetails[] = [
+                        'cve_id'   => $cveId,
+                        'endpoint' => $computerName !== '' ? $computerName : $eid,
+                        'cvss'     => $record['cvss_score'],
+                    ];
                 }
                 $DB->insert('glpi_plugin_tanium_cve_history', [
                     'tanium_eid'   => $eid,

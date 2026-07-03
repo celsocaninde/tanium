@@ -101,14 +101,19 @@ class Notification {
 
     // ── GLPI internal email notification ──────────────────────────────────
 
-    public static function sendEmail(string $to, string $subject, string $body): bool {
+    /**
+     * @param array<int,array{filename:string,content:string,mime?:string}> $attachments
+     *        Only honoured on the GLPIMailer path -- the mail() fallback sends
+     *        the HTML body only.
+     */
+    public static function sendEmail(string $to, string $subject, string $body, array $attachments = []): bool {
         if (empty($to)) {
             return false;
         }
 
         // Prefer GLPI's own mailer (respects the configured SMTP transport)
         if (class_exists('GLPIMailer')) {
-            return self::sendViaGLPI($to, $subject, $body);
+            return self::sendViaGLPI($to, $subject, $body, $attachments);
         }
 
         // Fallback: PHP mail()
@@ -124,8 +129,10 @@ class Notification {
      * (GLPIMailer wraps Symfony Mailer and uses the SMTP settings from
      * Configuração → Notificações). Returns false and logs a clear reason
      * on failure (invalid address, transport error, etc.).
+     *
+     * @param array<int,array{filename:string,content:string,mime?:string}> $attachments
      */
-    private static function sendViaGLPI(string $to, string $subject, string $body): bool {
+    private static function sendViaGLPI(string $to, string $subject, string $body, array $attachments = []): bool {
         global $CFG_GLPI;
 
         $from     = (string) ($CFG_GLPI['admin_email'] ?? '');
@@ -148,6 +155,14 @@ class Notification {
             $email->subject($subject);
             $email->html($body);
             $email->text(trim(strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>', '</tr>'], "\n", $body))));
+
+            foreach ($attachments as $attachment) {
+                $content = (string) ($attachment['content'] ?? '');
+                if ($content === '') {
+                    continue;
+                }
+                $email->attach($content, (string) ($attachment['filename'] ?? 'anexo.pdf'), (string) ($attachment['mime'] ?? 'application/pdf'));
+            }
 
             if (!$mailer->send()) {
                 Toolbox::logInFile('tanium', '[Tanium] Falha no envio do e-mail para ' . $to . ': ' . ($mailer->getError() ?? 'erro desconhecido'));
