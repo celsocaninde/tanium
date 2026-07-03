@@ -300,11 +300,12 @@ class Sync extends CommonGLPI {
             if ($recipients !== []) {
                 global $CFG_GLPI;
                 $glpiUrl = $CFG_GLPI['url_base'] ?? '';
+                $details = self::enrichCriticalCveDetails(self::$newCriticalCveDetails);
                 $subject = sprintf('[Tanium] %d new critical CVE(s) detected', self::$newCriticalCves);
-                $body    = Notification::buildCriticalEmailBody(self::$newCriticalCves, self::$newCriticalCveDetails, $glpiUrl);
+                $body    = Notification::buildCriticalEmailBody(self::$newCriticalCves, $details, $glpiUrl);
 
                 $attachments = [];
-                $pdf = PdfReport::critical(self::$newCriticalCveDetails, self::$newCriticalCves, $glpiUrl);
+                $pdf = PdfReport::critical($details, self::$newCriticalCves, $glpiUrl);
                 if ($pdf !== null) {
                     $attachments[] = [
                         'filename' => 'tanium-cves-criticos-' . date('Y-m-d') . '.pdf',
@@ -322,6 +323,48 @@ class Sync extends CommonGLPI {
         self::$newCriticalCves = 0;
         self::$newCriticalCveDetails = [];
         return self::result($total, $created, $updated, $errors);
+    }
+
+    /**
+     * Adds title/affected_count (from glpi_plugin_tanium_vulnerabilities) and
+     * ip/os_name (from glpi_plugin_tanium_assets) to each newly-detected
+     * critical CVE, for richer email/PDF content.
+     *
+     * @param array<int,array{cve_id:string,endpoint:string,eid:string,cvss:mixed}> $details
+     * @return array<int,array{cve_id:string,endpoint:string,eid:string,cvss:mixed,title:string,affected_count:int,ip:string,os_name:string}>
+     */
+    private static function enrichCriticalCveDetails(array $details): array {
+        if ($details === []) {
+            return [];
+        }
+
+        global $DB;
+
+        $cveIds = array_values(array_unique(array_column($details, 'cve_id')));
+        $eids   = array_values(array_unique(array_column($details, 'eid')));
+
+        $vulnByCve = [];
+        foreach ($DB->request(['FROM' => 'glpi_plugin_tanium_vulnerabilities', 'WHERE' => ['cve_id' => $cveIds]]) as $row) {
+            $vulnByCve[$row['cve_id']] = $row;
+        }
+
+        $assetByEid = [];
+        foreach ($DB->request(['FROM' => 'glpi_plugin_tanium_assets', 'WHERE' => ['tanium_eid' => $eids]]) as $row) {
+            $assetByEid[$row['tanium_eid']] = $row;
+        }
+
+        foreach ($details as &$detail) {
+            $vuln  = $vulnByCve[$detail['cve_id']] ?? null;
+            $asset = $assetByEid[$detail['eid']] ?? null;
+
+            $detail['title']          = trim((string)($vuln['title'] ?? ''));
+            $detail['affected_count'] = (int)($vuln['affected_count'] ?? 0);
+            $detail['ip']             = trim((string)($asset['ip_address'] ?? ''));
+            $detail['os_name']        = trim((string)($asset['os_name'] ?? ''));
+        }
+        unset($detail);
+
+        return $details;
     }
 
     // ── Per-endpoint sync ─────────────────────────────────────────────────
@@ -782,6 +825,7 @@ class Sync extends CommonGLPI {
                     self::$newCriticalCveDetails[] = [
                         'cve_id'   => $cveId,
                         'endpoint' => $computerName !== '' ? $computerName : $eid,
+                        'eid'      => $eid,
                         'cvss'     => $record['cvss_score'],
                     ];
                 }

@@ -175,29 +175,69 @@ class Notification {
         }
     }
 
+    /**
+     * @param array<int,array{cve_id:string,endpoint:string,cvss:mixed,ip?:string,os_name?:string,title?:string,affected_count?:int}> $criticalCves
+     */
     public static function buildCriticalEmailBody(int $newCritical, array $criticalCves, string $glpiUrl): string {
         $rows = '';
+        $cvssSum = 0.0;
+        $cvssCount = 0;
         foreach (array_slice($criticalCves, 0, 20) as $cve) {
+            $cveId    = htmlspecialchars((string)($cve['cve_id'] ?? ''));
+            $endpoint = htmlspecialchars((string)($cve['endpoint'] ?? ''));
+            $ip       = trim((string)($cve['ip'] ?? ''));
+            $osName   = trim((string)($cve['os_name'] ?? ''));
+            $title    = htmlspecialchars(self::short((string)($cve['title'] ?? ''), 90));
+            $affected = (int)($cve['affected_count'] ?? 0);
+            $cvss     = $cve['cvss'] ?? null;
+            if ($cvss !== null && $cvss !== '') {
+                $cvssSum += (float)$cvss;
+                $cvssCount++;
+            }
+
+            $endpointMeta = '';
+            if ($ip !== '' || $osName !== '') {
+                $endpointMeta = "<br><span style='color:#9ca3af;font-size:11px'>" . htmlspecialchars(trim($ip . ($ip !== '' && $osName !== '' ? ' · ' : '') . $osName)) . '</span>';
+            }
+
+            $nvdLink = $cve['cve_id'] ?? ''
+                ? "<a href='https://nvd.nist.gov/vuln/detail/" . rawurlencode((string)$cve['cve_id']) . "' style='color:#e8212a;text-decoration:none;font-weight:bold'>{$cveId}</a>"
+                : $cveId;
+
             $rows .= "<tr>
-                <td style='padding:6px 12px;border-bottom:1px solid #eee;font-family:monospace'>{$cve['cve_id']}</td>
-                <td style='padding:6px 12px;border-bottom:1px solid #eee'>{$cve['endpoint']}</td>
-                <td style='padding:6px 12px;border-bottom:1px solid #eee;color:#e8212a;font-weight:bold'>{$cve['cvss']}</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee;font-family:monospace;vertical-align:top'>{$nvdLink}</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee;vertical-align:top;color:#4a5568'>{$title}</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee;vertical-align:top'>{$endpoint}{$endpointMeta}</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#e8212a;font-weight:bold;vertical-align:top'>" . htmlspecialchars((string)($cve['cvss'] ?? '-')) . "</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee;vertical-align:top;color:#4a5568'>" . ($affected > 0 ? $affected : '-') . "</td>
             </tr>";
         }
 
+        $avgCvss = $cvssCount > 0 ? number_format($cvssSum / $cvssCount, 1) : '-';
+
         return "<!DOCTYPE html><html><body style='font-family:Segoe UI,Arial,sans-serif;color:#1a1a2e;background:#f5f5f5'>
-<div style='max-width:600px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)'>
-  <div style='background:#e8212a;padding:20px 24px;color:#fff'>
+<div style='max-width:680px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)'>
+  <div style='background:linear-gradient(120deg,#7a0d1f 0%,#e8212a 100%);padding:20px 24px;color:#fff'>
+    <table style='border-collapse:collapse;margin-bottom:10px'><tr>
+      <td style='width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-weight:900;font-size:17px;text-align:center;vertical-align:middle'>T</td>
+      <td style='padding-left:10px;font-size:18px;font-weight:800;letter-spacing:2px;vertical-align:middle'>TANIUM</td>
+    </tr></table>
     <h1 style='margin:0;font-size:18px'>🚨 {$newCritical} novo(s) CVE(s) crítico(s) detectado(s)</h1>
     <p style='margin:8px 0 0;opacity:.85;font-size:13px'>GLPI Tanium Plugin — " . date('d/m/Y H:i') . "</p>
+  </div>
+  <div style='background:#f9fafb;padding:12px 24px;border-bottom:1px solid #eee;display:flex;gap:24px;font-size:12px;color:#4a5568'>
+    <span>CVSS médio: <strong style='color:#1a1a2e'>{$avgCvss}</strong></span>
+    <span>Endpoints afetados: <strong style='color:#1a1a2e'>" . count(array_unique(array_column($criticalCves, 'endpoint'))) . "</strong></span>
   </div>
   <div style='padding:20px 24px'>
     <p>O Tanium detectou <strong>{$newCritical} novo(s) CVE(s) crítico(s)</strong> durante a última sincronização.</p>
     <table style='width:100%;border-collapse:collapse;margin:16px 0;font-size:13px'>
       <thead><tr style='background:#f9fafb'>
         <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #e8212a'>CVE ID</th>
+        <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #e8212a'>Título</th>
         <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #e8212a'>Endpoint</th>
         <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #e8212a'>CVSS</th>
+        <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #e8212a'>Afetados</th>
       </tr></thead>
       <tbody>{$rows}</tbody>
     </table>
@@ -206,8 +246,22 @@ class Notification {
     </a>
   </div>
   <div style='background:#f9fafb;padding:14px 24px;font-size:11px;color:#9ca3af;border-top:1px solid #eee'>
-    Gerado automaticamente pelo plugin Tanium para GLPI
+    Gerado automaticamente pelo plugin Tanium para GLPI. Relatório completo em anexo (PDF).
   </div>
 </div></body></html>";
+    }
+
+    private static function short(string $value, int $length): string {
+        if ($value === '') {
+            return '';
+        }
+        if (function_exists('mb_strlen') && mb_strlen($value) <= $length) {
+            return $value;
+        }
+        if (!function_exists('mb_strlen') && strlen($value) <= $length) {
+            return $value;
+        }
+
+        return function_exists('mb_substr') ? mb_substr($value, 0, $length - 1) . '…' : substr($value, 0, $length - 1) . '…';
     }
 }

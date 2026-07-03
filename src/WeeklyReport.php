@@ -163,8 +163,12 @@ class WeeklyReport {
         foreach ($s['top_cves'] as $cve) {
             $sc = strtolower($cve['severity']);
             $c  = match($sc) { 'critical' => '#d6336c', 'high' => '#e8590c', 'medium' => '#c2860a', default => '#1a9c53' };
+            $cveIdEsc = htmlspecialchars($cve['cve_id']);
+            $title    = htmlspecialchars(self::short((string)($cve['title'] ?? ''), 70));
+            $nvdLink  = "<a href='https://nvd.nist.gov/vuln/detail/" . rawurlencode($cve['cve_id']) . "' style='color:#1c2330;text-decoration:none;font-weight:700'>{$cveIdEsc}</a>";
             $topCveRows .= "<tr>
-                <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;font-family:Consolas,monospace;font-size:12px;color:#1c2330'>" . htmlspecialchars($cve['cve_id']) . "</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;font-family:Consolas,monospace;font-size:12px;color:#1c2330'>{$nvdLink}</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:#4a5568;font-size:12px'>{$title}</td>
                 <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:{$c};font-weight:700'>" . ucfirst($cve['severity']) . "</td>
                 <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:#6b7280'>" . ($cve['cvss_score'] ?? '—') . "</td>
                 <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:#6b7280'>" . (int)$cve['affected_count'] . " endpoints</td>
@@ -180,10 +184,11 @@ class WeeklyReport {
 
   <!-- Header -->
   <div style="background:linear-gradient(120deg,#7a0d1f 0%,#e8212a 100%);padding:24px 28px">
-    <div style="display:flex;align-items:center;gap:12px">
-      <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-.5px">TANIUM</div>
-      <div style="color:rgba(255,255,255,.85);font-size:13px">Weekly Security Report — {$baseUrl}</div>
-    </div>
+    <table style="border-collapse:collapse;margin-bottom:6px"><tr>
+      <td style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-weight:900;font-size:17px;text-align:center;vertical-align:middle">T</td>
+      <td style="padding-left:10px;font-size:20px;font-weight:800;color:#fff;letter-spacing:2px;vertical-align:middle">TANIUM</td>
+    </tr></table>
+    <div style="color:rgba(255,255,255,.85);font-size:13px">Weekly Security Report — {$baseUrl}</div>
     <div style="color:rgba(255,255,255,.75);font-size:12px;margin-top:4px">{$s['total_endpoints']} endpoints monitorados · Gerado em {$generatedAt}</div>
   </div>
 
@@ -207,6 +212,26 @@ class WeeklyReport {
     </div>
   </div>
 
+  <!-- KPIs (linha 2) -->
+  <div style="background:#ffffff;padding:14px 28px;display:flex;gap:0;border-bottom:1px solid #eeeeee">
+    <div style="flex:1;text-align:center;padding:0 12px;border-right:1px solid #e5e7eb">
+      <div style="font-size:20px;font-weight:800;color:#e8590c">{$s['high_cves']}</div>
+      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em">CVEs Altos</div>
+    </div>
+    <div style="flex:1;text-align:center;padding:0 12px;border-right:1px solid #e5e7eb">
+      <div style="font-size:20px;font-weight:800;color:#c2860a">{$s['patches_missing']}</div>
+      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em">Patches Ausentes</div>
+    </div>
+    <div style="flex:1;text-align:center;padding:0 12px;border-right:1px solid #e5e7eb">
+      <div style="font-size:20px;font-weight:800;color:#1c2330">{$s['total_cves']}</div>
+      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em">Total de CVEs</div>
+    </div>
+    <div style="flex:1;text-align:center;padding:0 12px">
+      <div style="font-size:20px;font-weight:800;color:#1c2330">{$s['avg_risk']}</div>
+      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em">Risco Médio</div>
+    </div>
+  </div>
+
   <!-- Top endpoints -->
   <div style="background:#ffffff;padding:20px 28px">
     <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#e8212a;border-left:3px solid #e8212a;padding-left:8px;margin-bottom:12px">Top Risk Endpoints</div>
@@ -226,6 +251,7 @@ class WeeklyReport {
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="color:#6b7280">
         <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">CVE ID</th>
+        <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">Título</th>
         <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">Severity</th>
         <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">CVSS</th>
         <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">Affected</th>
@@ -236,9 +262,8 @@ class WeeklyReport {
 
   <!-- Summary line -->
   <div style="background:#ffffff;padding:16px 28px;border-top:1px solid #eeeeee;font-size:12px;color:#6b7280;display:flex;justify-content:space-between">
-    <span>Avg risk score: <strong style="color:#1c2330">{$s['avg_risk']}</strong></span>
-    <span>Open assignments: <strong style="color:#1c2330">{$s['new_assignments']}</strong></span>
-    <span>Active exceptions: <strong style="color:#1c2330">{$s['open_exceptions']}</strong></span>
+    <span>Atribuições abertas: <strong style="color:#1c2330">{$s['new_assignments']}</strong></span>
+    <span>Exceções ativas: <strong style="color:#1c2330">{$s['open_exceptions']}</strong></span>
   </div>
 
   <!-- CTA -->
@@ -256,5 +281,19 @@ class WeeklyReport {
 </body>
 </html>
 HTML;
+    }
+
+    private static function short(string $value, int $length): string {
+        if ($value === '') {
+            return '';
+        }
+        if (function_exists('mb_strlen') && mb_strlen($value) <= $length) {
+            return $value;
+        }
+        if (!function_exists('mb_strlen') && strlen($value) <= $length) {
+            return $value;
+        }
+
+        return function_exists('mb_substr') ? mb_substr($value, 0, $length - 1) . '…' : substr($value, 0, $length - 1) . '…';
     }
 }
