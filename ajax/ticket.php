@@ -14,8 +14,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     Html::redirect(Plugin::getWebDir('tanium') . '/front/endpoints.php');
 }
 
-Session::checkCSRF($_POST);
-
 global $DB;
 
 $title             = trim($_POST['title']            ?? '');
