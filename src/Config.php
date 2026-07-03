@@ -102,6 +102,29 @@ class Config extends CommonDBTM {
         return array_values($emails);
     }
 
+    /**
+     * Active, non-deleted GLPI users as [id => "Realname Firstname (login)"],
+     * for the notification recipients multi-select.
+     *
+     * @return array<int,string>
+     */
+    private static function activeUserOptions(): array {
+        global $DB;
+
+        $options = [];
+        foreach ($DB->request([
+            'SELECT' => ['id', 'name', 'realname', 'firstname'],
+            'FROM'   => 'glpi_users',
+            'WHERE'  => ['is_active' => 1, 'is_deleted' => 0],
+            'ORDER'  => ['realname', 'firstname', 'name'],
+        ]) as $row) {
+            $fullName = trim(($row['realname'] ?? '') . ' ' . ($row['firstname'] ?? ''));
+            $options[(int)$row['id']] = $fullName !== '' ? "{$fullName} ({$row['name']})" : $row['name'];
+        }
+
+        return $options;
+    }
+
     public static function updateLastSync(int $count, string $cursor = ''): void {
         global $DB;
 
@@ -202,14 +225,11 @@ class Config extends CommonDBTM {
 
         $notifyUserIds = array_filter(array_map('intval', explode(',', (string)($config['notify_users'] ?? ''))));
         ob_start();
-        \User::dropdown([
-            'name'                => 'notify_users',
-            'values'              => $notifyUserIds,
-            'multiple'            => true,
-            'entity'              => $_SESSION['glpiactiveentities'] ?? [],
-            'class'               => 'tanium-input',
-            'display_emptychoice' => false,
-            'comments'            => false,
+        \Dropdown::showFromArray('notify_users', self::activeUserOptions(), [
+            'values'   => $notifyUserIds,
+            'multiple' => true,
+            'width'    => '100%',
+            'comments' => false,
         ]);
         $notifyUsersDropdown = ob_get_clean();
 
