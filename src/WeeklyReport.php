@@ -13,7 +13,7 @@ class WeeklyReport {
     public static function cronWeeklyreport(CronTask $task): int {
         $config = Config::getConfig();
 
-        $emails = array_filter(array_map('trim', explode(',', $config['notify_email'] ?? '')));
+        $emails = Config::resolveNotifyRecipients($config);
         if (empty($emails)) {
             $task->log('No notification email configured — skipping weekly report.');
             return 0;
@@ -131,30 +131,30 @@ class WeeklyReport {
         $baseUrl    = $CFG_GLPI['url_base'] ?? '';
         $pluginUrl  = $baseUrl . '/plugins/tanium';
         $compliance = $s['patch_compliance'] !== null ? $s['patch_compliance'] . '%' : 'N/A';
-        $compColor  = $s['patch_compliance'] === null ? '#7a8da8' : ($s['patch_compliance'] >= 90 ? '#1eb464' : ($s['patch_compliance'] >= 70 ? '#e8c42a' : '#e8212a'));
-        $slaColor   = $s['sla_breaches'] > 0 ? '#e8212a' : '#1eb464';
+        $compColor  = $s['patch_compliance'] === null ? '#6b7280' : ($s['patch_compliance'] >= 90 ? '#1a9c53' : ($s['patch_compliance'] >= 70 ? '#c2860a' : '#d6336c'));
+        $slaColor   = $s['sla_breaches'] > 0 ? '#d6336c' : '#1a9c53';
         $generatedAt = date('d/m/Y H:i');
 
         $topEpRows = '';
         foreach ($s['top_endpoints'] as $ep) {
             $rs = (int)$ep['risk_score'];
-            $c  = $rs >= 70 ? '#e8212a' : ($rs >= 40 ? '#f97316' : ($rs >= 15 ? '#f59e0b' : '#1eb464'));
+            $c  = $rs >= 70 ? '#d6336c' : ($rs >= 40 ? '#e8590c' : ($rs >= 15 ? '#c2860a' : '#1a9c53'));
             $topEpRows .= "<tr>
-                <td style='padding:6px 12px;border-bottom:1px solid #2a2a3e;font-family:monospace;color:#ccd6f6'>{$ep['tanium_name']}</td>
-                <td style='padding:6px 12px;border-bottom:1px solid #2a2a3e;color:#7a8da8'>{$ep['ip_address']}</td>
-                <td style='padding:6px 12px;border-bottom:1px solid #2a2a3e;color:{$c};font-weight:700'>{$rs}</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;font-family:Consolas,monospace;font-size:12px;color:#1c2330'>{$ep['tanium_name']}</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:#6b7280'>{$ep['ip_address']}</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:{$c};font-weight:700'>{$rs}</td>
             </tr>";
         }
 
         $topCveRows = '';
         foreach ($s['top_cves'] as $cve) {
             $sc = strtolower($cve['severity']);
-            $c  = match($sc) { 'critical' => '#e8212a', 'high' => '#f97316', 'medium' => '#f59e0b', default => '#1eb464' };
+            $c  = match($sc) { 'critical' => '#d6336c', 'high' => '#e8590c', 'medium' => '#c2860a', default => '#1a9c53' };
             $topCveRows .= "<tr>
-                <td style='padding:6px 12px;border-bottom:1px solid #2a2a3e;font-family:monospace;color:#ccd6f6'>" . htmlspecialchars($cve['cve_id']) . "</td>
-                <td style='padding:6px 12px;border-bottom:1px solid #2a2a3e;color:{$c};font-weight:700'>" . ucfirst($cve['severity']) . "</td>
-                <td style='padding:6px 12px;border-bottom:1px solid #2a2a3e;color:#7a8da8'>" . ($cve['cvss_score'] ?? '—') . "</td>
-                <td style='padding:6px 12px;border-bottom:1px solid #2a2a3e;color:#7a8da8'>" . (int)$cve['affected_count'] . " endpoints</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;font-family:Consolas,monospace;font-size:12px;color:#1c2330'>" . htmlspecialchars($cve['cve_id']) . "</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:{$c};font-weight:700'>" . ucfirst($cve['severity']) . "</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:#6b7280'>" . ($cve['cvss_score'] ?? '—') . "</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:#6b7280'>" . (int)$cve['affected_count'] . " endpoints</td>
             </tr>";
         }
 
@@ -162,74 +162,74 @@ class WeeklyReport {
 <!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#0e0e1a;font-family:Segoe UI,Arial,sans-serif;color:#ccd6f6">
-<div style="max-width:640px;margin:24px auto">
+<body style="margin:0;padding:24px 0;background:#f1f3f7;font-family:'Segoe UI',Arial,sans-serif;color:#1c2330">
+<div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e3e1ee;border-radius:12px;overflow:hidden">
 
   <!-- Header -->
-  <div style="background:#e8212a;padding:24px 28px;border-radius:10px 10px 0 0">
+  <div style="background:linear-gradient(120deg,#7a0d1f 0%,#e8212a 100%);padding:24px 28px">
     <div style="display:flex;align-items:center;gap:12px">
       <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-.5px">TANIUM</div>
-      <div style="color:rgba(255,255,255,.7);font-size:13px">Weekly Security Report — {$baseUrl}</div>
+      <div style="color:rgba(255,255,255,.85);font-size:13px">Weekly Security Report — {$baseUrl}</div>
     </div>
-    <div style="color:rgba(255,255,255,.6);font-size:12px;margin-top:4px">{$s['total_endpoints']} endpoints monitorados · Gerado em {$generatedAt}</div>
+    <div style="color:rgba(255,255,255,.75);font-size:12px;margin-top:4px">{$s['total_endpoints']} endpoints monitorados · Gerado em {$generatedAt}</div>
   </div>
 
   <!-- KPIs -->
-  <div style="background:#16162a;padding:20px 28px;display:flex;gap:0;border-bottom:1px solid #2a2a3e">
-    <div style="flex:1;text-align:center;padding:0 12px;border-right:1px solid #2a2a3e">
-      <div style="font-size:26px;font-weight:800;color:#e8212a">{$s['critical_endpoints']}</div>
-      <div style="font-size:11px;color:#7a8da8;text-transform:uppercase;letter-spacing:.06em">Critical Endpoints</div>
+  <div style="background:#f9fafb;padding:20px 28px;display:flex;gap:0;border-bottom:1px solid #eeeeee">
+    <div style="flex:1;text-align:center;padding:0 12px;border-right:1px solid #e5e7eb">
+      <div style="font-size:26px;font-weight:800;color:#d6336c">{$s['critical_endpoints']}</div>
+      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em">Critical Endpoints</div>
     </div>
-    <div style="flex:1;text-align:center;padding:0 12px;border-right:1px solid #2a2a3e">
-      <div style="font-size:26px;font-weight:800;color:#e8212a">{$s['critical_cves']}</div>
-      <div style="font-size:11px;color:#7a8da8;text-transform:uppercase;letter-spacing:.06em">Critical CVEs</div>
+    <div style="flex:1;text-align:center;padding:0 12px;border-right:1px solid #e5e7eb">
+      <div style="font-size:26px;font-weight:800;color:#d6336c">{$s['critical_cves']}</div>
+      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em">Critical CVEs</div>
     </div>
-    <div style="flex:1;text-align:center;padding:0 12px;border-right:1px solid #2a2a3e">
+    <div style="flex:1;text-align:center;padding:0 12px;border-right:1px solid #e5e7eb">
       <div style="font-size:26px;font-weight:800;color:{$compColor}">{$compliance}</div>
-      <div style="font-size:11px;color:#7a8da8;text-transform:uppercase;letter-spacing:.06em">Patch Compliance</div>
+      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em">Patch Compliance</div>
     </div>
     <div style="flex:1;text-align:center;padding:0 12px">
       <div style="font-size:26px;font-weight:800;color:{$slaColor}">{$s['sla_breaches']}</div>
-      <div style="font-size:11px;color:#7a8da8;text-transform:uppercase;letter-spacing:.06em">SLA Breaches</div>
+      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em">SLA Breaches</div>
     </div>
   </div>
 
   <!-- Top endpoints -->
-  <div style="background:#1a1a2e;padding:20px 28px">
+  <div style="background:#ffffff;padding:20px 28px">
     <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#e8212a;border-left:3px solid #e8212a;padding-left:8px;margin-bottom:12px">Top Risk Endpoints</div>
     <table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead><tr style="color:#7a8da8">
-        <th style="padding:4px 12px;text-align:left">Name</th>
-        <th style="padding:4px 12px;text-align:left">IP</th>
-        <th style="padding:4px 12px;text-align:left">Risk</th>
+      <thead><tr style="color:#6b7280">
+        <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">Name</th>
+        <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">IP</th>
+        <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">Risk</th>
       </tr></thead>
       <tbody>{$topEpRows}</tbody>
     </table>
   </div>
 
   <!-- Top CVEs -->
-  <div style="background:#16162a;padding:20px 28px">
+  <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #eeeeee">
     <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#e8212a;border-left:3px solid #e8212a;padding-left:8px;margin-bottom:12px">Top CVEs by CVSS</div>
     <table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead><tr style="color:#7a8da8">
-        <th style="padding:4px 12px;text-align:left">CVE ID</th>
-        <th style="padding:4px 12px;text-align:left">Severity</th>
-        <th style="padding:4px 12px;text-align:left">CVSS</th>
-        <th style="padding:4px 12px;text-align:left">Affected</th>
+      <thead><tr style="color:#6b7280">
+        <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">CVE ID</th>
+        <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">Severity</th>
+        <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">CVSS</th>
+        <th style="padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase">Affected</th>
       </tr></thead>
       <tbody>{$topCveRows}</tbody>
     </table>
   </div>
 
   <!-- Summary line -->
-  <div style="background:#1a1a2e;padding:16px 28px;border-top:1px solid #2a2a3e;font-size:12px;color:#7a8da8;display:flex;justify-content:space-between">
-    <span>Avg risk score: <strong style="color:#ccd6f6">{$s['avg_risk']}</strong></span>
-    <span>Open assignments: <strong style="color:#ccd6f6">{$s['new_assignments']}</strong></span>
-    <span>Active exceptions: <strong style="color:#ccd6f6">{$s['open_exceptions']}</strong></span>
+  <div style="background:#ffffff;padding:16px 28px;border-top:1px solid #eeeeee;font-size:12px;color:#6b7280;display:flex;justify-content:space-between">
+    <span>Avg risk score: <strong style="color:#1c2330">{$s['avg_risk']}</strong></span>
+    <span>Open assignments: <strong style="color:#1c2330">{$s['new_assignments']}</strong></span>
+    <span>Active exceptions: <strong style="color:#1c2330">{$s['open_exceptions']}</strong></span>
   </div>
 
   <!-- CTA -->
-  <div style="background:#0e0e1a;padding:20px 28px;text-align:center;border-radius:0 0 10px 10px;border-top:1px solid #2a2a3e">
+  <div style="background:#f9fafb;padding:20px 28px;text-align:center;border-top:1px solid #eeeeee">
     <a href="{$pluginUrl}/front/dashboard.php" style="background:#e8212a;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;font-weight:700;font-size:13px">
       View Dashboard
     </a>
