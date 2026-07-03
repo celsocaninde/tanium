@@ -41,6 +41,7 @@ class Config extends CommonDBTM {
             'webhook_url'          => '',
             'notify_critical'      => 1,
             'notify_email'         => '',
+            'notify_users'         => '',
             'sla_critical_days'    => 7,
             'sla_high_days'        => 30,
             'sla_medium_days'      => 90,
@@ -65,6 +66,40 @@ class Config extends CommonDBTM {
         } else {
             $DB->insert('glpi_plugin_tanium_configs', $data);
         }
+    }
+
+    /**
+     * Merges GLPI users picked in the "Notification recipients" dropdown
+     * (resolved to their account email) with any manually typed addresses,
+     * deduplicated and validated.
+     *
+     * @return string[]
+     */
+    public static function resolveNotifyRecipients(array $config): array {
+        $emails = [];
+
+        foreach (explode(',', (string)($config['notify_email'] ?? '')) as $raw) {
+            $email = trim($raw);
+            if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $emails[strtolower($email)] = $email;
+            }
+        }
+
+        foreach (explode(',', (string)($config['notify_users'] ?? '')) as $rawId) {
+            $userId = (int)trim($rawId);
+            if ($userId <= 0) {
+                continue;
+            }
+            $user = new \User();
+            if ($user->getFromDB($userId)) {
+                $email = $user->getDefaultEmail();
+                if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    $emails[strtolower($email)] = $email;
+                }
+            }
+        }
+
+        return array_values($emails);
     }
 
     public static function updateLastSync(int $count, string $cursor = ''): void {
@@ -164,10 +199,30 @@ class Config extends CommonDBTM {
         );
 
         $this->renderCheckbox('notify_critical', __('Notify when new Critical CVEs are detected', 'tanium'), (int)($config['notify_critical'] ?? 1));
+
+        $notifyUserIds = array_filter(array_map('intval', explode(',', (string)($config['notify_users'] ?? ''))));
+        ob_start();
+        \User::dropdown([
+            'name'                => 'notify_users',
+            'values'              => $notifyUserIds,
+            'multiple'            => true,
+            'entity'              => $_SESSION['glpiactiveentities'] ?? [],
+            'class'               => 'tanium-input',
+            'display_emptychoice' => false,
+            'comments'            => false,
+        ]);
+        $notifyUsersDropdown = ob_get_clean();
+
         $this->renderField(
-            __('Notification email(s)', 'tanium'),
+            __('Notification recipients (GLPI users)', 'tanium'),
+            $notifyUsersDropdown,
+            __('Pick registered GLPI users — their account email is used automatically.', 'tanium')
+        );
+
+        $this->renderField(
+            __('Additional notification email(s)', 'tanium'),
             "<input type='text' name='notify_email' class='tanium-input' value='" . htmlspecialchars($config['notify_email'] ?? '') . "' placeholder='security@company.com, admin@company.com'/>",
-            __('Comma-separated list of emails to alert on critical findings. Leave blank to disable email alerts.', 'tanium')
+            __('Comma-separated list of extra emails (e.g. distribution lists not registered as GLPI users). Leave both fields blank to disable email alerts.', 'tanium')
         );
 
         // ── SLA Remediation ───────────────────────────────────────────────

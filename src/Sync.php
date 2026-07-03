@@ -291,11 +291,16 @@ class Sync extends CommonGLPI {
         }
 
         // Email on new critical CVEs
-        if (!empty($config['notify_critical']) && self::$newCriticalCves > 0 && !empty($config['notify_email'])) {
-            global $CFG_GLPI;
-            $subject = sprintf('[Tanium] %d new critical CVE(s) detected', self::$newCriticalCves);
-            $body    = Notification::buildCriticalEmailBody(self::$newCriticalCves, [], $CFG_GLPI['url_base'] ?? '');
-            Notification::sendEmail($config['notify_email'], $subject, $body);
+        if (!empty($config['notify_critical']) && self::$newCriticalCves > 0) {
+            $recipients = Config::resolveNotifyRecipients($config);
+            if ($recipients !== []) {
+                global $CFG_GLPI;
+                $subject = sprintf('[Tanium] %d new critical CVE(s) detected', self::$newCriticalCves);
+                $body    = Notification::buildCriticalEmailBody(self::$newCriticalCves, [], $CFG_GLPI['url_base'] ?? '');
+                foreach ($recipients as $to) {
+                    Notification::sendEmail($to, $subject, $body);
+                }
+            }
         }
 
         self::$newCriticalCves = 0;

@@ -30,6 +30,7 @@ if (isset($_POST['save'])) {
         'webhook_url'          => trim($_POST['webhook_url']   ?? ''),
         'notify_critical'      => isset($_POST['notify_critical'])      ? 1 : 0,
         'notify_email'         => trim($_POST['notify_email'] ?? ''),
+        'notify_users'         => implode(',', array_filter(array_map('intval', (array)($_POST['notify_users'] ?? [])))),
         'sla_critical_days'    => max(1, (int)($_POST['sla_critical_days'] ?? 7)),
         'sla_high_days'        => max(1, (int)($_POST['sla_high_days']     ?? 30)),
         'sla_medium_days'      => max(1, (int)($_POST['sla_medium_days']   ?? 90)),
