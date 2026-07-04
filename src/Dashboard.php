@@ -99,13 +99,14 @@ class Dashboard {
         // KEV exposure: open findings whose CVE has confirmed exploitation
         Enrichment::ensureTable();
         $kevRow = $DB->doQuery("
-            SELECT COUNT(*) AS cpt
+            SELECT COUNT(*) AS cpt, COUNT(DISTINCT ec.cve_id) AS cves
             FROM glpi_plugin_tanium_endpoint_cves ec
             JOIN glpi_plugin_tanium_cve_enrichment e
                  ON e.cve_id = ec.cve_id AND e.is_kev = 1
             WHERE ec.status != 'remediated'
         ")->fetch_assoc();
         $stats['kev_findings'] = (int)($kevRow['cpt'] ?? 0);
+        $stats['kev_cves']     = (int)($kevRow['cves'] ?? 0);
 
         // Last sync status from logs
         $logRow = $DB->request([
@@ -450,7 +451,7 @@ class Dashboard {
                 <div class="tanium-kpi-icon" style="background:rgba(232,33,42,.15);color:#e8212a">&#128293;</div>
                 <div class="tanium-kpi-value <?= $stats['kev_findings'] > 0 ? 'tanium-text-red' : '' ?>"><?= number_format($stats['kev_findings']) ?></div>
                 <div class="tanium-kpi-label" title="<?= __('Open findings on CVEs with confirmed exploitation (CISA KEV)', 'tanium') ?>"><?= __('KEV exposure', 'tanium') ?></div>
-                <a href="<?= $webDir ?>/front/vulnerabilities.php?kev=1" class="tanium-kpi-link"><?= __('View', 'tanium') ?> →</a>
+                <a href="<?= $webDir ?>/front/vulnerabilities.php?kev=1" class="tanium-kpi-link"><?= number_format($stats['kev_cves']) ?> CVEs →</a>
             </div>
             <div class="tanium-kpi-card">
                 <div class="tanium-kpi-icon" style="background:rgba(122,141,168,.15);color:#7a8da8">&#128263;</div>
@@ -465,6 +466,7 @@ class Dashboard {
                 <div class="tanium-kpi-icon" style="background:<?= $csColor ?>22;color:<?= $csColor ?>">&#9989;</div>
                 <div class="tanium-kpi-value" style="color:<?= $csColor ?>"><?= $stats['comply_score'] ?>%</div>
                 <div class="tanium-kpi-label"><?= __('Benchmark compliance (Comply)', 'tanium') ?></div>
+                <a href="<?= $webDir ?>/front/healthreport.php" class="tanium-kpi-link"><?= __('Details', 'tanium') ?> →</a>
             </div>
             <?php endif; ?>
             <?php if ($stats['threat_alerts'] > 0): ?>
@@ -472,6 +474,7 @@ class Dashboard {
                 <div class="tanium-kpi-icon" style="background:rgba(232,33,42,.15);color:#e8212a">&#128737;</div>
                 <div class="tanium-kpi-value tanium-text-red"><?= number_format($stats['threat_alerts']) ?></div>
                 <div class="tanium-kpi-label"><?= __('Open threat alerts (TR)', 'tanium') ?></div>
+                <a href="<?= $webDir ?>/front/threats.php" class="tanium-kpi-link"><?= __('View', 'tanium') ?> →</a>
             </div>
             <?php endif; ?>
             <div class="tanium-kpi-card">

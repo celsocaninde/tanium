@@ -150,7 +150,7 @@ class DashboardCards {
 
         return [
             'number' => $count,
-            'url'    => self::frontUrl('vulnerabilities.php'),
+            'url'    => self::frontUrl('vulnerabilities.php?kev=1'),
             'label'  => __('KEV exposure', 'tanium'),
             'icon'   => 'ti ti-flame',
         ];
@@ -179,7 +179,7 @@ class DashboardCards {
 
         return [
             'number' => AgentHealth::countStale($days),
-            'url'    => self::frontUrl('endpoints.php'),
+            'url'    => self::frontUrl('endpoints.php?stale=1'),
             'label'  => sprintf(__('Agents silent > %d days', 'tanium'), $days),
             'icon'   => 'ti ti-wifi-off',
         ];
@@ -191,7 +191,7 @@ class DashboardCards {
         }
         return [
             'number' => ThreatResponse::countOpen(),
-            'url'    => self::frontUrl('dashboard.php'),
+            'url'    => self::frontUrl('threats.php'),
             'label'  => __('Open threat alerts', 'tanium'),
             'icon'   => 'ti ti-shield-x',
         ];

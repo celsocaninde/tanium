@@ -1941,3 +1941,28 @@ msgstr "✓ Com Tanium (%s)"
 #~ msgstr ""
 #~ "Sincronização Tanium concluída — %d endpoints processados: %d criados, %d "
 #~ "atualizados, %d erros."
+
+#, php-format
+msgid "%d days silent"
+msgstr "%d dias em silêncio"
+
+msgid "Alert"
+msgstr "Alerta"
+
+msgid "No threat alerts. Enable Threat Response sync in the plugin configuration."
+msgstr "Nenhum alerta de ameaça. Ative a sincronização do Threat Response na configuração do plugin."
+
+msgid "Open only"
+msgstr "Somente abertos"
+
+msgid "Ransomware only"
+msgstr "Somente ransomware"
+
+msgid "Tanium — Threat Alerts"
+msgstr "Tanium — Alertas de Ameaça"
+
+msgid "Threat Response Alerts"
+msgstr "Alertas do Threat Response"
+
+msgid "Ticket"
+msgstr "Chamado"

@@ -42,7 +42,9 @@ $whereSQL = implode(' AND ', $conditions);
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 $rows = [];
-$sql  = "SELECT * FROM glpi_plugin_tanium_assets WHERE {$whereSQL} ORDER BY risk_score DESC, last_seen DESC LIMIT {$limit} OFFSET {$offset}";
+// silent agents view: oldest contact first (most silent on top)
+$orderSQL = $stale ? 'last_seen ASC' : 'risk_score DESC, last_seen DESC';
+$sql  = "SELECT * FROM glpi_plugin_tanium_assets WHERE {$whereSQL} ORDER BY {$orderSQL} LIMIT {$limit} OFFSET {$offset}";
 foreach ($DB->doQuery($sql) as $r) { $rows[] = $r; }
 
 $cntRes = $DB->doQuery("SELECT COUNT(*) AS cnt FROM glpi_plugin_tanium_assets WHERE {$whereSQL}");
@@ -220,6 +222,11 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                             <span class="<?= $isRecent ? 'tanium-text-green' : '' ?>">
                                 <?= Html::convDateTime($ep['last_seen']) ?>
                             </span>
+                            <?php if ($stale): ?>
+                            <span class="tanium-badge tanium-badge-warning" style="margin-left:6px">
+                                <?= sprintf(__('%d days silent', 'tanium'), max(0, (int)floor((time() - $lastSeen) / 86400))) ?>
+                            </span>
+                            <?php endif; ?>
                         <?php else: ?>—<?php endif; ?>
                     </td>
                     <td>
