@@ -27,7 +27,7 @@ class Api {
     // the same query via @include directives, gated per sync so we don't fetch
     // heavy data nobody asked for.
     private const ENDPOINT_QUERY = <<<'GQL'
-query($first: Int!, $after: Cursor, $withCves: Boolean!, $withApps: Boolean!, $withPatches: Boolean!, $withGroups: Boolean!) {
+query($first: Int!, $after: Cursor, $withCves: Boolean!, $withApps: Boolean!, $withPatches: Boolean!) {
   endpoints(first: $first, after: $after) {
     totalRecords
     pageInfo { hasNextPage endCursor }
@@ -45,14 +45,27 @@ query($first: Int!, $after: Cursor, $withCves: Boolean!, $withApps: Boolean!, $w
         sensorReadings(sensors: [{name: "Applicable Patches"}]) @include(if: $withPatches) {
           columns { name values }
         }
-        computerGroupMemberships @include(if: $withGroups) {
-          computerGroup { id name }
-        }
+        /*GROUPS*/
       }
     }
   }
 }
 GQL;
+
+    /**
+     * The group-membership field is NOT gated with @include like the others:
+     * GraphQL validates every field in the document even when its @include
+     * flag is false, so a tenant whose Gateway lacks the field (older
+     * versions expose none — verified by introspection) would reject the
+     * WHOLE sync query with HTTP 400 "Cannot query field". The block is only
+     * spliced into the document text when groups were actually requested.
+     */
+    private static function endpointQuery(bool $withGroups): string {
+        $groups = $withGroups
+            ? "computerGroupMemberships {\n          computerGroup { id name }\n        }"
+            : '';
+        return str_replace('/*GROUPS*/', $groups, self::ENDPOINT_QUERY);
+    }
 
     // Enriched pages (with CVEs/apps) carry far more data per node, so use a
     // smaller page size to keep each response well within memory.
@@ -61,9 +74,9 @@ GQL;
 
     public function getEndpoints(int $limit = 500, int $offset = 0): array {
         // $offset is ignored — the GraphQL connection is cursor-paginated.
-        $data = $this->graphql(self::ENDPOINT_QUERY, [
+        $data = $this->graphql(self::endpointQuery(false), [
             'first' => $limit, 'after' => null,
-            'withCves' => false, 'withApps' => false, 'withPatches' => false, 'withGroups' => false,
+            'withCves' => false, 'withApps' => false, 'withPatches' => false,
         ]);
         $edges = $data['endpoints']['edges'] ?? [];
         return array_map(fn($e) => self::mapEndpointNode($e['node'] ?? []), $edges);
@@ -83,14 +96,25 @@ GQL;
         $after = null;
         $count = 0;
         do {
-            $data = $this->graphql(self::ENDPOINT_QUERY, [
+            $variables = [
                 'first'       => $pageSize,
                 'after'       => $after,
                 'withCves'    => $withCves,
                 'withApps'    => $withApps,
                 'withPatches' => $withPatches,
-                'withGroups'  => $withGroups,
-            ]);
+            ];
+            try {
+                $data = $this->graphql(self::endpointQuery($withGroups), $variables);
+            } catch (\RuntimeException $e) {
+                // Tenant Gateway without the group field: drop groups and
+                // retry this page instead of failing the whole sync.
+                if (!$withGroups || !str_contains($e->getMessage(), 'computerGroupMemberships')) {
+                    throw $e;
+                }
+                \Toolbox::logInFile('tanium', "[Tanium] Gateway does not expose computerGroupMemberships — group sync skipped, continuing without it.\n");
+                $withGroups = false;
+                $data = $this->graphql(self::endpointQuery(false), $variables);
+            }
             $conn = $data['endpoints'] ?? [];
 
             $page = [];
