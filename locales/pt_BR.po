@@ -790,6 +790,9 @@ msgstr "Auto-remediação KEV: %d chamado(s) aberto(s) para aprovação."
 msgid "KEV exposure"
 msgstr "Exposição KEV"
 
+msgid "KEV only"
+msgstr "Somente KEV"
+
 #, php-format
 msgid "Last %d syncs"
 msgstr "Últimas %d sincronizações"

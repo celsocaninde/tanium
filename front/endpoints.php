@@ -11,9 +11,13 @@ global $DB;
 $search   = $_GET['search']   ?? '';
 $os       = $_GET['os']       ?? '';
 $risk     = $_GET['risk']     ?? '';   // low / medium / high / critical
+$stale    = !empty($_GET['stale']);    // silent agents (no communication)
 $page     = max(1, (int)($_GET['page'] ?? 1));
 $limit    = 50;
 $offset   = ($page - 1) * $limit;
+
+$cfg       = \GlpiPlugin\Tanium\Config::getConfig();
+$staleDays = (int)($cfg['agent_stale_days'] ?? 7);
 
 // ── Build WHERE ───────────────────────────────────────────────────────────────
 $conditions = ['1=1'];
@@ -29,6 +33,10 @@ switch ($risk) {
     case 'high':     $conditions[] = 'risk_score >= 40 AND risk_score < 70'; break;
     case 'medium':   $conditions[] = 'risk_score >= 15 AND risk_score < 40'; break;
     case 'low':      $conditions[] = 'risk_score < 15'; break;
+}
+if ($stale) {
+    // same criteria as AgentHealth::countStale (dashboard KPI)
+    $conditions[] = "last_seen IS NOT NULL AND last_seen < DATE_SUB(NOW(), INTERVAL {$staleDays} DAY)";
 }
 $whereSQL = implode(' AND ', $conditions);
 
@@ -107,8 +115,12 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                 <option value="medium"   <?= $risk === 'medium'   ? 'selected' : '' ?>>&#128993; <?= __('Medium (15-39)', 'tanium') ?></option>
                 <option value="low"      <?= $risk === 'low'      ? 'selected' : '' ?>>&#128994; <?= __('Low (<15)', 'tanium') ?></option>
             </select>
+            <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer;white-space:nowrap">
+                <input type="checkbox" name="stale" value="1" <?= $stale ? 'checked' : '' ?> onchange="this.form.submit()">
+                &#128263; <?= sprintf(__('Silent agents (> %d days)', 'tanium'), $staleDays) ?>
+            </label>
             <button type="submit" class="tanium-btn tanium-btn-primary"><?= __('Filter', 'tanium') ?></button>
-            <?php if ($search || $os || $risk): ?>
+            <?php if ($search || $os || $risk || $stale): ?>
             <a href="<?= $webDir ?>/front/endpoints.php" class="tanium-btn tanium-btn-secondary"><?= __('Clear', 'tanium') ?></a>
             <?php endif; ?>
             <button type="button" class="tanium-btn tanium-btn-secondary" onclick="saveCurrentFilter()" title="<?= __('Save this filter', 'tanium') ?>">
@@ -239,7 +251,7 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
         <?php if ($pages > 1): ?>
         <div class="tanium-pagination">
             <?php for ($p = 1; $p <= min($pages, 20); $p++): ?>
-            <a href="?page=<?= $p ?>&search=<?= urlencode($search) ?>&os=<?= urlencode($os) ?>&risk=<?= urlencode($risk) ?>"
+            <a href="?page=<?= $p ?>&search=<?= urlencode($search) ?>&os=<?= urlencode($os) ?>&risk=<?= urlencode($risk) ?><?= $stale ? '&stale=1' : '' ?>"
                class="tanium-page-btn <?= $p === $page ? 'active' : '' ?>"><?= $p ?></a>
             <?php endfor; ?>
         </div>
@@ -339,11 +351,12 @@ function saveCurrentFilter() {
     const search  = form.querySelector('[name=search]').value.trim();
     const os      = form.querySelector('[name=os]').value;
     const risk    = form.querySelector('[name=risk]').value;
-    if (!search && !os && !risk) { alert('Nenhum filtro ativo para salvar.'); return; }
+    const stale   = form.querySelector('[name=stale]').checked ? '1' : '';
+    if (!search && !os && !risk && !stale) { alert('Nenhum filtro ativo para salvar.'); return; }
     const name    = prompt('Nome do filtro:');
     if (!name) return;
     const filters = JSON.parse(localStorage.getItem(SAVED_FILTERS_KEY) || '[]');
-    filters.push({name, search, os, risk});
+    filters.push({name, search, os, risk, stale});
     localStorage.setItem(SAVED_FILTERS_KEY, JSON.stringify(filters));
     renderSavedFilters();
 }
@@ -362,9 +375,10 @@ function applyFilter(idx) {
     const f = JSON.parse(localStorage.getItem(SAVED_FILTERS_KEY) || '[]')[idx];
     if (!f) return;
     const form = document.getElementById('ep-filter-form');
-    form.querySelector('[name=search]').value = f.search || '';
-    form.querySelector('[name=os]').value     = f.os     || '';
-    form.querySelector('[name=risk]').value   = f.risk   || '';
+    form.querySelector('[name=search]').value  = f.search || '';
+    form.querySelector('[name=os]').value      = f.os     || '';
+    form.querySelector('[name=risk]').value    = f.risk   || '';
+    form.querySelector('[name=stale]').checked = !!f.stale;
     form.submit();
 }
 function deleteFilter(idx) {

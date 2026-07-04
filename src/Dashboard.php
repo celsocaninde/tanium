@@ -450,11 +450,13 @@ class Dashboard {
                 <div class="tanium-kpi-icon" style="background:rgba(232,33,42,.15);color:#e8212a">&#128293;</div>
                 <div class="tanium-kpi-value <?= $stats['kev_findings'] > 0 ? 'tanium-text-red' : '' ?>"><?= number_format($stats['kev_findings']) ?></div>
                 <div class="tanium-kpi-label" title="<?= __('Open findings on CVEs with confirmed exploitation (CISA KEV)', 'tanium') ?>"><?= __('KEV exposure', 'tanium') ?></div>
+                <a href="<?= $webDir ?>/front/vulnerabilities.php?kev=1" class="tanium-kpi-link"><?= __('View', 'tanium') ?> →</a>
             </div>
             <div class="tanium-kpi-card">
                 <div class="tanium-kpi-icon" style="background:rgba(122,141,168,.15);color:#7a8da8">&#128263;</div>
                 <div class="tanium-kpi-value" style="<?= $stats['agents_stale'] > 0 ? 'color:#f0a030' : '' ?>"><?= number_format($stats['agents_stale']) ?></div>
                 <div class="tanium-kpi-label"><?= sprintf(__('Silent agents (> %d days)', 'tanium'), $stats['agent_stale_days']) ?></div>
+                <a href="<?= $webDir ?>/front/endpoints.php?stale=1" class="tanium-kpi-link"><?= __('View', 'tanium') ?> →</a>
             </div>
             <?php if ($stats['comply_score'] !== null):
                 $csColor = $stats['comply_score'] >= 90 ? '#1eb464' : ($stats['comply_score'] >= 70 ? '#e8c42a' : '#e8212a');
