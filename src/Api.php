@@ -27,8 +27,8 @@ class Api {
     // the same query via @include directives, gated per sync so we don't fetch
     // heavy data nobody asked for.
     private const ENDPOINT_QUERY = <<<'GQL'
-query($first: Int!, $after: Cursor, $withCves: Boolean!, $withApps: Boolean!, $withPatches: Boolean!) {
-  endpoints(first: $first, after: $after) {
+query($first: Int!, $after: Cursor, $filter: EndpointFieldFilter, $withCves: Boolean!, $withApps: Boolean!, $withPatches: Boolean!) {
+  endpoints(first: $first, after: $after, filter: $filter) {
     totalRecords
     pageInfo { hasNextPage endCursor }
     edges {
@@ -46,6 +46,8 @@ query($first: Int!, $after: Cursor, $withCves: Boolean!, $withApps: Boolean!, $w
           columns { name values }
         }
         /*GROUPS*/
+        /*EXTRAS*/
+        /*SENSORS*/
       }
     }
   }
@@ -53,18 +55,53 @@ query($first: Int!, $after: Cursor, $withCves: Boolean!, $withApps: Boolean!, $w
 GQL;
 
     /**
-     * The group-membership field is NOT gated with @include like the others:
+     * Optional blocks are NOT gated with @include like the stable ones:
      * GraphQL validates every field in the document even when its @include
-     * flag is false, so a tenant whose Gateway lacks the field (older
-     * versions expose none — verified by introspection) would reject the
-     * WHOLE sync query with HTTP 400 "Cannot query field". The block is only
-     * spliced into the document text when groups were actually requested.
+     * flag is false, so a tenant whose Gateway lacks a field (schemas vary
+     * per version — verified by introspection) would reject the WHOLE sync
+     * query with HTTP 400 "Cannot query field". Each optional block is only
+     * spliced into the document text when actually requested, and
+     * eachEndpointPage retries without them on schema errors.
+     *
+     * @param string[] $sensors extra Tanium sensor names to collect
      */
-    private static function endpointQuery(bool $withGroups): string {
+    private static function endpointQuery(bool $withGroups, int $extrasLevel = 0, array $sensors = []): string {
         $groups = $withGroups
             ? "computerGroupMemberships {\n          computerGroup { id name }\n        }"
             : '';
-        return str_replace('/*GROUPS*/', $groups, self::ENDPOINT_QUERY);
+
+        // Hygiene / attack-surface / stability data. Level 2 adds the fragile
+        // blocks: eventCounts needs the event sensors deployed and sccmClient
+        // needs an extra module permission — both degrade first, keeping the
+        // widely-available level-1 fields (encryption, Defender, Discover).
+        $extras = '';
+        if ($extrasLevel >= 1) {
+            $sentinelFields = "windowsDefender { installed healthy antivirusEnabled antivirusSignatureUpdateAge }";
+            if ($extrasLevel >= 2) {
+                $sentinelFields = "sccmClient { health } " . $sentinelFields;
+            }
+            $extras = "isEncrypted chassisType\n"
+                . "        sentinel { {$sentinelFields} }\n"
+                . "        discover { discoverMethod natIpAddress openPorts }";
+        }
+        if ($extrasLevel >= 2) {
+            $extras .= "\n        eventCounts { appCrash all }";
+        }
+
+        $sensorBlock = '';
+        if ($sensors !== []) {
+            $list = implode(', ', array_map(
+                static fn(string $s): string => '{name: ' . json_encode($s) . '}',
+                $sensors
+            ));
+            $sensorBlock = "customSensors: sensorReadings(sensors: [{$list}]) {\n          columns { name values }\n        }";
+        }
+
+        return str_replace(
+            ['/*GROUPS*/', '/*EXTRAS*/', '/*SENSORS*/'],
+            [$groups, $extras, $sensorBlock],
+            self::ENDPOINT_QUERY
+        );
     }
 
     // Enriched pages (with CVEs/apps) carry far more data per node, so use a
@@ -88,10 +125,19 @@ GQL;
      * caller controls peak memory — essential for large fleets with CVE/software
      * enrichment, which would otherwise hold 1 GB+ at once.
      */
-    public function eachEndpointPage(int $pageSize, bool $withCves, bool $withApps, bool $withPatches, callable $onPage, bool $withGroups = false): void {
+    /**
+     * @param array $opts extras (bool, hygiene block — default true),
+     *                    sensors (string[], custom sensor names),
+     *                    since (?string ISO-8601 — server-side eidLastSeen > since)
+     */
+    public function eachEndpointPage(int $pageSize, bool $withCves, bool $withApps, bool $withPatches, callable $onPage, bool $withGroups = false, array $opts = []): void {
         if ($withCves || $withApps || $withPatches) {
             $pageSize = min($pageSize, self::ENRICHED_PAGE_SIZE);
         }
+
+        $extrasLevel = ($opts['extras'] ?? true) ? 2 : 0;
+        $sensors     = array_values(array_filter((array)($opts['sensors'] ?? [])));
+        $since       = $opts['since'] ?? null;
 
         $after = null;
         $count = 0;
@@ -99,21 +145,51 @@ GQL;
             $variables = [
                 'first'       => $pageSize,
                 'after'       => $after,
+                'filter'      => $since !== null
+                    ? ['path' => 'eidLastSeen', 'op' => 'GT', 'value' => $since]
+                    : null,
                 'withCves'    => $withCves,
                 'withApps'    => $withApps,
                 'withPatches' => $withPatches,
             ];
-            try {
-                $data = $this->graphql(self::endpointQuery($withGroups), $variables);
-            } catch (\RuntimeException $e) {
-                // Tenant Gateway without the group field: drop groups and
-                // retry this page instead of failing the whole sync.
-                if (!$withGroups || !str_contains($e->getMessage(), 'computerGroupMemberships')) {
-                    throw $e;
+
+            // Progressive degradation: schema/sensor errors disable the
+            // optional block that caused them and retry, instead of failing
+            // the sync. Order: groups (explicit) → eventCounts → custom
+            // sensors → remaining extras.
+            for ($attempt = 0; ; $attempt++) {
+                try {
+                    $data = $this->graphql(self::endpointQuery($withGroups, $extrasLevel, $sensors), $variables);
+                    break;
+                } catch (\RuntimeException $e) {
+                    $msg         = $e->getMessage();
+                    $schemaError = str_contains($msg, 'Cannot query field');
+                    // "must refer to an existing sensor": eventCounts or a
+                    // misnamed custom sensor. "missing required permissions":
+                    // a module block (e.g. sccmClient) the token cannot read.
+                    // None of these may kill the sync.
+                    $sensorError = stripos($msg, 'sensor') !== false;
+                    $permError   = stripos($msg, 'missing required permissions') !== false;
+
+                    if ($attempt >= 4 || (!$schemaError && !$sensorError && !$permError)) {
+                        throw $e;
+                    }
+                    if ($schemaError && $withGroups && str_contains($msg, 'computerGroupMemberships')) {
+                        \Toolbox::logInFile('tanium', "[Tanium] Gateway does not expose computerGroupMemberships — group sync skipped.\n");
+                        $withGroups = false;
+                    } elseif ($extrasLevel === 2) {
+                        \Toolbox::logInFile('tanium', "[Tanium] Gateway rejected eventCounts ({$msg}) — stability data skipped.\n");
+                        $extrasLevel = 1;
+                    } elseif ($sensors !== []) {
+                        \Toolbox::logInFile('tanium', "[Tanium] Custom sensors rejected ({$msg}) — skipped. Check the sensor names in the plugin settings.\n");
+                        $sensors = [];
+                    } elseif ($extrasLevel === 1) {
+                        \Toolbox::logInFile('tanium', "[Tanium] Gateway rejected hygiene fields ({$msg}) — extras skipped.\n");
+                        $extrasLevel = 0;
+                    } else {
+                        throw $e;
+                    }
                 }
-                \Toolbox::logInFile('tanium', "[Tanium] Gateway does not expose computerGroupMemberships — group sync skipped, continuing without it.\n");
-                $withGroups = false;
-                $data = $this->graphql(self::endpointQuery(false), $variables);
             }
             $conn = $data['endpoints'] ?? [];
 
@@ -131,25 +207,32 @@ GQL;
         } while ($hasNext && $after !== null && $count < self::MAX_ENDPOINTS);
     }
 
-    public function getAllEndpoints(int $pageSize = 500, bool $withCves = false, bool $withApps = false, bool $withPatches = false, bool $withGroups = false): array {
+    public function getAllEndpoints(int $pageSize = 500, bool $withCves = false, bool $withApps = false, bool $withPatches = false, bool $withGroups = false, array $opts = []): array {
         $all = [];
         $this->eachEndpointPage($pageSize, $withCves, $withApps, $withPatches, function (array $page) use (&$all): void {
             foreach ($page as $endpoint) {
                 $all[] = $endpoint;
             }
-        }, $withGroups);
+        }, $withGroups, $opts);
         return $all;
     }
 
     /**
      * Incremental sync — only endpoints last seen after $since (ISO-8601).
-     * The fleet is paged via GraphQL and filtered client-side on eidLastSeen,
-     * which keeps us independent of the EndpointFieldFilter input shape.
+     * Filtered server-side ({path: eidLastSeen, op: GT}) so unchanged
+     * endpoints never leave Tanium; if the tenant rejects the filter shape,
+     * falls back to paging the fleet and filtering client-side.
      */
-    public function getAllEndpointsIncremental(string $since, int $pageSize = 500, bool $withCves = false, bool $withApps = false, bool $withPatches = false): array {
+    public function getAllEndpointsIncremental(string $since, int $pageSize = 500, bool $withCves = false, bool $withApps = false, bool $withPatches = false, bool $withGroups = false, array $opts = []): array {
+        try {
+            return $this->getAllEndpoints($pageSize, $withCves, $withApps, $withPatches, $withGroups, ['since' => $since] + $opts);
+        } catch (\RuntimeException $e) {
+            \Toolbox::logInFile('tanium', '[Tanium] Server-side incremental filter rejected (' . $e->getMessage() . ') — falling back to client-side filtering.' . "\n");
+        }
+
         $sinceTs = strtotime($since) ?: 0;
         return array_values(array_filter(
-            $this->getAllEndpoints($pageSize, $withCves, $withApps, $withPatches),
+            $this->getAllEndpoints($pageSize, $withCves, $withApps, $withPatches, $withGroups, $opts),
             function (array $e) use ($sinceTs): bool {
                 $seen = strtotime($e['lastRegistrationTime'] ?? '') ?: 0;
                 return $seen > $sinceTs;
@@ -210,6 +293,20 @@ GQL;
             'software'       => self::mapInstalledApplications($n['installedApplications'] ?? []),
             'patches'        => self::mapApplicablePatches($n['sensorReadings'] ?? []),
             'computerGroups' => self::mapGroupMemberships($n['computerGroupMemberships'] ?? []),
+            // Hygiene / attack-surface / stability extras (null when the
+            // tenant does not expose them or extras were disabled).
+            'isEncrypted'     => array_key_exists('isEncrypted', $n) ? (int)!empty($n['isEncrypted']) : null,
+            'chassisType'     => $n['chassisType'] ?? null,
+            'defenderHealthy' => $n['sentinel']['windowsDefender']['healthy'] ?? null,
+            'defenderAvOn'    => $n['sentinel']['windowsDefender']['antivirusEnabled'] ?? null,
+            'defenderSigAge'  => $n['sentinel']['windowsDefender']['antivirusSignatureUpdateAge'] ?? null,
+            'sccmHealth'      => $n['sentinel']['sccmClient']['health'] ?? null,
+            'openPorts'       => $n['discover']['openPorts'] ?? null,
+            'natIp'           => $n['discover']['natIpAddress'] ?? null,
+            'discoverMethod'  => $n['discover']['discoverMethod'] ?? null,
+            'eventCrashes'    => isset($n['eventCounts']['appCrash']) ? (int)$n['eventCounts']['appCrash'] : null,
+            'eventTotal'      => isset($n['eventCounts']['all']) ? (int)$n['eventCounts']['all'] : null,
+            'customSensors'   => self::mapCustomSensors($n['customSensors'] ?? []),
         ];
     }
 
@@ -223,6 +320,36 @@ GQL;
             }
         }
         return $groups;
+    }
+
+    /**
+     * Custom sensor readings → ['Sensor Name' => 'value1, value2', …].
+     * Column-oriented like Applicable Patches, but here each sensor's values
+     * are just joined for display on the endpoint page.
+     */
+    private static function mapCustomSensors(array $readings): array {
+        $out = [];
+        foreach ($readings['columns'] ?? [] as $col) {
+            $name = trim((string)($col['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $values = array_filter(array_map('strval', (array)($col['values'] ?? [])), static fn($v) => $v !== '' && $v !== '[no results]');
+            $out[$name] = implode(', ', array_slice($values, 0, 20));
+        }
+        return $out;
+    }
+
+    /**
+     * Status of a previously created action (remote action polling).
+     * Returns the raw ActionStatus string, or null when unavailable.
+     */
+    public function getActionStatus(string $actionId): ?string {
+        $data = $this->graphql(
+            'query($ref: IdRefInput!) { action(ref: $ref) { id status stopped } }',
+            ['ref' => ['id' => $actionId]]
+        );
+        return isset($data['action']['status']) ? (string)$data['action']['status'] : null;
     }
 
     /**

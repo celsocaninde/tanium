@@ -202,6 +202,43 @@ class PdfReport {
         return self::render('Tanium - Comparacao de Endpoints', $html);
     }
 
+    /**
+     * Fleet health report ("boletim de saúde") — rows/summary from
+     * HealthReport::getFleet()/summary(). Worst endpoints first.
+     */
+    public static function health(array $rows, array $summary): ?string {
+        $esc = static fn($v): string => htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
+
+        $bandsLine = [];
+        foreach ($summary['bands'] as $label => $n) {
+            $bandsLine[] = "<strong>{$n}</strong> " . $esc($label);
+        }
+
+        $html = '<h1 style="color:#e8212a;font-size:14pt">Boletim de Saúde da Frota</h1>'
+              . '<p style="font-size:8pt;color:#5a6a85">Gerado em ' . date('d/m/Y H:i') . ' pelo plugin Tanium para GLPI</p>'
+              . '<p style="font-size:9pt">' . $summary['total'] . ' endpoints · nota média <strong>'
+              . ($summary['avg'] !== null ? number_format($summary['avg'], 1) : '—') . '</strong> · '
+              . implode(' · ', $bandsLine) . '</p>'
+              . '<table border="0" cellpadding="3" style="font-size:7.5pt;width:100%">'
+              . '<tr style="background-color:#f0f2f6;color:#1c2330;font-weight:bold">'
+              . '<td width="26%">Endpoint</td><td width="7%">Nota</td><td width="10%">Veredito</td>'
+              . '<td width="37%">Diagnóstico</td><td width="10%">CVEs C/A/M</td><td width="10%">Patches</td></tr>';
+
+        foreach ($rows as $r) {
+            $html .= '<tr>'
+                   . '<td>' . $esc($r['tanium_name'] ?: $r['tanium_eid']) . '</td>'
+                   . '<td style="color:' . $r['verdict_color'] . ';font-weight:bold">' . number_format($r['score'], 1) . '</td>'
+                   . '<td style="color:' . $r['verdict_color'] . ';font-weight:bold">' . $esc($r['verdict']) . '</td>'
+                   . '<td>' . $esc($r['message']) . '</td>'
+                   . '<td>' . (int)$r['cves_critical'] . ' / ' . (int)$r['cves_high'] . ' / ' . (int)$r['cves_medium'] . '</td>'
+                   . '<td>' . (int)$r['missing_patches'] . '</td>'
+                   . '</tr>';
+        }
+        $html .= '</table>';
+
+        return self::render('Tanium - Boletim de Saude da Frota', $html);
+    }
+
     private static function render(string $title, string $html): ?string {
         try {
             $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);

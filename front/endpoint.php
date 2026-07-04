@@ -5,7 +5,7 @@ use GlpiPlugin\Tanium\Vulnerability;
 
 include('../../../inc/includes.php');
 
-Session::checkRight('config', READ);
+if (!\GlpiPlugin\Tanium\Profile::hasReadRight()) { Html::displayRightError(); }
 
 global $DB;
 
@@ -176,7 +176,7 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
             <a href="<?= $webDir ?>/front/report.php?eid=<?= urlencode($eid) ?>" target="_blank" class="tanium-btn tanium-btn-secondary">
                 <span class="ti ti-printer"></span> <?= __('Report', 'tanium') ?>
             </a>
-            <?php if (Session::haveRight('config', UPDATE)): ?>
+            <?php if (\GlpiPlugin\Tanium\Profile::hasSyncRight()): ?>
             <button onclick="openTicketModal()" class="tanium-btn tanium-btn-primary">
                 <span class="ti ti-ticket"></span> <?= __('Open ticket', 'tanium') ?>
             </button>
@@ -241,6 +241,88 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
             </dl>
         </div>
     </div>
+
+    <?php
+    // ── Security hygiene (only when the tenant provides the data) ──────
+    $hasHygiene = $asset['is_encrypted'] !== null || !empty($asset['defender_healthy'])
+        || !empty($asset['sccm_health']) || !empty($asset['open_ports']) || $asset['event_crashes'] !== null;
+    $openPorts  = json_decode((string)($asset['open_ports'] ?? ''), true) ?: [];
+    $riskyPorts = [21, 22, 23, 135, 139, 445, 3389, 5900];
+    $defBad     = static function (?string $v): bool {
+        $v = strtolower(trim((string)$v));
+        return $v !== '' && !in_array($v, ['true', 'yes', 'healthy', '1'], true);
+    };
+    if ($hasHygiene): ?>
+    <div class="tanium-card">
+        <div class="tanium-card-header"><span class="ti ti-shield-check"></span> <?= __('Security hygiene', 'tanium') ?></div>
+        <div class="tanium-card-body">
+            <dl class="tanium-dl">
+                <?php if ($asset['is_encrypted'] !== null): ?>
+                <dt><?= __('Disk encryption', 'tanium') ?></dt>
+                <dd>
+                    <span class="tanium-badge tanium-badge-<?= (int)$asset['is_encrypted'] ? 'success' : 'critical' ?>">
+                        <?= (int)$asset['is_encrypted'] ? __('Encrypted', 'tanium') : __('NOT encrypted', 'tanium') ?>
+                    </span>
+                </dd>
+                <?php endif; ?>
+                <?php if (!empty($asset['defender_healthy'])): ?>
+                <dt>Windows Defender</dt>
+                <dd>
+                    <span class="tanium-badge tanium-badge-<?= $defBad($asset['defender_healthy']) ? 'critical' : 'success' ?>">
+                        <?= $defBad($asset['defender_healthy']) ? __('Unhealthy', 'tanium') : __('Healthy', 'tanium') ?>
+                    </span>
+                    <?php if (!empty($asset['defender_sig_age'])): ?>
+                        <span class="tanium-small tanium-muted"><?= __('Signatures', 'tanium') ?>: <?= htmlspecialchars($asset['defender_sig_age']) ?></span>
+                    <?php endif; ?>
+                </dd>
+                <?php endif; ?>
+                <?php if (!empty($asset['sccm_health'])): ?>
+                <dt>SCCM</dt>
+                <dd><?= htmlspecialchars($asset['sccm_health']) ?></dd>
+                <?php endif; ?>
+                <?php if ($asset['event_crashes'] !== null): ?>
+                <dt><?= __('App crashes', 'tanium') ?></dt>
+                <dd>
+                    <span class="tanium-badge tanium-badge-<?= (int)$asset['event_crashes'] > 10 ? 'critical' : ((int)$asset['event_crashes'] > 0 ? 'warning' : 'success') ?>">
+                        <?= (int)$asset['event_crashes'] ?>
+                    </span>
+                </dd>
+                <?php endif; ?>
+                <?php if ($openPorts): ?>
+                <dt><?= __('Open ports', 'tanium') ?></dt>
+                <dd>
+                    <?php foreach (array_slice($openPorts, 0, 15) as $port): ?>
+                        <span class="tanium-badge tanium-badge-<?= in_array((int)$port, $riskyPorts, true) ? 'critical' : 'muted' ?>"
+                              style="font-size:.68rem;margin:1px"><?= (int)$port ?></span>
+                    <?php endforeach; ?>
+                    <?php if (count($openPorts) > 15): ?>
+                        <span class="tanium-small tanium-muted">+<?= count($openPorts) - 15 ?></span>
+                    <?php endif; ?>
+                </dd>
+                <?php endif; ?>
+                <?php if (!empty($asset['nat_ip'])): ?>
+                <dt>NAT IP</dt>
+                <dd><code><?= htmlspecialchars($asset['nat_ip']) ?></code></dd>
+                <?php endif; ?>
+            </dl>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <?php $sensorData = json_decode((string)($asset['sensor_data'] ?? ''), true) ?: []; ?>
+    <?php if ($sensorData): ?>
+    <div class="tanium-card">
+        <div class="tanium-card-header"><span class="ti ti-cpu"></span> <?= __('Custom sensors', 'tanium') ?></div>
+        <div class="tanium-card-body">
+            <dl class="tanium-dl">
+                <?php foreach ($sensorData as $sName => $sValue): ?>
+                <dt><?= htmlspecialchars($sName) ?></dt>
+                <dd><?= htmlspecialchars($sValue !== '' ? $sValue : '—') ?></dd>
+                <?php endforeach; ?>
+            </dl>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <!-- CVE severity boxes -->
     <div class="tanium-card">

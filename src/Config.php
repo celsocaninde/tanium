@@ -21,7 +21,12 @@ class Config extends CommonDBTM {
 
         $row = $DB->request(['FROM' => 'glpi_plugin_tanium_configs', 'LIMIT' => 1])->current();
 
-        return $row ?? [
+        if ($row !== null) {
+            $row['api_token'] = self::decryptToken((string)($row['api_token'] ?? ''), (int)($row['token_encrypted'] ?? 0));
+            return $row;
+        }
+
+        return [
             'id'                   => 0,
             'api_url'              => '',
             'api_token'            => '',
@@ -61,6 +66,11 @@ class Config extends CommonDBTM {
             'auto_ticket_critical'    => 0,
             'quarantine_package'      => '',
             'restart_package'         => '',
+            'token_encrypted'         => 0,
+            'token_expires_at'        => null,
+            'retention_days'          => 365,
+            'custom_sensors'          => '',
+            'auto_deploy_kev'         => 0,
         ];
     }
 
@@ -73,12 +83,67 @@ class Config extends CommonDBTM {
             unset($data['api_token']);
         }
 
+        // At-rest encryption: a DB dump must not hand out a token that can
+        // deploy patches or quarantine endpoints.
+        if (!empty($data['api_token'])) {
+            $data['api_token']       = self::encryptToken((string)$data['api_token']);
+            $data['token_encrypted'] = 1;
+        }
+
         $data['date_mod'] = date('Y-m-d H:i:s');
 
         if (($config['id'] ?? 0) > 0) {
             $DB->update('glpi_plugin_tanium_configs', $data, ['id' => $config['id']]);
         } else {
             $DB->insert('glpi_plugin_tanium_configs', $data);
+        }
+    }
+
+    // ── API token at-rest encryption (GLPIKey / sodium) ───────────────────
+
+    private static function encryptToken(string $plain): string {
+        if ($plain === '') {
+            return '';
+        }
+        try {
+            return (new \GLPIKey())->encrypt($plain);
+        } catch (\Throwable $e) {
+            \Toolbox::logInFile('tanium', '[Tanium] Token encryption failed, storing as-is: ' . $e->getMessage() . "\n");
+            return $plain;
+        }
+    }
+
+    private static function decryptToken(string $stored, int $encrypted): string {
+        if ($stored === '' || !$encrypted) {
+            return $stored;
+        }
+        try {
+            $plain = (new \GLPIKey())->decrypt($stored);
+            return is_string($plain) && $plain !== '' ? $plain : $stored;
+        } catch (\Throwable $e) {
+            \Toolbox::logInFile('tanium', '[Tanium] Token decryption failed: ' . $e->getMessage() . "\n");
+            return '';
+        }
+    }
+
+    /**
+     * One-time migration: encrypt a token stored in clear text by an older
+     * version. Called from the install/upgrade hook.
+     */
+    public static function migrateTokenEncryption(): void {
+        global $DB;
+
+        $row = $DB->request(['FROM' => 'glpi_plugin_tanium_configs', 'LIMIT' => 1])->current();
+        if (!$row || (int)($row['token_encrypted'] ?? 0) === 1 || (string)($row['api_token'] ?? '') === '') {
+            return;
+        }
+
+        $cipher = self::encryptToken((string)$row['api_token']);
+        if ($cipher !== (string)$row['api_token']) {
+            $DB->update('glpi_plugin_tanium_configs', [
+                'api_token'       => $cipher,
+                'token_encrypted' => 1,
+            ], ['id' => $row['id']]);
         }
     }
 
@@ -268,6 +333,30 @@ class Config extends CommonDBTM {
         $this->renderField(
             __('Minimum alert severity for tickets', 'tanium'),
             "<select name='threat_min_severity' class='tanium-input tanium-select'>{$sevSel}</select>"
+        );
+
+        // ── Data & automation (v2.1) ──────────────────────────────────────
+        echo "<div class='tanium-section-title'>" . __('Data &amp; automation', 'tanium') . "</div>";
+
+        $this->renderField(
+            __('API token expiry date', 'tanium'),
+            "<input type='date' name='token_expires_at' class='tanium-input tanium-input-sm' value='" . htmlspecialchars((string)($config['token_expires_at'] ?? '')) . "'/>",
+            __('Tanium tokens expire. Set the expiry date to get a warning before the sync silently stops.', 'tanium')
+        );
+        $this->renderField(
+            __('History retention (days)', 'tanium'),
+            "<input type='number' name='retention_days' class='tanium-input tanium-input-sm' value='" . intval($config['retention_days'] ?? 365) . "' min='30' max='3650'/>",
+            __('Rows older than this are purged daily from risk/CVE history, sync logs and resolved threat alerts.', 'tanium')
+        );
+        $this->renderField(
+            __('Custom sensors to sync', 'tanium'),
+            "<input type='text' name='custom_sensors' class='tanium-input' value='" . htmlspecialchars((string)($config['custom_sensors'] ?? '')) . "' placeholder='Chassis Type, Uptime, Logged In Users'/>",
+            __('Comma-separated Tanium sensor names collected per endpoint during sync and shown on the endpoint page.', 'tanium')
+        );
+        $this->renderCheckbox(
+            'auto_deploy_kev',
+            __('Auto-open patch-deployment tickets for endpoints exposed to KEV (actively exploited) CVEs', 'tanium'),
+            (int)($config['auto_deploy_kev'] ?? 0)
         );
 
         // ── Remote actions (approval-gated) ───────────────────────────────

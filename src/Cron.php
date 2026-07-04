@@ -34,8 +34,102 @@ class Cron extends CommonDBTM {
             'slabreach' => [
                 'description' => __('Tanium — daily webhook alert while remediation-SLA breaches exist.', 'tanium'),
             ],
+            'purgehistory' => [
+                'description' => __('Tanium — purge history rows older than the configured retention.', 'tanium'),
+            ],
+            'apihealth' => [
+                'description' => __('Tanium — verify API/token health and warn before the token expires.', 'tanium'),
+            ],
             default => [],
         };
+    }
+
+    public static function cronPurgehistory(CronTask $task): int {
+        global $DB;
+
+        $config = Config::getConfig();
+        $days   = max(30, (int)($config['retention_days'] ?? 365));
+        $purged = 0;
+
+        foreach ([
+            'glpi_plugin_tanium_risk_history'  => 'recorded_at',
+            'glpi_plugin_tanium_cve_history'   => 'changed_at',
+            'glpi_plugin_tanium_sync_logs'     => 'started_at',
+        ] as $table => $col) {
+            if (!$DB->tableExists($table)) {
+                continue;
+            }
+            $DB->doQuery("DELETE FROM `{$table}` WHERE `{$col}` < DATE_SUB(NOW(), INTERVAL {$days} DAY)");
+            $purged += $DB->affectedRows();
+        }
+
+        // Resolved threat alerts follow the same retention; open ones stay.
+        if ($DB->tableExists('glpi_plugin_tanium_threat_alerts')) {
+            $DB->doQuery("
+                DELETE FROM `glpi_plugin_tanium_threat_alerts`
+                WHERE status IN ('resolved', 'closed', 'suppressed')
+                  AND date_mod < DATE_SUB(NOW(), INTERVAL {$days} DAY)
+            ");
+            $purged += $DB->affectedRows();
+        }
+
+        $task->log(sprintf(__('Purged %d history rows older than %d days.', 'tanium'), $purged, $days));
+        $task->setVolume($purged);
+
+        return 1;
+    }
+
+    public static function cronApihealth(CronTask $task): int {
+        $config = Config::getConfig();
+
+        if (empty($config['api_url']) || empty($config['api_token'])) {
+            $task->log(__('Tanium plugin: API URL or token not configured. Skipping.', 'tanium'));
+            return 0;
+        }
+
+        $problems = [];
+
+        // 1) Live API check (cheapest possible query)
+        try {
+            (new Api($config['api_url'], $config['api_token']))->getEndpoints(1);
+        } catch (\Throwable $e) {
+            $problems[] = sprintf(__('Tanium API check failed: %s', 'tanium'), $e->getMessage());
+        }
+
+        // 2) Token expiry warning window
+        if (!empty($config['token_expires_at'])) {
+            $daysLeft = (int)floor((strtotime($config['token_expires_at']) - time()) / 86400);
+            if ($daysLeft < 0) {
+                $problems[] = sprintf(__('The Tanium API token EXPIRED %d day(s) ago.', 'tanium'), abs($daysLeft));
+            } elseif ($daysLeft <= 14) {
+                $problems[] = sprintf(__('The Tanium API token expires in %d day(s). Renew it in the Tanium console.', 'tanium'), $daysLeft);
+            }
+        }
+
+        if ($problems === []) {
+            $task->log(__('Tanium API healthy.', 'tanium'));
+            return 1;
+        }
+
+        foreach ($problems as $p) {
+            $task->log($p);
+        }
+
+        $body = '⚠️ ' . implode("\n⚠️ ", $problems);
+        if (!empty($config['webhook_enabled']) && !empty($config['webhook_url'])) {
+            Notification::sendWebhook($config['webhook_url'], [
+                'username'   => 'Tanium + GLPI',
+                'icon_emoji' => ':warning:',
+                'text'       => $body,
+                'title'      => 'Tanium — problema de API/token',
+            ]);
+        }
+        foreach (Config::resolveNotifyRecipients($config) as $to) {
+            Notification::sendEmail($to, '[Tanium] Problema de API/token', nl2br(htmlspecialchars($body)));
+        }
+
+        $task->setVolume(count($problems));
+        return -1;
     }
 
     public static function cronSlabreach(CronTask $task): int {
@@ -134,6 +228,12 @@ class Cron extends CommonDBTM {
             $result['kev']
         ));
         $task->setVolume($result['epss'] + $result['kev']);
+
+        // Opt-in: auto-open remediation tickets for endpoints exposed to KEV
+        $tickets = PatchDeploy::autoDeployKev(Config::getConfig());
+        if ($tickets > 0) {
+            $task->log(sprintf(__('KEV auto-remediation: %d ticket(s) opened for approval.', 'tanium'), $tickets));
+        }
 
         return ($result['epss'] + $result['kev']) > 0 ? 1 : 0;
     }

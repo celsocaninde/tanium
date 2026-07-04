@@ -12,7 +12,7 @@ use GlpiPlugin\Tanium\CentralWidget as TaniumCentralWidget;
 use GlpiPlugin\Tanium\PatchDeploy as TaniumPatchDeploy;
 use GlpiPlugin\Tanium\Vulnerability;
 
-define('PLUGIN_TANIUM_VERSION', '2.0.0');
+define('PLUGIN_TANIUM_VERSION', '2.1.0');
 define('PLUGIN_TANIUM_MIN_GLPI', '11.0.0');
 define('PLUGIN_TANIUM_MAX_GLPI', '11.99.99');
 
@@ -168,6 +168,30 @@ function plugin_init_tanium(): void {
         DAY_TIMESTAMP,
         [
             'comment'   => 'Tanium — daily webhook alert while remediation-SLA breaches exist',
+            'mode'      => CronTask::MODE_EXTERNAL,
+            'allowmode' => CronTask::MODE_INTERNAL | CronTask::MODE_EXTERNAL,
+        ]
+    );
+
+    // Cron task registration — daily history retention purge
+    CronTask::register(
+        TaniumCron::class,
+        'purgehistory',
+        DAY_TIMESTAMP,
+        [
+            'comment'   => 'Tanium — purge history rows older than the configured retention',
+            'mode'      => CronTask::MODE_EXTERNAL,
+            'allowmode' => CronTask::MODE_INTERNAL | CronTask::MODE_EXTERNAL,
+        ]
+    );
+
+    // Cron task registration — daily API/token health check
+    CronTask::register(
+        TaniumCron::class,
+        'apihealth',
+        DAY_TIMESTAMP,
+        [
+            'comment'   => 'Tanium — verify API/token health and warn before the token expires',
             'mode'      => CronTask::MODE_EXTERNAL,
             'allowmode' => CronTask::MODE_INTERNAL | CronTask::MODE_EXTERNAL,
         ]

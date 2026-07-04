@@ -99,6 +99,11 @@ function plugin_tanium_install(): bool {
             'auto_ticket_critical'    => "tinyint(1) NOT NULL DEFAULT 0",
             'quarantine_package'      => "varchar(255) NOT NULL DEFAULT ''",
             'restart_package'         => "varchar(255) NOT NULL DEFAULT ''",
+            'token_encrypted'         => "tinyint(1) NOT NULL DEFAULT 0",
+            'token_expires_at'        => "date DEFAULT NULL",
+            'retention_days'          => "int NOT NULL DEFAULT 365",
+            'custom_sensors'          => "varchar(500) NOT NULL DEFAULT ''",
+            'auto_deploy_kev'         => "tinyint(1) NOT NULL DEFAULT 0",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_configs` LIKE '{$col}'");
@@ -147,6 +152,19 @@ function plugin_tanium_install(): bool {
             'os_platform' => "varchar(50) DEFAULT NULL",
             'is_virtual'  => "tinyint(1) NOT NULL DEFAULT 0",
             'risk_score'  => "tinyint(3) UNSIGNED NOT NULL DEFAULT 0",
+            // Hygiene / attack-surface / stability data (v2.1)
+            'is_encrypted'     => "tinyint(1) DEFAULT NULL",
+            'chassis_type'     => "varchar(50) DEFAULT NULL",
+            'defender_healthy' => "varchar(50) DEFAULT NULL",
+            'defender_av_on'   => "varchar(50) DEFAULT NULL",
+            'defender_sig_age' => "varchar(50) DEFAULT NULL",
+            'sccm_health'      => "varchar(100) DEFAULT NULL",
+            'open_ports'       => "text DEFAULT NULL",
+            'nat_ip'           => "varchar(64) DEFAULT NULL",
+            'discover_method'  => "varchar(64) DEFAULT NULL",
+            'event_crashes'    => "int DEFAULT NULL",
+            'event_total'      => "int DEFAULT NULL",
+            'sensor_data'      => "text DEFAULT NULL",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_assets` LIKE '{$col}'");
@@ -430,6 +448,9 @@ function plugin_tanium_install(): bool {
     if (class_exists('GlpiPlugin\Tanium\Profile')) {
         \GlpiPlugin\Tanium\Profile::ensureProfileRights();
     }
+
+    // Encrypt a clear-text API token left by versions < 2.1
+    \GlpiPlugin\Tanium\Config::migrateTokenEncryption();
 
     return true;
 }

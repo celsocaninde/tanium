@@ -70,12 +70,43 @@ class DashboardCards {
         return Plugin::getWebDir('tanium') . '/front/' . $page;
     }
 
+    /** Cards show real data only to users holding the plugin read right. */
+    private static function denied(): ?array {
+        if (Profile::hasReadRight()) {
+            return null;
+        }
+        return ['number' => 0, 'url' => '', 'label' => __('Tanium — no permission', 'tanium'), 'icon' => 'ti ti-lock'];
+    }
+
+    /**
+     * SQL fragment restricting an assets alias to the session's active
+     * entities (through the linked GLPI computer). Empty when the user sees
+     * every entity; unlinked endpoints are hidden from restricted users.
+     */
+    private static function entityRestrictSql(string $assetAlias = 'a'): string {
+        if (\Session::canViewAllEntities()) {
+            return '';
+        }
+        $entities = array_map('intval', (array)($_SESSION['glpiactiveentities'] ?? []));
+        if ($entities === []) {
+            return ' AND 1=0';
+        }
+        $in = implode(',', $entities);
+        return " AND {$assetAlias}.computers_id IN (SELECT id FROM glpi_computers WHERE entities_id IN ({$in}))";
+    }
+
     // ── Providers ──────────────────────────────────────────────────────────
 
     public static function cardEndpoints(array $params = []): array {
         global $DB;
 
-        $row = $DB->request(['FROM' => 'glpi_plugin_tanium_assets', 'COUNT' => 'cpt'])->current();
+        if ($denied = self::denied()) {
+            return $denied;
+        }
+
+        $row = $DB->doQuery(
+            "SELECT COUNT(*) AS cpt FROM glpi_plugin_tanium_assets a WHERE 1=1" . self::entityRestrictSql()
+        )->fetch_assoc();
 
         return [
             'number' => (int)($row['cpt'] ?? 0),
@@ -86,6 +117,9 @@ class DashboardCards {
     }
 
     public static function cardCriticalFindings(array $params = []): array {
+        if ($denied = self::denied()) {
+            return $denied;
+        }
         return [
             'number' => self::openFindings('critical'),
             'url'    => self::frontUrl('vulnerabilities.php?severity=critical'),
@@ -97,6 +131,10 @@ class DashboardCards {
     public static function cardKevFindings(array $params = []): array {
         global $DB;
 
+        if ($denied = self::denied()) {
+            return $denied;
+        }
+
         $count = 0;
         if ($DB->tableExists(Enrichment::$table)) {
             $row = $DB->doQuery("
@@ -104,7 +142,8 @@ class DashboardCards {
                 FROM glpi_plugin_tanium_endpoint_cves ec
                 JOIN `" . Enrichment::$table . "` e
                      ON e.cve_id = ec.cve_id AND e.is_kev = 1
-                WHERE ec.status != 'remediated'
+                JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = ec.tanium_eid
+                WHERE ec.status != 'remediated'" . self::entityRestrictSql() . "
             ")->fetch_assoc();
             $count = (int)($row['cpt'] ?? 0);
         }
@@ -118,6 +157,9 @@ class DashboardCards {
     }
 
     public static function cardSlaCompliance(array $params = []): array {
+        if ($denied = self::denied()) {
+            return $denied;
+        }
         $stats = Sla::getStats();
 
         return [
@@ -129,6 +171,9 @@ class DashboardCards {
     }
 
     public static function cardStaleAgents(array $params = []): array {
+        if ($denied = self::denied()) {
+            return $denied;
+        }
         $config = Config::getConfig();
         $days   = (int)($config['agent_stale_days'] ?? 7);
 
@@ -141,6 +186,9 @@ class DashboardCards {
     }
 
     public static function cardOpenThreats(array $params = []): array {
+        if ($denied = self::denied()) {
+            return $denied;
+        }
         return [
             'number' => ThreatResponse::countOpen(),
             'url'    => self::frontUrl('dashboard.php'),
@@ -151,6 +199,10 @@ class DashboardCards {
 
     public static function cardFindingsBySeverity(array $params = []): array {
         global $DB;
+
+        if (!Profile::hasReadRight()) {
+            return ['data' => [], 'label' => __('Tanium — no permission', 'tanium'), 'icon' => 'ti ti-lock'];
+        }
 
         $colors = [
             'critical' => '#e8212a',
@@ -164,7 +216,8 @@ class DashboardCards {
             SELECT LOWER(v.severity) AS sev, COUNT(*) AS cpt
             FROM glpi_plugin_tanium_endpoint_cves ec
             JOIN glpi_plugin_tanium_vulnerabilities v ON v.cve_id = ec.cve_id
-            WHERE ec.status != 'remediated'
+            JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = ec.tanium_eid
+            WHERE ec.status != 'remediated'" . self::entityRestrictSql() . "
             GROUP BY LOWER(v.severity)
         ") as $r) {
             if (isset($counts[$r['sev']])) {
@@ -201,7 +254,8 @@ class DashboardCards {
             SELECT COUNT(*) AS cpt
             FROM glpi_plugin_tanium_endpoint_cves ec
             JOIN glpi_plugin_tanium_vulnerabilities v ON v.cve_id = ec.cve_id
-            WHERE ec.status != 'remediated'{$sevSql}
+            JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = ec.tanium_eid
+            WHERE ec.status != 'remediated'{$sevSql}" . self::entityRestrictSql() . "
         ")->fetch_assoc();
 
         return (int)($row['cpt'] ?? 0);

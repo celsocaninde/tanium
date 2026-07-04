@@ -6,7 +6,7 @@ use GlpiPlugin\Tanium\Notification as TaniumNotification;
 
 include('../../../inc/includes.php');
 
-Session::checkRight('config', UPDATE);
+if (!\GlpiPlugin\Tanium\Profile::hasConfigUpdateRight() && !Session::haveRight('config', UPDATE)) { Html::displayRightError(); }
 
 $config = new TaniumConfig();
 
@@ -50,6 +50,11 @@ if (isset($_POST['save'])) {
         'auto_ticket_critical'    => isset($_POST['auto_ticket_critical']) ? 1 : 0,
         'quarantine_package'      => trim($_POST['quarantine_package'] ?? ''),
         'restart_package'         => trim($_POST['restart_package'] ?? ''),
+        'token_expires_at'        => preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['token_expires_at'] ?? '')
+            ? $_POST['token_expires_at'] : null,
+        'retention_days'          => max(30, (int)($_POST['retention_days'] ?? 365)),
+        'custom_sensors'          => trim($_POST['custom_sensors'] ?? ''),
+        'auto_deploy_kev'         => isset($_POST['auto_deploy_kev']) ? 1 : 0,
     ]);
 
     Session::addMessageAfterRedirect(__('Tanium configuration saved.', 'tanium'), true, INFO);

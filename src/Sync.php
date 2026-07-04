@@ -108,6 +108,11 @@ class Sync extends CommonGLPI {
                     'page'  => Plugin::getWebDir('tanium') . '/front/compare.php',
                     'icon'  => 'ti ti-git-compare',
                 ],
+                'healthreport'    => [
+                    'title' => __('Fleet Health Report', 'tanium'),
+                    'page'  => Plugin::getWebDir('tanium') . '/front/healthreport.php',
+                    'icon'  => 'ti ti-heart-rate-monitor',
+                ],
                 'report'          => [
                     'title' => __('Global Report', 'tanium'),
                     'page'  => Plugin::getWebDir('tanium') . '/front/report.php',
@@ -205,6 +210,13 @@ class Sync extends CommonGLPI {
             // keeps peak memory bounded regardless of fleet size.
             $fleetSize  = 0;
             $withGroups = !empty($config['sync_group_membership']);
+            $sensors    = array_values(array_filter(array_map('trim', explode(',', (string)($config['custom_sensors'] ?? '')))));
+            $pageOpts   = ['sensors' => $sensors];
+            if ($sinceTs > 0) {
+                // Server-side incremental: unchanged endpoints never leave Tanium.
+                // The client-side filter below stays as a safety net.
+                $pageOpts['since'] = gmdate('Y-m-d\TH:i:s\Z', $sinceTs);
+            }
             $api->eachEndpointPage($limit, $withCves, $withApps, $withPatches,
                 function (array $page, int $totalRecords) use (
                     &$created, &$updated, &$errors, &$total, &$fleetSize,
@@ -267,7 +279,8 @@ class Sync extends CommonGLPI {
 
                     self::updateLogProgress($logId, $total, $fleetSize ?: $total);
                 },
-                $withGroups
+                $withGroups,
+                $pageOpts
             );
 
             // Fleet-wide CVE impact count (per-page upserts only see their page).
@@ -573,6 +586,31 @@ class Sync extends CommonGLPI {
             'sync_message' => null,
             'date_mod'     => $now,
         ];
+
+        // Hygiene / attack-surface / stability extras — only overwrite when
+        // the tenant returned them (null means "not provided", not "cleared").
+        foreach ([
+            'is_encrypted'     => $endpoint['isEncrypted']     ?? null,
+            'chassis_type'     => $endpoint['chassisType']     ?? null,
+            'defender_healthy' => $endpoint['defenderHealthy'] ?? null,
+            'defender_av_on'   => $endpoint['defenderAvOn']    ?? null,
+            'defender_sig_age' => $endpoint['defenderSigAge']  ?? null,
+            'sccm_health'      => $endpoint['sccmHealth']      ?? null,
+            'nat_ip'           => $endpoint['natIp']           ?? null,
+            'discover_method'  => $endpoint['discoverMethod']  ?? null,
+            'event_crashes'    => $endpoint['eventCrashes']    ?? null,
+            'event_total'      => $endpoint['eventTotal']      ?? null,
+        ] as $col => $value) {
+            if ($value !== null) {
+                $assetData[$col] = $value;
+            }
+        }
+        if (is_array($endpoint['openPorts'] ?? null)) {
+            $assetData['open_ports'] = json_encode(array_values(array_map('intval', $endpoint['openPorts'])));
+        }
+        if (!empty($endpoint['customSensors'])) {
+            $assetData['sensor_data'] = json_encode($endpoint['customSensors'], JSON_UNESCAPED_UNICODE);
+        }
 
         if ($mappingRow) {
             $DB->update('glpi_plugin_tanium_assets', $assetData, ['tanium_eid' => $eid]);

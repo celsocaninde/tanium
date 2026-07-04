@@ -5,7 +5,7 @@ use GlpiPlugin\Tanium\Sync as TaniumSync;
 
 include('../../../inc/includes.php');
 
-Session::checkRight('config', UPDATE);
+if (!\GlpiPlugin\Tanium\Profile::hasSyncRight()) { Html::displayRightError(); }
 
 if (isset($_POST['run_sync'])) {
     // A full sync can take several minutes for a large fleet — running it inside

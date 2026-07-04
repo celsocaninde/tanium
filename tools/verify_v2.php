@@ -13,6 +13,10 @@ $kernel->boot();
 
 Plugin::load('tanium');
 
+// CLI has no logged-in session; grant the plugin read right so the
+// permission-gated providers return real data instead of "no permission".
+$_SESSION['glpiactiveprofile']['plugin_tanium_read'] = READ;
+
 $pass = 0;
 $fail = 0;
 function check(string $name, bool $ok, string $extra = ''): void {
@@ -101,6 +105,53 @@ if (count($eids) === 2) {
 check('Sla::getMttr runs', is_array(GlpiPlugin\Tanium\Sla::getMttr(90)));
 foreach (['webhook_sla', 'webhook_deploy', 'auto_ticket_critical', 'quarantine_package', 'restart_package'] as $k) {
     check("config key {$k} present", array_key_exists($k, $cfg));
+}
+
+// ── v2.1 checks ─────────────────────────────────────────────────────────
+
+// 8) API token encrypted at rest, decrypted in memory
+$rawRow = $DB->request(['FROM' => 'glpi_plugin_tanium_configs', 'LIMIT' => 1])->current();
+check('token encrypted at rest', (int)($rawRow['token_encrypted'] ?? 0) === 1
+    && $rawRow['api_token'] !== $cfg['api_token']);
+check('token decrypts to usable value', strlen((string)$cfg['api_token']) >= 32);
+
+// 9) Health report
+$fleet = GlpiPlugin\Tanium\HealthReport::getFleet();
+check('HealthReport::getFleet returns rows', $fleet !== [], count($fleet) . ' endpoints');
+if ($fleet !== []) {
+    $first = $fleet[0];
+    check('health rows carry score/verdict', isset($first['score'], $first['verdict'], $first['message']));
+    $sum = GlpiPlugin\Tanium\HealthReport::summary($fleet);
+    check('health summary aggregates', $sum['total'] === count($fleet) && $sum['avg'] !== null, 'avg=' . $sum['avg']);
+    $hpdf = GlpiPlugin\Tanium\PdfReport::health($fleet, $sum);
+    check('health PDF generates', $hpdf !== null && str_starts_with($hpdf, '%PDF'), strlen((string)$hpdf) . ' bytes');
+}
+
+// 10) New config keys + hygiene columns
+foreach (['retention_days', 'custom_sensors', 'auto_deploy_kev', 'token_expires_at'] as $k) {
+    check("config key {$k} present", array_key_exists($k, $cfg));
+}
+foreach (['is_encrypted', 'open_ports', 'sensor_data', 'event_crashes'] as $col) {
+    check("assets column {$col}", $DB->fieldExists('glpi_plugin_tanium_assets', $col));
+}
+
+// 11) Live API with extras (progressive degradation) + server-side incremental
+try {
+    $api  = new GlpiPlugin\Tanium\Api($cfg['api_url'], $cfg['api_token']);
+    $page = null;
+    try {
+        $api->eachEndpointPage(2, false, false, false, function (array $p) use (&$page) {
+            $page = $p[0] ?? null;
+            throw new LogicException('STOP');
+        });
+    } catch (LogicException $e) {
+    }
+    check('live page with hygiene extras', $page !== null && array_key_exists('isEncrypted', $page),
+        'isEncrypted=' . var_export($page['isEncrypted'] ?? null, true));
+    $inc = $api->getAllEndpointsIncremental(gmdate('Y-m-d\TH:i:s\Z', time() - 600), 100);
+    check('server-side incremental filter', is_array($inc), count($inc) . ' endpoints in 10min window');
+} catch (Throwable $e) {
+    check('live API v2.1 checks', false, $e->getMessage());
 }
 
 echo "\nRESULT: {$pass} passed, {$fail} failed\n";

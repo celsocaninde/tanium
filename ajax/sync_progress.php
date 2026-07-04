@@ -2,7 +2,7 @@
 
 include('../../../inc/includes.php');
 
-Session::checkRight('config', READ);
+if (!\GlpiPlugin\Tanium\Profile::hasReadRight()) { http_response_code(403); header('Content-Type: application/json'); echo json_encode(['success' => false, 'error' => 'forbidden']); exit; }
 
 header('Content-Type: application/json');
 

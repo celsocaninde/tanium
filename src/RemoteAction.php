@@ -273,6 +273,48 @@ class RemoteAction {
         }
     }
 
+    /**
+     * Poll Tanium for the outcome of 'sent' actions (piggybacks on the
+     * checkdeployments cron). Marks them done/failed and comments the ticket.
+     */
+    public static function pollSent(Api $api): int {
+        global $DB;
+
+        self::ensureTable();
+        $res = $DB->doQuery(
+            "SELECT * FROM `" . self::$table . "`
+             WHERE status = 'sent' AND tanium_action_id IS NOT NULL
+             ORDER BY approved_at ASC LIMIT 25"
+        );
+
+        $processed = 0;
+        while ($res && ($action = $res->fetch_assoc())) {
+            try {
+                $status = $api->getActionStatus((string)$action['tanium_action_id']);
+                if ($status === null) {
+                    continue;
+                }
+                $up = strtoupper($status);
+
+                if (in_array($up, ['CLOSED', 'EXPIRED', 'STOPPED'], true)) {
+                    $DB->doQuery(sprintf(
+                        "UPDATE `" . self::$table . "` SET status = 'done', error_message = '%s', updated_at = NOW() WHERE id = %d",
+                        $DB->escape('Tanium status: ' . $status),
+                        (int)$action['id']
+                    ));
+                    self::followup((int)$action['ticket_id'], 'success', '✅ Ação remota concluída no Tanium',
+                        'A ação <strong>' . htmlspecialchars((string)$action['action_key']) . '</strong> foi finalizada pelo Tanium (status: <code>' . htmlspecialchars($status) . '</code>).');
+                    $processed++;
+                }
+                // OPEN/PENDING/ACTIVE and friends: keep polling next run.
+            } catch (\Throwable $e) {
+                // Transient API error — retry on next cron run.
+            }
+        }
+
+        return $processed;
+    }
+
     private static function followup(int $ticketId, string $type, string $title, string $body): void {
         if ($ticketId <= 0) {
             return;

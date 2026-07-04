@@ -16,6 +16,10 @@
    </description>
    <versions>
       <version>
+         <num>2.1.0</num>
+         <compatibility>~11.0</compatibility>
+      </version>
+      <version>
          <num>2.0.0</num>
          <compatibility>~11.0</compatibility>
       </version>

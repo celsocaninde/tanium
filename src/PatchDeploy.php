@@ -348,6 +348,9 @@ class PatchDeploy extends CommonGLPI {
             }
         }
 
+        // Remote actions share the same polling cadence.
+        $processed += RemoteAction::pollSent($api);
+
         $task->addVolume($processed);
         return $processed > 0 ? 1 : 0;
     }
@@ -416,6 +419,134 @@ class PatchDeploy extends CommonGLPI {
                 ]);
             }
         }
+    }
+
+    // ── KEV auto-remediation ─────────────────────────────────────────────────
+
+    /**
+     * Opt-in automation: endpoints exposed to KEV (actively exploited) CVEs
+     * that have missing high-severity patches get a patch-remediation ticket
+     * opened automatically, in pending_approval state — the deploy itself
+     * still goes through the human approval flow. Skips endpoints with a
+     * deployment already pending/in-flight; capped per run to avoid floods.
+     */
+    public static function autoDeployKev(array $config, int $maxPerRun = 5): int {
+        global $DB;
+
+        if (empty($config['auto_deploy_kev'])) {
+            return 0;
+        }
+
+        $res = $DB->doQuery("
+            SELECT DISTINCT a.tanium_eid
+            FROM glpi_plugin_tanium_endpoint_cves ec
+            JOIN glpi_plugin_tanium_cve_enrichment e
+                 ON e.cve_id = ec.cve_id AND e.is_kev = 1
+            JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = ec.tanium_eid
+            " . Sla::activeExceptionJoin() . "
+            WHERE ec.status != 'remediated'
+              AND ex.id IS NULL
+              AND EXISTS (
+                  SELECT 1 FROM glpi_plugin_tanium_patches p
+                  WHERE p.tanium_eid = ec.tanium_eid AND p.status = 'missing'
+                    AND LOWER(p.severity) IN ('critical', 'important', 'high')
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM glpi_plugin_tanium_patch_deployments d
+                  WHERE d.tanium_eid = ec.tanium_eid
+                    AND d.status IN ('pending_approval', 'deploying')
+              )
+            LIMIT " . max(1, $maxPerRun)
+        );
+
+        $opened = 0;
+        while ($res && ($row = $res->fetch_assoc())) {
+            try {
+                if (self::openKevRemediation((string)$row['tanium_eid'], $config)) {
+                    $opened++;
+                }
+            } catch (\Throwable $e) {
+                \Toolbox::logInFile('tanium', '[Tanium] KEV auto-deploy failed for ' . $row['tanium_eid'] . ': ' . $e->getMessage() . "\n");
+            }
+        }
+        return $opened;
+    }
+
+    private static function openKevRemediation(string $eid, array $config): bool {
+        global $DB;
+
+        $er = $DB->doQuery("SELECT * FROM glpi_plugin_tanium_assets WHERE tanium_eid = '" . $DB->escape($eid) . "' LIMIT 1");
+        if (!$er || !($endpoint = $er->fetch_assoc())) {
+            return false;
+        }
+
+        $patches = [];
+        foreach ($DB->doQuery("
+            SELECT * FROM glpi_plugin_tanium_patches
+            WHERE tanium_eid = '" . $DB->escape($eid) . "' AND status = 'missing'
+              AND LOWER(severity) IN ('critical', 'important', 'high')
+            ORDER BY FIELD(LOWER(severity), 'critical', 'important', 'high'), release_date DESC
+            LIMIT 20
+        ") as $p) {
+            $patches[] = $p;
+        }
+        if (!$patches) {
+            return false;
+        }
+
+        $kevCves = [];
+        foreach ($DB->doQuery("
+            SELECT ec.cve_id, v.title, v.severity, v.cvss_score
+            FROM glpi_plugin_tanium_endpoint_cves ec
+            JOIN glpi_plugin_tanium_cve_enrichment e ON e.cve_id = ec.cve_id AND e.is_kev = 1
+            LEFT JOIN glpi_plugin_tanium_vulnerabilities v ON v.cve_id = ec.cve_id
+            WHERE ec.tanium_eid = '" . $DB->escape($eid) . "' AND ec.status != 'remediated'
+            ORDER BY v.cvss_score DESC LIMIT 50
+        ") as $c) {
+            $kevCves[] = $c;
+        }
+
+        $name = $endpoint['tanium_name'] ?: $eid;
+        $html = "<div style='border-left:4px solid #e8212a;background:#fff5f5;padding:12px 16px;border-radius:8px;margin-bottom:10px'>"
+              . "<strong style='color:#c53030'>🔥 Aberto automaticamente:</strong> este endpoint tem "
+              . count($kevCves) . " CVE(s) do catálogo <strong>CISA KEV</strong> (exploração ativa confirmada) e patches de correção disponíveis."
+              . "</div>"
+              . self::buildTicketHtml($endpoint, $patches, $kevCves, $config);
+
+        $ticket   = new Ticket();
+        $ticketId = (int)$ticket->add([
+            'name'        => sprintf('[Tanium] Auto: remediação KEV — %s (%d patches)', $name, count($patches)),
+            'content'     => $html,
+            'status'      => Ticket::INCOMING,
+            'type'        => Ticket::INCIDENT_TYPE,
+            'urgency'     => 5,
+            'impact'      => 5,
+            'priority'    => 5,
+            'entities_id' => (int)($config['ticket_entity_id'] ?? 0),
+        ]);
+        if (!$ticketId) {
+            return false;
+        }
+
+        if (!empty($endpoint['computers_id'])) {
+            (new \Item_Ticket())->add([
+                'itemtype'   => 'Computer',
+                'items_id'   => (int)$endpoint['computers_id'],
+                'tickets_id' => $ticketId,
+            ]);
+        }
+
+        $DB->insert('glpi_plugin_tanium_patch_deployments', [
+            'ticket_id'    => $ticketId,
+            'tanium_eid'   => $eid,
+            'computers_id' => $endpoint['computers_id'] ?: null,
+            'patch_ids'    => json_encode(array_column($patches, 'patch_id')),
+            'status'       => 'pending_approval',
+            'requested_by' => 0,
+            'created_at'   => date('Y-m-d H:i:s'),
+        ]);
+
+        return true;
     }
 
     // ── Build professional ticket HTML ──────────────────────────────────────

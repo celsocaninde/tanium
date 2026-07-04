@@ -8,7 +8,7 @@
 include('../../../inc/includes.php');
 
 Session::checkLoginUser();
-Session::checkRight('config', READ);
+if (!\GlpiPlugin\Tanium\Profile::hasSyncRight()) { http_response_code(403); header('Content-Type: application/json'); echo json_encode(['success' => false, 'error' => 'forbidden']); exit; }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     Html::redirect(Plugin::getWebDir('tanium') . '/front/endpoints.php');

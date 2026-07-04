@@ -1,7 +1,7 @@
 <?php
 
 include('../../../inc/includes.php');
-Session::checkRight('config', READ);
+if (!\GlpiPlugin\Tanium\Profile::hasReadRight()) { Html::displayRightError(); }
 
 $webDir = \Plugin::getWebDir('tanium');
 $groups = \GlpiPlugin\Tanium\ComputerGroup::getAll();

@@ -10,7 +10,7 @@ use GlpiPlugin\Tanium\Vulnerability;
 
 include('../../../inc/includes.php');
 
-Session::checkRight('config', READ);
+if (!\GlpiPlugin\Tanium\Profile::hasReadRight()) { Html::displayRightError(); }
 
 global $DB, $CFG_GLPI;
 
