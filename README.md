@@ -32,21 +32,23 @@ Plugin que conecta a plataforma **Tanium** ao **GLPI 11**, trazendo visibilidade
 | 🖥️ **Endpoints** | Sincroniza computadores do Tanium como ativos GLPI |
 | 🔍 **Vulnerabilidades CVE** | Importa CVEs com severidade, score CVSS e status de remediação |
 | 🩹 **Patch Remediation** | Rastreia patches ausentes e histórico de implantação |
-| 📊 **Dashboard** | Painel com KPIs de risco, compliance e cobertura |
+| 📊 **Dashboard** | Painel com KPIs de risco, compliance e cobertura — todos os cards com drill-down para a lista filtrada |
 | 🗓️ **Relatório Semanal** | Envio automático de relatório de segurança por e-mail |
 | ⚙️ **Sincronização** | Agendamento via Cron com suporte a sync incremental |
 | 💻 **Aba no Computador** | Dados Tanium diretamente na ficha do ativo no GLPI |
 | 🎯 **Widget Central** | Resumo de risco no painel inicial do GLPI |
 | 🔒 **Perfis** | Controle de acesso granular por perfil GLPI |
-| 🔥 **EPSS / CISA KEV** | Enriquecimento diário de CVEs com probabilidade de exploração e catálogo KEV |
+| 🔥 **EPSS / CISA KEV** | Enriquecimento diário de CVEs com probabilidade de exploração e catálogo KEV; filtros "somente KEV" / "somente ransomware" com priorização por EPSS |
 | ⏱️ **SLA + MTTR** | Prazos de remediação por severidade, compliance, MTTR 90d e webhook diário de violação |
 | 🛰️ **Saúde do agente** | Detecção de agentes silenciosos com chamado consolidado automático |
-| 📐 **Comply / Threat Response** | Benchmarks CIS/DISA por endpoint e alertas de ameaça → chamados |
+| 📐 **Comply / Threat Response** | Benchmarks CIS/DISA por endpoint e alertas de ameaça → chamados, com página dedicada de alertas |
+| 🩺 **Boletim de Saúde** | Nota 0–10 e veredito por endpoint, com exportação em PDF |
+| 🔐 **Hardening** | Token da API armazenado cifrado (GLPIKey) e monitoramento de expiração |
 | 🛡️ **Ações remotas** | Quarentena / reinício do client condicionados à aprovação do chamado |
 | 🧩 **Dashboard cards nativos** | 7 cards no dashboard nativo do GLPI (grupo "Tanium") |
 | 🔗 **Correlação cross-plugin** | Badges quando o CVE também é visto pelo Nessus/SentinelOne |
 | 📄 **Exportações** | PDF do comparativo de endpoints e busca nativa GLPI com CSV |
-| 🌐 **i18n completa** | 515 strings traduzidas para pt_BR (.mo compilado) |
+| 🌐 **i18n completa** | 570 strings traduzidas para pt_BR (.mo compilado) |
 
 ### 🚀 Requisitos
 
@@ -89,23 +91,41 @@ glpi/plugins/
 | `taniumsync` | 1 hora | Sincroniza endpoints e vulnerabilidades |
 | `weeklyreport` | 7 dias | Envia relatório semanal por e-mail |
 | `checkdeployments` | 5 minutos | Monitora e fecha tickets de patches concluídos |
+| `epsskev` | 1 dia | Atualiza scores EPSS e flags do catálogo CISA KEV |
+| `agenthealth` | 1 dia | Detecta agentes silenciosos e abre chamado consolidado |
+| `complysync` | 1 dia | Importa resultados de benchmark (CIS/DISA) do Tanium Comply |
+| `threatsync` | 15 minutos | Importa alertas do Threat Response e abre chamados |
+| `slabreach` | 1 dia | Webhook diário enquanto houver violações de SLA |
+| `purgehistory` | 1 dia | Expurga histórico além da retenção configurada |
+| `apihealth` | 1 dia | Verifica saúde da API e avisa antes do token expirar |
 
 ### 🗂️ Estrutura do Código
 
 ```
 src/
-├── Api.php           — Comunicação com a API REST Tanium
-├── Sync.php          — Lógica de sincronização de endpoints
-├── Dashboard.php     — Dashboard e KPIs de risco
-├── Vulnerability.php — Gestão de CVEs e remediação
-├── PatchDeploy.php   — Implantação e monitoramento de patches
-├── Config.php        — Configurações do plugin
-├── Profile.php       — Controle de acesso por perfil
-├── Cron.php          — Tarefas agendadas
-├── WeeklyReport.php  — Relatório semanal de segurança
-├── ComputerTab.php   — Aba Tanium na ficha do computador
-├── CentralWidget.php — Widget no painel central do GLPI
-└── Notification.php  — Notificações GLPI
+├── Api.php            — Comunicação com a API REST/GraphQL Tanium
+├── Sync.php           — Sincronização de endpoints (incremental server-side)
+├── Dashboard.php      — Dashboard e KPIs de risco
+├── DashboardCards.php — Cards no dashboard nativo do GLPI
+├── Vulnerability.php  — Gestão de CVEs e remediação
+├── Enrichment.php     — EPSS / CISA KEV
+├── Sla.php            — SLA de remediação e MTTR
+├── AgentHealth.php    — Agentes silenciosos
+├── Compliance.php     — Benchmarks Comply (CIS/DISA)
+├── ThreatResponse.php — Alertas de ameaça → chamados
+├── HealthReport.php   — Boletim de Saúde da frota (nota por endpoint)
+├── RemoteAction.php   — Ações remotas condicionadas a aprovação
+├── PatchDeploy.php    — Implantação e monitoramento de patches
+├── CrossPlugin.php    — Correlação com Nessus/SentinelOne
+├── PdfReport.php      — Exportações em PDF
+├── Config.php         — Configurações do plugin
+├── Profile.php        — Controle de acesso por perfil
+├── Cron.php           — Tarefas agendadas
+├── WeeklyReport.php   — Relatório semanal de segurança
+├── ComputerTab.php    — Aba Tanium na ficha do computador
+├── ComputerGroup.php  — Grupos de computadores Tanium
+├── CentralWidget.php  — Widget no painel central do GLPI
+└── Notification.php   — Notificações GLPI
 ```
 
 ---
@@ -125,21 +145,23 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | 🖥️ **Endpoints** | Syncs Tanium computers as GLPI assets |
 | 🔍 **CVE Vulnerabilities** | Imports CVEs with severity, CVSS score and remediation status |
 | 🩹 **Patch Remediation** | Tracks missing patches and deployment history |
-| 📊 **Dashboard** | KPI panel with risk, compliance and coverage metrics |
+| 📊 **Dashboard** | KPI panel with risk, compliance and coverage metrics — every card drills down to the filtered list |
 | 🗓️ **Weekly Report** | Automated security report delivery by e-mail |
 | ⚙️ **Synchronization** | Cron scheduling with incremental sync support |
 | 💻 **Computer Tab** | Tanium data directly on the asset record in GLPI |
 | 🎯 **Central Widget** | Risk summary on the GLPI home panel |
 | 🔒 **Profiles** | Granular access control per GLPI profile |
-| 🔥 **EPSS / CISA KEV** | Daily CVE enrichment with exploitation probability and the KEV catalog |
+| 🔥 **EPSS / CISA KEV** | Daily CVE enrichment with exploitation probability and the KEV catalog; KEV-only / ransomware-only filters ranked by EPSS |
 | ⏱️ **SLA + MTTR** | Per-severity remediation deadlines, compliance, 90-day MTTR and daily breach webhook |
 | 🛰️ **Agent health** | Silent-agent detection with automatic consolidated ticket |
-| 📐 **Comply / Threat Response** | CIS/DISA benchmarks per endpoint and threat alerts → tickets |
+| 📐 **Comply / Threat Response** | CIS/DISA benchmarks per endpoint and threat alerts → tickets, with a dedicated alert list page |
+| 🩺 **Fleet Health Report** | 0–10 score and verdict per endpoint, with PDF export |
+| 🔐 **Hardening** | API token stored encrypted (GLPIKey) with expiry monitoring |
 | 🛡️ **Remote actions** | Quarantine / client restart gated by ticket approval |
 | 🧩 **Native dashboard cards** | 7 cards in the native GLPI dashboard ("Tanium" group) |
 | 🔗 **Cross-plugin correlation** | Badges when a CVE is also seen by Nessus/SentinelOne |
 | 📄 **Exports** | Endpoint comparison PDF and native GLPI search with CSV |
-| 🌐 **Full i18n** | 515 strings translated to pt_BR (compiled .mo) |
+| 🌐 **Full i18n** | 570 strings translated to pt_BR (compiled .mo) |
 
 ### 🚀 Requirements
 
@@ -176,23 +198,36 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | `complysync` | 1 day | Imports Comply benchmark results (CIS/DISA) |
 | `threatsync` | 15 minutes | Imports Threat Response alerts and opens tickets |
 | `slabreach` | 1 day | Webhook alert while SLA breaches exist |
+| `purgehistory` | 1 day | Purges history rows past the configured retention |
+| `apihealth` | 1 day | Checks API health and warns before the token expires |
 
 ### 🗂️ Code Structure
 
 ```
 src/
-├── Api.php           — Tanium REST API communication
-├── Sync.php          — Endpoint synchronization logic
-├── Dashboard.php     — Dashboard & risk KPIs
-├── Vulnerability.php — CVE management & remediation
-├── PatchDeploy.php   — Patch deployment & monitoring
-├── Config.php        — Plugin settings
-├── Profile.php       — Profile-based access control
-├── Cron.php          — Scheduled tasks
-├── WeeklyReport.php  — Weekly security report
-├── ComputerTab.php   — Tanium tab on Computer record
-├── CentralWidget.php — GLPI central panel widget
-└── Notification.php  — GLPI notifications
+├── Api.php            — Tanium REST/GraphQL API communication
+├── Sync.php           — Endpoint synchronization (server-side incremental)
+├── Dashboard.php      — Dashboard & risk KPIs
+├── DashboardCards.php — Cards for the native GLPI dashboard
+├── Vulnerability.php  — CVE management & remediation
+├── Enrichment.php     — EPSS / CISA KEV
+├── Sla.php            — Remediation SLA & MTTR
+├── AgentHealth.php    — Silent agents
+├── Compliance.php     — Comply benchmarks (CIS/DISA)
+├── ThreatResponse.php — Threat alerts → tickets
+├── HealthReport.php   — Fleet health report (per-endpoint score)
+├── RemoteAction.php   — Approval-gated remote actions
+├── PatchDeploy.php    — Patch deployment & monitoring
+├── CrossPlugin.php    — Nessus/SentinelOne correlation
+├── PdfReport.php      — PDF exports
+├── Config.php         — Plugin settings
+├── Profile.php        — Profile-based access control
+├── Cron.php           — Scheduled tasks
+├── WeeklyReport.php   — Weekly security report
+├── ComputerTab.php    — Tanium tab on Computer record
+├── ComputerGroup.php  — Tanium computer groups
+├── CentralWidget.php  — GLPI central panel widget
+└── Notification.php   — GLPI notifications
 ```
 
 ### 📄 License
