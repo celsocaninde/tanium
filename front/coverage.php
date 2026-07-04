@@ -69,7 +69,11 @@ if ($tab === 'without_tanium') {
         LEFT JOIN glpi_entities e              ON c.entities_id = e.id
         LEFT JOIN glpi_locations l             ON c.locations_id = l.id
         LEFT JOIN glpi_states s                ON c.states_id = s.id
-        LEFT JOIN glpi_groups g                ON c.groups_id = g.id
+        LEFT JOIN glpi_groups g                ON g.id = (
+            SELECT gi.groups_id FROM glpi_groups_items gi
+            WHERE gi.itemtype = 'Computer' AND gi.items_id = c.id AND gi.type = 1
+            LIMIT 1
+        )
         LEFT JOIN glpi_users u                 ON c.users_id = u.id
         WHERE c.is_deleted=0 AND c.is_template=0 AND a.computers_id IS NULL
         {$srchSql}
@@ -221,7 +225,9 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                 <th><?= __('Entity', 'tanium') ?></th>
                 <th><?= __('State', 'tanium') ?></th>
                 <th><?= __('Last modified', 'tanium') ?></th>
-                <th></th>
+                <th style="width:36px">
+                    <input type="checkbox" onchange="document.querySelectorAll('.cov-check').forEach(c => c.checked = this.checked); covUpdateBar()" style="cursor:pointer"/>
+                </th>
             </tr>
         </thead>
         <tbody>
@@ -240,12 +246,20 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
             <td class="tanium-small"><?= htmlspecialchars($r['state_name'] ?? '—') ?></td>
             <td class="tanium-small"><?= $r['date_mod'] ? Html::convDateTime($r['date_mod']) : '—' ?></td>
             <td>
-                <span class="tanium-badge tanium-badge-error tanium-small">No agent</span>
+                <input type="checkbox" class="cov-check" data-cid="<?= (int)$r['id'] ?>" onchange="covUpdateBar()" style="cursor:pointer"
+                       title="<?= __('Select for agent-install ticket', 'tanium') ?>"/>
             </td>
         </tr>
         <?php endforeach; ?>
         </tbody>
     </table>
+    <div id="cov-bulk-bar" style="display:none;padding:10px 16px;border-top:1px solid rgba(122,141,168,.25)">
+        <button class="tanium-btn tanium-btn-primary" onclick="covAgentTicket()">
+            <span class="ti ti-ticket"></span>
+            <?= __('Open agent-install ticket for selected', 'tanium') ?>
+            (<span id="cov-count">0</span>)
+        </button>
+    </div>
 
     <?php elseif ($tab === 'with_tanium'): ?>
     <!-- GLPI computers WITH Tanium -->
@@ -354,10 +368,14 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                 <span class="tanium-badge tanium-badge-success">0</span>
                 <?php endif; ?>
             </td>
-            <td>
+            <td style="white-space:nowrap">
                 <a href="<?= $webDir ?>/front/endpoint.php?eid=<?= urlencode($r['tanium_eid']) ?>" class="tanium-btn-xs tanium-btn-secondary" title="View in Tanium">
                     <span class="ti ti-shield"></span>
                 </a>
+                <button class="tanium-btn-xs tanium-btn-primary" title="<?= __('Create GLPI computer now', 'tanium') ?>"
+                        onclick="covCreateComputer('<?= htmlspecialchars(addslashes($r['tanium_eid'])) ?>', this)">
+                    <span class="ti ti-device-desktop-plus"></span>
+                </button>
             </td>
         </tr>
         <?php endforeach; ?>
@@ -378,4 +396,50 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
 </div><!-- card -->
 
 </div><!-- .tanium-page-wrap -->
+
+<script>
+const covCsrf   = <?= json_encode(Session::getNewCSRFToken()) ?>;
+const covAjax   = <?= json_encode($webDir . '/ajax/coverage_action.php') ?>;
+
+function covUpdateBar() {
+    const n   = document.querySelectorAll('.cov-check:checked').length;
+    const bar = document.getElementById('cov-bulk-bar');
+    if (bar) {
+        bar.style.display = n > 0 ? 'block' : 'none';
+        document.getElementById('cov-count').textContent = n;
+    }
+}
+
+async function covAgentTicket() {
+    const ids = Array.from(document.querySelectorAll('.cov-check:checked')).map(c => parseInt(c.dataset.cid, 10));
+    if (!ids.length) { return; }
+    const r = await fetch(covAjax, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': covCsrf},
+        body: JSON.stringify({action: 'agent_ticket', computers_ids: ids})
+    });
+    const d = await r.json();
+    if (d.success) {
+        window.open('/front/ticket.form.php?id=' + d.ticket_id, '_blank');
+    } else {
+        alert(d.error || 'Error');
+    }
+}
+
+async function covCreateComputer(eid, btn) {
+    btn.disabled = true;
+    const r = await fetch(covAjax, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': covCsrf},
+        body: JSON.stringify({action: 'create_computer', tanium_eid: eid})
+    });
+    const d = await r.json();
+    if (d.success) {
+        location.reload();
+    } else {
+        alert(d.error || 'Error');
+        btn.disabled = false;
+    }
+}
+</script>
 <?php Html::footer();

@@ -11,6 +11,8 @@ use IPAddress;
 use Item_DeviceMemory;
 use Item_DeviceProcessor;
 use Item_SoftwareVersion;
+use Item_Ticket;
+use Ticket;
 use NetworkName;
 use NetworkPort;
 use OperatingSystem;
@@ -201,7 +203,8 @@ class Sync extends CommonGLPI {
             // next. Holding the whole fleet plus CVE/software/patch enrichment in
             // memory at once can exceed 1 GB and take the container down — this
             // keeps peak memory bounded regardless of fleet size.
-            $fleetSize = 0;
+            $fleetSize  = 0;
+            $withGroups = !empty($config['sync_group_membership']);
             $api->eachEndpointPage($limit, $withCves, $withApps, $withPatches,
                 function (array $page, int $totalRecords) use (
                     &$created, &$updated, &$errors, &$total, &$fleetSize,
@@ -263,7 +266,8 @@ class Sync extends CommonGLPI {
                     }
 
                     self::updateLogProgress($logId, $total, $fleetSize ?: $total);
-                }
+                },
+                $withGroups
             );
 
             // Fleet-wide CVE impact count (per-page upserts only see their page).
@@ -294,13 +298,20 @@ class Sync extends CommonGLPI {
             Notification::sendWebhook($config['webhook_url'], $payload);
         }
 
+        // Enriched details shared by the email alert and the auto-ticket below
+        $critDetails = [];
+        if (self::$newCriticalCves > 0
+            && (!empty($config['notify_critical']) || !empty($config['auto_ticket_critical']))) {
+            $critDetails = self::enrichCriticalCveDetails(self::$newCriticalCveDetails);
+        }
+
         // Email on new critical CVEs
         if (!empty($config['notify_critical']) && self::$newCriticalCves > 0) {
             $recipients = Config::resolveNotifyRecipients($config);
             if ($recipients !== []) {
                 global $CFG_GLPI;
                 $glpiUrl = $CFG_GLPI['url_base'] ?? '';
-                $details = self::enrichCriticalCveDetails(self::$newCriticalCveDetails);
+                $details = $critDetails;
                 $subject = sprintf('[Tanium] %d new critical CVE(s) detected', self::$newCriticalCves);
                 $body    = Notification::buildCriticalEmailBody(self::$newCriticalCves, $details, $glpiUrl);
 
@@ -320,9 +331,98 @@ class Sync extends CommonGLPI {
             }
         }
 
+        // Consolidated GLPI ticket for the new critical CVEs (opt-in setting)
+        if (!empty($config['auto_ticket_critical']) && self::$newCriticalCves > 0) {
+            self::openCriticalCveTicket($critDetails, $config);
+        }
+
         self::$newCriticalCves = 0;
         self::$newCriticalCveDetails = [];
         return self::result($total, $created, $updated, $errors);
+    }
+
+    /**
+     * Open ONE consolidated ticket listing the critical CVEs found by this
+     * sync (never one per finding). Skips while a previous auto-opened ticket
+     * is still unresolved, so reruns don't flood the helpdesk.
+     */
+    private static function openCriticalCveTicket(array $details, array $config): int {
+        global $DB;
+
+        $title = '[Tanium] Novos CVEs críticos detectados';
+
+        $open = $DB->request([
+            'SELECT' => ['id'],
+            'FROM'   => 'glpi_tickets',
+            'WHERE'  => [
+                'name'       => $title,
+                'is_deleted' => 0,
+                'NOT'        => ['status' => [Ticket::SOLVED, Ticket::CLOSED]],
+            ],
+            'LIMIT'  => 1,
+        ])->current();
+        if ($open) {
+            return 0;
+        }
+
+        $lines   = [];
+        $lines[] = sprintf(
+            'A sincronização com o Tanium detectou %d novo(s) CVE(s) crítico(s):',
+            self::$newCriticalCves
+        );
+        $lines[] = '';
+        foreach (array_slice($details, 0, 30) as $d) {
+            $lines[] = sprintf(
+                '- %s (CVSS %s) em %s%s — https://nvd.nist.gov/vuln/detail/%s',
+                $d['cve_id'],
+                $d['cvss'] !== null && $d['cvss'] !== '' ? $d['cvss'] : '?',
+                $d['endpoint'],
+                !empty($d['title']) ? ' · ' . $d['title'] : '',
+                rawurlencode((string)$d['cve_id'])
+            );
+        }
+        if (count($details) > 30) {
+            $lines[] = sprintf('… e mais %d finding(s).', count($details) - 30);
+        }
+        $lines[] = '';
+        $lines[] = 'Priorize a remediação conforme o SLA configurado no plugin Tanium.';
+
+        $ticket   = new Ticket();
+        $ticketId = (int)$ticket->add([
+            'name'        => $title,
+            'content'     => implode("\n", $lines),
+            'entities_id' => (int)($config['ticket_entity_id'] ?? 0),
+            'type'        => Ticket::INCIDENT_TYPE,
+            'priority'    => 5,
+            'urgency'     => 5,
+            'impact'      => 5,
+        ]);
+        if (!$ticketId) {
+            return 0;
+        }
+
+        // Link the affected computers so the ticket lands on the right assets
+        $eids = array_values(array_unique(array_column($details, 'eid')));
+        if ($eids !== []) {
+            $linked = [];
+            foreach ($DB->request([
+                'SELECT' => ['computers_id'],
+                'FROM'   => 'glpi_plugin_tanium_assets',
+                'WHERE'  => ['tanium_eid' => $eids, ['computers_id' => ['>', 0]]],
+            ]) as $r) {
+                $cid = (int)$r['computers_id'];
+                if ($cid > 0 && !isset($linked[$cid])) {
+                    $linked[$cid] = true;
+                    (new Item_Ticket())->add([
+                        'tickets_id' => $ticketId,
+                        'itemtype'   => 'Computer',
+                        'items_id'   => $cid,
+                    ]);
+                }
+            }
+        }
+
+        return $ticketId;
     }
 
     /**
@@ -404,11 +504,24 @@ class Sync extends CommonGLPI {
 
         $fields = self::buildComputerFields($endpoint, $config);
 
+        // Entity: mapped Tanium group wins, otherwise the configured default.
+        // Only applied on creation — never re-home an existing computer.
+        if ($isNew) {
+            $groupEntity = ComputerGroup::entityForGroups($endpoint['computerGroups'] ?? []);
+            if ($groupEntity !== null) {
+                $fields['entities_id'] = $groupEntity;
+            }
+        }
+
         if ($isNew) {
             $computerId = $computer->add($fields);
             if (!$computerId) {
                 throw new \RuntimeException("Failed to create GLPI computer for EID {$eid}");
             }
+            \Log::history($computerId, 'Computer', [0, '', sprintf(
+                __('Created by Tanium sync (EID %s)', 'tanium'),
+                $eid
+            )], 0, \Log::HISTORY_LOG_SIMPLE_MESSAGE);
         } else {
             // Merge, don't clobber: only fill fields that are empty on the existing
             // record, so authoritative agent data is never overwritten by Tanium.
@@ -566,7 +679,7 @@ class Sync extends CommonGLPI {
     private static function buildComputerFields(array $e, array $config): array {
         $fields = [
             'name'        => $e['computerName'] ?? $e['name'] ?? 'Unknown',
-            'entities_id' => 0,
+            'entities_id' => (int)($config['default_entity_id'] ?? 0),
             'is_dynamic'  => 1,
         ];
 
@@ -780,6 +893,9 @@ class Sync extends CommonGLPI {
     private static function syncEndpointCVEs(string $eid, int $computerId, array $cves, string $computerName = ''): void {
         global $DB;
 
+        $newFindings    = 0;
+        $statusChanges  = 0;
+
         $now = date('Y-m-d H:i:s');
         foreach ($cves as $finding) {
             $cveId = $finding['cveId'] ?? $finding['cve'] ?? $finding['id'] ?? '';
@@ -805,6 +921,7 @@ class Sync extends CommonGLPI {
             if ($existing) {
                 // Detect status change → write to CVE history
                 if ($existing['status'] !== $record['status']) {
+                    $statusChanges++;
                     $DB->insert('glpi_plugin_tanium_cve_history', [
                         'tanium_eid'   => $eid,
                         'cve_id'       => $cveId,
@@ -819,6 +936,7 @@ class Sync extends CommonGLPI {
                     'cve_id'     => $cveId,
                 ]);
             } else {
+                $newFindings++;
                 // New CVE finding
                 if (($record['severity'] ?? '') === 'critical') {
                     self::$newCriticalCves++;
@@ -842,6 +960,17 @@ class Sync extends CommonGLPI {
                     'cve_id'     => $cveId,
                 ]));
             }
+        }
+
+        // One line in the Computer's native history tab per sync that changed
+        // something — auditors see Tanium touched the asset without opening the
+        // plugin. Silent runs (no delta) write nothing to avoid log spam.
+        if ($computerId > 0 && ($newFindings > 0 || $statusChanges > 0)) {
+            \Log::history($computerId, 'Computer', [0, '', sprintf(
+                __('Tanium sync: %1$d new CVE finding(s), %2$d status change(s)', 'tanium'),
+                $newFindings,
+                $statusChanges
+            )], 0, \Log::HISTORY_LOG_SIMPLE_MESSAGE);
         }
     }
 
@@ -899,14 +1028,21 @@ class Sync extends CommonGLPI {
 
         $score = 0.0;
 
-        // CVE contribution: Critical=10, High=5, Medium=2, Low=0.5
+        // CVE contribution: Critical=10, High=5, Medium=2, Low=0.5.
+        // A CVE in the CISA KEV catalog (confirmed active exploitation) weighs
+        // double — being exploited in the wild trumps theoretical severity.
         $cveWeights = ['critical' => 10, 'high' => 5, 'medium' => 2, 'low' => 0.5];
+        $kevSet     = Enrichment::kevSet();
         foreach ($DB->request([
             'FROM'  => 'glpi_plugin_tanium_endpoint_cves',
             'WHERE' => ['tanium_eid' => $eid, 'status' => ['!=', 'remediated']],
         ]) as $cve) {
             $sev    = strtolower($cve['severity'] ?? 'low');
-            $score += (float) ($cveWeights[$sev] ?? 0.5);
+            $weight = (float) ($cveWeights[$sev] ?? 0.5);
+            if (isset($kevSet[strtoupper($cve['cve_id'] ?? '')])) {
+                $weight *= 2;
+            }
+            $score += $weight;
         }
 
         // Missing patch contribution: Critical=5, Important=3, Moderate=1, Low=0.3

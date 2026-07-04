@@ -226,6 +226,10 @@ class PatchDeploy extends CommonGLPI {
                 ]);
             }
 
+            if ($taniumDepId) {
+                self::notifyDeployWebhook('started', $dep, count($patches), (string)$taniumDepId);
+            }
+
             return ['success' => (bool)$taniumDepId, 'tanium_deployment_id' => $taniumDepId];
 
         } catch (\Exception $e) {
@@ -236,6 +240,38 @@ class PatchDeploy extends CommonGLPI {
                 $DB->escape($e->getMessage()), $depId
             ));
             return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Webhook on deploy lifecycle events (started/deployed/failed), gated by
+     * the "webhook_deploy" plugin setting. Never throws — a webhook failure
+     * must not break the deployment flow.
+     */
+    private static function notifyDeployWebhook(string $event, array $dep, int $patchCount, string $taniumDepId = '', string $error = ''): void {
+        global $DB;
+
+        try {
+            $config = Config::getConfig();
+            if (empty($config['webhook_deploy']) || empty($config['webhook_url'])) {
+                return;
+            }
+
+            $endpointName = (string)$dep['tanium_eid'];
+            $ar = $DB->doQuery(
+                "SELECT tanium_name FROM `glpi_plugin_tanium_assets`
+                 WHERE tanium_eid = '" . $DB->escape($dep['tanium_eid']) . "' LIMIT 1"
+            );
+            if ($ar && ($a = $ar->fetch_assoc()) && !empty($a['tanium_name'])) {
+                $endpointName = $a['tanium_name'];
+            }
+
+            Notification::sendWebhook(
+                $config['webhook_url'],
+                Notification::buildDeployPayload($event, $endpointName, $patchCount, (int)$dep['ticket_id'], $taniumDepId, $error)
+            );
+        } catch (\Throwable $e) {
+            \Toolbox::logInFile('tanium', '[Tanium] Deploy webhook error: ' . $e->getMessage() . "\n");
         }
     }
 
@@ -298,6 +334,13 @@ class PatchDeploy extends CommonGLPI {
                             'is_private' => 0,
                         ]);
                     }
+                    self::notifyDeployWebhook(
+                        'failed',
+                        $dep,
+                        count(json_decode($dep['patch_ids'], true) ?: []),
+                        (string)$dep['tanium_deployment_id'],
+                        'Tanium status: ' . $taniumState
+                    );
                     $processed++;
                 }
             } catch (\Exception $e) {
@@ -343,6 +386,8 @@ class PatchDeploy extends CommonGLPI {
 
         // Recalculate endpoint risk score
         Sync::updateRiskScore($dep['tanium_eid']);
+
+        self::notifyDeployWebhook('deployed', $dep, count($patches), (string)($dep['tanium_deployment_id'] ?? ''));
 
         // Auto-close the GLPI ticket with a solution comment
         if ($dep['ticket_id']) {

@@ -35,6 +35,19 @@ $loadEndpoint = function(string $eid) use ($DB): ?array {
 $ep1 = $loadEndpoint($eid1);
 $ep2 = $loadEndpoint($eid2);
 
+// PDF export — must run before any HTML output
+if (($_GET['export'] ?? '') === 'pdf' && $ep1 && $ep2) {
+    $pdf = \GlpiPlugin\Tanium\PdfReport::compare($ep1, $ep2);
+    if ($pdf !== null) {
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="tanium-compare-' . date('Y-m-d') . '.pdf"');
+        header('Content-Length: ' . strlen($pdf));
+        echo $pdf;
+        exit;
+    }
+    Session::addMessageAfterRedirect(__('PDF generation failed — check tanium.log.', 'tanium'), false, ERROR);
+}
+
 $sevClass = function(string $s): string {
     return match(strtolower($s)) { 'critical' => 'tanium-badge-critical', 'high' => 'tanium-badge-high', 'medium' => 'tanium-badge-warning', 'low' => 'tanium-badge-success', default => 'tanium-badge-muted' };
 };
@@ -71,6 +84,11 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                 </select>
             </div>
             <button type="submit" class="tanium-btn tanium-btn-primary"><span class="ti ti-git-compare"></span> <?= __('Compare', 'tanium') ?></button>
+            <?php if ($ep1 && $ep2): ?>
+            <a href="?eid1=<?= urlencode($eid1) ?>&eid2=<?= urlencode($eid2) ?>&export=pdf" class="tanium-btn tanium-btn-secondary">
+                <span class="ti ti-file-type-pdf"></span> <?= __('Export PDF', 'tanium') ?>
+            </a>
+            <?php endif; ?>
         </form>
     </div>
 </div>

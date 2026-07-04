@@ -36,6 +36,20 @@ if (isset($_POST['save'])) {
         'sla_medium_days'      => max(1, (int)($_POST['sla_medium_days']   ?? 90)),
         'patch_limiting_group_id' => max(0, (int)($_POST['patch_limiting_group_id'] ?? 0)),
         'ticket_entity_id'        => max(0, (int)($_POST['ticket_entity_id'] ?? 0)),
+        'default_entity_id'       => max(0, (int)($_POST['default_entity_id'] ?? 0)),
+        'sync_group_membership'   => isset($_POST['sync_group_membership']) ? 1 : 0,
+        'agent_stale_days'        => max(1, (int)($_POST['agent_stale_days'] ?? 7)),
+        'agent_health_ticket'     => isset($_POST['agent_health_ticket']) ? 1 : 0,
+        'sync_compliance'         => isset($_POST['sync_compliance']) ? 1 : 0,
+        'sync_threats'            => isset($_POST['sync_threats']) ? 1 : 0,
+        'threat_ticket'           => isset($_POST['threat_ticket']) ? 1 : 0,
+        'threat_min_severity'     => in_array($_POST['threat_min_severity'] ?? '', ['info', 'low', 'medium', 'high', 'critical'])
+            ? $_POST['threat_min_severity'] : 'high',
+        'webhook_sla'             => isset($_POST['webhook_sla']) ? 1 : 0,
+        'webhook_deploy'          => isset($_POST['webhook_deploy']) ? 1 : 0,
+        'auto_ticket_critical'    => isset($_POST['auto_ticket_critical']) ? 1 : 0,
+        'quarantine_package'      => trim($_POST['quarantine_package'] ?? ''),
+        'restart_package'         => trim($_POST['restart_package'] ?? ''),
     ]);
 
     Session::addMessageAfterRedirect(__('Tanium configuration saved.', 'tanium'), true, INFO);

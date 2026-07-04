@@ -32,15 +32,26 @@ class Sla {
     }
 
     /**
+     * Shared SQL fragment: LEFT JOIN that matches only ACTIVE exceptions.
+     * An expired exception (expires_at in the past) no longer matches, so the
+     * finding goes back to counting toward SLA. Pair with "ex.id IS NULL".
+     */
+    public static function activeExceptionJoin(string $cveAlias = 'ec', string $exAlias = 'ex'): string {
+        return "LEFT JOIN glpi_plugin_tanium_cve_exceptions {$exAlias}
+                   ON {$exAlias}.tanium_eid = {$cveAlias}.tanium_eid
+                  AND {$exAlias}.cve_id = {$cveAlias}.cve_id
+                  AND ({$exAlias}.expires_at IS NULL OR {$exAlias}.expires_at > NOW())";
+    }
+
+    /**
      * Shared SQL fragment: open findings that count toward SLA (not remediated,
-     * not excepted, severity has a deadline). $alias is the endpoint_cves alias.
+     * not actively excepted, severity has a deadline).
      */
     private static function openFindingsJoin(): string {
         return "
             FROM glpi_plugin_tanium_endpoint_cves ec
             JOIN glpi_plugin_tanium_vulnerabilities v ON ec.cve_id = v.cve_id
-            LEFT JOIN glpi_plugin_tanium_cve_exceptions ex
-                   ON ex.tanium_eid = ec.tanium_eid AND ex.cve_id = ec.cve_id
+            " . self::activeExceptionJoin() . "
             WHERE ec.status != 'remediated'
               AND ex.id IS NULL
               AND ec.detected_at IS NOT NULL
@@ -135,8 +146,7 @@ class Sla {
             FROM glpi_plugin_tanium_endpoint_cves ec
             JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = ec.tanium_eid
             JOIN glpi_plugin_tanium_vulnerabilities v ON ec.cve_id = v.cve_id
-            LEFT JOIN glpi_plugin_tanium_cve_exceptions ex
-                   ON ex.tanium_eid = ec.tanium_eid AND ex.cve_id = ec.cve_id
+            " . self::activeExceptionJoin() . "
             WHERE ec.status != 'remediated'
               AND ex.id IS NULL
               AND ec.detected_at IS NOT NULL
@@ -149,6 +159,79 @@ class Sla {
             GROUP BY a.tanium_eid
             ORDER BY crit_breached DESC, breached DESC
             LIMIT {$limit}
+        ";
+
+        $rows = [];
+        foreach ($DB->doQuery($sql) as $r) {
+            $rows[] = $r;
+        }
+        return $rows;
+    }
+
+    /**
+     * Mean Time To Remediate per severity over the trailing window, in days.
+     * A remediation is a cve_history transition to status "remediated"; its
+     * duration is measured from the finding's detected_at.
+     *
+     * @return array{critical:?float,high:?float,medium:?float,low:?float,overall:?float,count:int}
+     */
+    public static function getMttr(int $windowDays = 90): array {
+        global $DB;
+
+        $windowDays = max(1, $windowDays);
+        $sql = "
+            SELECT LOWER(v.severity) AS sev,
+                   AVG(GREATEST(0, DATEDIFF(h.changed_at, ec.detected_at))) AS mttr,
+                   COUNT(*) AS cpt
+            FROM glpi_plugin_tanium_cve_history h
+            JOIN glpi_plugin_tanium_endpoint_cves ec
+                 ON ec.tanium_eid = h.tanium_eid AND ec.cve_id = h.cve_id
+            JOIN glpi_plugin_tanium_vulnerabilities v ON v.cve_id = h.cve_id
+            WHERE h.new_status = 'remediated'
+              AND h.changed_at >= DATE_SUB(NOW(), INTERVAL {$windowDays} DAY)
+              AND ec.detected_at IS NOT NULL
+            GROUP BY LOWER(v.severity)
+        ";
+
+        $out = ['critical' => null, 'high' => null, 'medium' => null, 'low' => null, 'overall' => null, 'count' => 0];
+        $sum = 0.0;
+        foreach ($DB->doQuery($sql) as $r) {
+            $sev = $r['sev'];
+            if (array_key_exists($sev, $out)) {
+                $out[$sev] = round((float)$r['mttr'], 1);
+            }
+            $sum          += (float)$r['mttr'] * (int)$r['cpt'];
+            $out['count'] += (int)$r['cpt'];
+        }
+        if ($out['count'] > 0) {
+            $out['overall'] = round($sum / $out['count'], 1);
+        }
+        return $out;
+    }
+
+    /**
+     * Security-posture ranking by OS platform: endpoint count, average risk
+     * score and open critical findings. Ordered worst-first.
+     */
+    public static function getPlatformBenchmark(): array {
+        global $DB;
+
+        $sql = "
+            SELECT a.os_platform,
+                   COUNT(DISTINCT a.tanium_eid) AS endpoints,
+                   ROUND(AVG(a.risk_score), 1)  AS avg_risk,
+                   COALESCE(SUM(oc.crit_open), 0) AS crit_open
+            FROM glpi_plugin_tanium_assets a
+            LEFT JOIN (
+                SELECT ec.tanium_eid, COUNT(*) AS crit_open
+                FROM glpi_plugin_tanium_endpoint_cves ec
+                JOIN glpi_plugin_tanium_vulnerabilities v ON v.cve_id = ec.cve_id
+                WHERE ec.status != 'remediated' AND v.severity = 'critical'
+                GROUP BY ec.tanium_eid
+            ) oc ON oc.tanium_eid = a.tanium_eid
+            WHERE a.os_platform IS NOT NULL AND a.os_platform != ''
+            GROUP BY a.os_platform
+            ORDER BY avg_risk DESC
         ";
 
         $rows = [];
@@ -179,8 +262,7 @@ class Sla {
             FROM glpi_plugin_tanium_endpoint_cves ec
             JOIN glpi_plugin_tanium_vulnerabilities v ON ec.cve_id = v.cve_id
             JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = ec.tanium_eid
-            LEFT JOIN glpi_plugin_tanium_cve_exceptions ex
-                   ON ex.tanium_eid = ec.tanium_eid AND ex.cve_id = ec.cve_id
+            " . self::activeExceptionJoin() . "
             WHERE ec.status != 'remediated'
               AND ex.id IS NULL
               AND ec.detected_at IS NOT NULL
@@ -207,6 +289,8 @@ class Sla {
         $stats     = self::getStats();
         $topBreach = self::getTopBreachedEndpoints(10);
         $overdue   = self::getMostOverdue(10);
+        $mttr      = self::getMttr(90);
+        $benchmark = self::getPlatformBenchmark();
         $d         = self::days();
         $config    = Config::getConfig();
         $webDir    = Plugin::getWebDir('tanium');
@@ -281,6 +365,73 @@ class Sla {
                 <div class="tanium-kpi-label"><?= __('SLA breached (overdue)', 'tanium') ?></div>
             </div>
         </div>
+
+        <!-- MTTR (trailing 90 days) -->
+        <div class="tanium-card">
+            <div class="tanium-card-header">
+                <span class="ti ti-clock-check"></span> <?= __('Mean Time To Remediate — last 90 days', 'tanium') ?>
+                <span class="tanium-muted" style="margin-left:8px;font-size:.8rem">
+                    (<?= number_format($mttr['count']) ?> <?= __('remediations', 'tanium') ?>)
+                </span>
+            </div>
+            <div class="tanium-card-body">
+                <?php if ($mttr['count'] === 0): ?>
+                    <p class="tanium-empty"><?= __('No remediations recorded in the window yet. MTTR appears after synced CVEs transition to "remediated".', 'tanium') ?></p>
+                <?php else: ?>
+                <div class="tanium-kpi-grid">
+                    <?php foreach ([
+                        'overall'  => [__('Overall', 'tanium'), '#7a8da8'],
+                        'critical' => [__('Critical', 'tanium'), '#e8212a'],
+                        'high'     => [__('High', 'tanium'), '#f0a030'],
+                        'medium'   => [__('Medium', 'tanium'), '#e8c42a'],
+                    ] as $key => [$label, $color]): ?>
+                    <div class="tanium-kpi-card">
+                        <div class="tanium-kpi-value" style="color:<?= $color ?>">
+                            <?= $mttr[$key] === null ? '—' : $mttr[$key] . 'd' ?>
+                        </div>
+                        <div class="tanium-kpi-label"><?= $label ?></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Posture benchmark by platform -->
+        <?php if ($benchmark): ?>
+        <div class="tanium-card">
+            <div class="tanium-card-header">
+                <span class="ti ti-chart-bar"></span> <?= __('Security posture by platform', 'tanium') ?>
+            </div>
+            <div class="tanium-card-body tanium-p0">
+                <table class="tanium-table">
+                    <thead>
+                        <tr>
+                            <th><?= __('Platform', 'tanium') ?></th>
+                            <th class="tanium-center"><?= __('Endpoints', 'tanium') ?></th>
+                            <th class="tanium-center"><?= __('Average risk', 'tanium') ?></th>
+                            <th class="tanium-center"><?= __('Open critical CVEs', 'tanium') ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($benchmark as $b):
+                        $risk      = (float)$b['avg_risk'];
+                        $riskColor = $risk >= 60 ? '#e8212a' : ($risk >= 30 ? '#f0a030' : '#1eb464');
+                    ?>
+                        <tr>
+                            <td><?= htmlspecialchars($b['os_platform']) ?></td>
+                            <td class="tanium-center"><?= number_format((int)$b['endpoints']) ?></td>
+                            <td class="tanium-center">
+                                <span style="color:<?= $riskColor ?>;font-weight:700"><?= $b['avg_risk'] ?></span>
+                            </td>
+                            <td class="tanium-center"><?= number_format((int)$b['crit_open']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <!-- Per-severity compliance -->
         <div class="tanium-card" style="margin-bottom:16px">

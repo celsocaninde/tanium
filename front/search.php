@@ -12,34 +12,53 @@ $webDir = \Plugin::getWebDir('tanium');
 $results = ['endpoints' => [], 'cves' => [], 'patches' => []];
 
 if (strlen($q) >= 2) {
-    $esc = $DB->escape($q);
+    $like = ['LIKE', '%' . $q . '%'];
 
     if ($type === 'all' || $type === 'endpoints') {
-        foreach ($DB->doQuery("
-            SELECT tanium_eid, tanium_name, ip_address, os_name, risk_score, last_seen
-            FROM glpi_plugin_tanium_assets
-            WHERE tanium_name LIKE '%{$esc}%' OR ip_address LIKE '%{$esc}%' OR mac_address LIKE '%{$esc}%' OR tanium_eid LIKE '%{$esc}%'
-            ORDER BY risk_score DESC LIMIT 30
-        ") as $r) { $results['endpoints'][] = $r; }
+        foreach ($DB->request([
+            'SELECT' => ['tanium_eid', 'tanium_name', 'ip_address', 'os_name', 'risk_score', 'last_seen'],
+            'FROM'   => 'glpi_plugin_tanium_assets',
+            'WHERE'  => ['OR' => [
+                'tanium_name' => $like,
+                'ip_address'  => $like,
+                'mac_address' => $like,
+                'tanium_eid'  => $like,
+            ]],
+            'ORDER'  => 'risk_score DESC',
+            'LIMIT'  => 30,
+        ]) as $r) { $results['endpoints'][] = $r; }
     }
 
     if ($type === 'all' || $type === 'cves') {
-        foreach ($DB->doQuery("
-            SELECT cve_id, severity, cvss_score, title, affected_count, first_detected
-            FROM glpi_plugin_tanium_vulnerabilities
-            WHERE cve_id LIKE '%{$esc}%' OR title LIKE '%{$esc}%'
-            ORDER BY cvss_score DESC LIMIT 30
-        ") as $r) { $results['cves'][] = $r; }
+        foreach ($DB->request([
+            'SELECT' => ['cve_id', 'severity', 'cvss_score', 'title', 'affected_count', 'first_detected'],
+            'FROM'   => 'glpi_plugin_tanium_vulnerabilities',
+            'WHERE'  => ['OR' => [
+                'cve_id' => $like,
+                'title'  => $like,
+            ]],
+            'ORDER'  => 'cvss_score DESC',
+            'LIMIT'  => 30,
+        ]) as $r) { $results['cves'][] = $r; }
     }
 
     if ($type === 'all' || $type === 'patches') {
-        foreach ($DB->doQuery("
-            SELECT DISTINCT p.patch_id, p.patch_title, p.severity, p.kb_id, a.tanium_name, a.tanium_eid
-            FROM glpi_plugin_tanium_patches p
-            JOIN glpi_plugin_tanium_assets a ON p.tanium_eid = a.tanium_eid
-            WHERE p.patch_title LIKE '%{$esc}%' OR p.patch_id LIKE '%{$esc}%' OR p.kb_id LIKE '%{$esc}%'
-            LIMIT 30
-        ") as $r) { $results['patches'][] = $r; }
+        foreach ($DB->request([
+            'SELECT'   => ['p.patch_id', 'p.patch_title', 'p.severity', 'p.kb_id', 'a.tanium_name', 'a.tanium_eid'],
+            'DISTINCT' => true,
+            'FROM'     => 'glpi_plugin_tanium_patches AS p',
+            'INNER JOIN' => [
+                'glpi_plugin_tanium_assets AS a' => [
+                    'ON' => ['a' => 'tanium_eid', 'p' => 'tanium_eid'],
+                ],
+            ],
+            'WHERE'    => ['OR' => [
+                'p.patch_title' => $like,
+                'p.patch_id'    => $like,
+                'p.kb_id'       => $like,
+            ]],
+            'LIMIT'    => 30,
+        ]) as $r) { $results['patches'][] = $r; }
     }
 }
 

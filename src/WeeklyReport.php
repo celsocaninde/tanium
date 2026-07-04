@@ -68,6 +68,7 @@ class WeeklyReport {
             'sla_breaches'       => 0,
             'new_assignments'    => 0,
             'open_exceptions'    => 0,
+            'expired_exceptions' => 0,
         ];
 
         // Endpoint counts
@@ -117,7 +118,9 @@ class WeeklyReport {
         $slaRow = $DB->doQuery("
             SELECT COUNT(*) AS cnt FROM glpi_plugin_tanium_endpoint_cves ec
             JOIN glpi_plugin_tanium_vulnerabilities v ON ec.cve_id = v.cve_id
+            " . Sla::activeExceptionJoin() . "
             WHERE ec.status != 'remediated'
+            AND ex.id IS NULL
             AND (
                 (v.severity = 'critical' AND ec.detected_at < DATE_SUB(NOW(), INTERVAL {$critDays} DAY))
                 OR (v.severity = 'high'   AND ec.detected_at < DATE_SUB(NOW(), INTERVAL {$highDays} DAY))
@@ -130,9 +133,22 @@ class WeeklyReport {
         $aRow = $DB->request(['FROM' => 'glpi_plugin_tanium_cve_assignments', 'WHERE' => ['status' => ['!=', 'resolved']], 'COUNT' => 'cpt'])->current();
         $stats['new_assignments'] = (int)($aRow['cpt'] ?? 0);
 
-        // Open exceptions
-        $eRow = $DB->request(['FROM' => 'glpi_plugin_tanium_cve_exceptions', 'COUNT' => 'cpt'])->current();
+        // MTTR (90-day window) for the executive summary line
+        $stats['mttr_overall'] = Sla::getMttr(90)['overall'];
+
+        // Open (active) exceptions — expired ones no longer suppress risk
+        $eRow = $DB->doQuery("
+            SELECT COUNT(*) AS cpt FROM glpi_plugin_tanium_cve_exceptions
+            WHERE expires_at IS NULL OR expires_at > NOW()
+        ")->fetch_assoc();
         $stats['open_exceptions'] = (int)($eRow['cpt'] ?? 0);
+
+        // Expired exceptions — risk acceptances that lapsed and need review
+        $xRow = $DB->doQuery("
+            SELECT COUNT(*) AS cpt FROM glpi_plugin_tanium_cve_exceptions
+            WHERE expires_at IS NOT NULL AND expires_at <= NOW()
+        ")->fetch_assoc();
+        $stats['expired_exceptions'] = (int)($xRow['cpt'] ?? 0);
 
         return $stats;
     }
@@ -146,6 +162,20 @@ class WeeklyReport {
         $compliance = $s['patch_compliance'] !== null ? $s['patch_compliance'] . '%' : 'N/A';
         $compColor  = $s['patch_compliance'] === null ? '#6b7280' : ($s['patch_compliance'] >= 90 ? '#1a9c53' : ($s['patch_compliance'] >= 70 ? '#c2860a' : '#d6336c'));
         $slaColor   = $s['sla_breaches'] > 0 ? '#d6336c' : '#1a9c53';
+
+        $mttrLabel = isset($s['mttr_overall']) && $s['mttr_overall'] !== null
+            ? $s['mttr_overall'] . ' dias'
+            : '—';
+
+        $expiredEx      = (int)($s['expired_exceptions'] ?? 0);
+        $expiredExColor = $expiredEx > 0 ? '#d6336c' : '#1c2330';
+        $expiredExBanner = '';
+        if ($expiredEx > 0) {
+            $expiredExBanner = "
+  <div style=\"background:#fdecef;border-left:4px solid #e8212a;margin:0 28px 16px;padding:12px 16px;font-size:12px;color:#8a1f28\">
+    ⚠️ <strong>{$expiredEx}</strong> exceção(ões) de risco expiraram e os CVEs voltaram a contar no SLA. Revise em <em>CVE Exceptions</em>.
+  </div>";
+        }
         $generatedAt = date('d/m/Y H:i');
 
         $topEpRows = '';
@@ -264,7 +294,10 @@ class WeeklyReport {
   <div style="background:#ffffff;padding:16px 28px;border-top:1px solid #eeeeee;font-size:12px;color:#6b7280;display:flex;justify-content:space-between">
     <span>Atribuições abertas: <strong style="color:#1c2330">{$s['new_assignments']}</strong></span>
     <span>Exceções ativas: <strong style="color:#1c2330">{$s['open_exceptions']}</strong></span>
+    <span>Exceções expiradas: <strong style="color:{$expiredExColor}">{$expiredEx}</strong></span>
+    <span>MTTR 90d: <strong style="color:#1c2330">{$mttrLabel}</strong></span>
   </div>
+  {$expiredExBanner}
 
   <!-- CTA -->
   <div style="background:#f9fafb;padding:20px 28px;text-align:center;border-top:1px solid #eeeeee">

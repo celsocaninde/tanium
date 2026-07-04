@@ -20,6 +20,11 @@ class ComputerGroup extends CommonGLPI {
                     $DB->doQuery("ALTER TABLE `" . self::$table . "` MODIFY `id` int unsigned NOT NULL AUTO_INCREMENT");
                 }
             }
+            // Entity mapping column (NULL = group not mapped to any entity)
+            $col = $DB->doQuery("SHOW COLUMNS FROM `" . self::$table . "` LIKE 'entities_id'");
+            if ($col && $DB->numrows($col) === 0) {
+                $DB->doQuery("ALTER TABLE `" . self::$table . "` ADD COLUMN `entities_id` int unsigned DEFAULT NULL");
+            }
             return;
         }
 
@@ -29,6 +34,7 @@ class ComputerGroup extends CommonGLPI {
                 `tanium_group_id`   int unsigned NOT NULL DEFAULT 0,
                 `tanium_group_name` varchar(255) NOT NULL DEFAULT '',
                 `label`             varchar(255) NOT NULL DEFAULT '',
+                `entities_id`       int unsigned DEFAULT NULL,
                 `date_mod`          timestamp NULL DEFAULT NULL,
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `tanium_group_id` (`tanium_group_id`)
@@ -106,6 +112,43 @@ class ComputerGroup extends CommonGLPI {
              SET label = '" . $DB->escape(trim($label)) . "', date_mod = NOW()
              WHERE tanium_group_id = {$taniumGroupId}"
         );
+    }
+
+    /** Map a group to a GLPI entity (-1 clears the mapping). */
+    public static function saveEntity(int $taniumGroupId, int $entityId): void {
+        global $DB;
+        self::ensureTable();
+        $value = $entityId >= 0 ? (string)$entityId : 'NULL';
+        $DB->doQuery(
+            "UPDATE `glpi_plugin_tanium_computer_groups`
+             SET entities_id = {$value}, date_mod = NOW()
+             WHERE tanium_group_id = {$taniumGroupId}"
+        );
+    }
+
+    /**
+     * Resolve the GLPI entity for an endpoint from its Tanium group memberships.
+     * First membership with a mapping wins; null when none is mapped.
+     *
+     * @param array<int,array{id:int,name?:string}> $groups as mapped by Api
+     */
+    public static function entityForGroups(array $groups): ?int {
+        global $DB;
+
+        $ids = array_values(array_filter(array_map(static fn($g) => (int)($g['id'] ?? 0), $groups)));
+        if (!$ids) {
+            return null;
+        }
+
+        self::ensureTable();
+        $row = $DB->request([
+            'SELECT' => ['entities_id'],
+            'FROM'   => self::$table,
+            'WHERE'  => ['tanium_group_id' => $ids, 'NOT' => ['entities_id' => null]],
+            'LIMIT'  => 1,
+        ])->current();
+
+        return $row ? (int)$row['entities_id'] : null;
     }
 
     /** Returns display name: custom label if set, otherwise Tanium group name. */

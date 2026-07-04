@@ -4,6 +4,7 @@ use Glpi\Plugin\Hooks;
 use GlpiPlugin\Tanium\ComputerTab;
 use GlpiPlugin\Tanium\Config as TaniumConfig;
 use GlpiPlugin\Tanium\Cron as TaniumCron;
+use GlpiPlugin\Tanium\DashboardCards as TaniumDashboardCards;
 use GlpiPlugin\Tanium\Profile as TaniumProfile;
 use GlpiPlugin\Tanium\Sync as TaniumSync;
 use GlpiPlugin\Tanium\WeeklyReport as TaniumWeeklyReport;
@@ -11,7 +12,7 @@ use GlpiPlugin\Tanium\CentralWidget as TaniumCentralWidget;
 use GlpiPlugin\Tanium\PatchDeploy as TaniumPatchDeploy;
 use GlpiPlugin\Tanium\Vulnerability;
 
-define('PLUGIN_TANIUM_VERSION', '1.3.1');
+define('PLUGIN_TANIUM_VERSION', '2.0.0');
 define('PLUGIN_TANIUM_MIN_GLPI', '11.0.0');
 define('PLUGIN_TANIUM_MAX_GLPI', '11.99.99');
 
@@ -75,6 +76,9 @@ function plugin_init_tanium(): void {
         'addtabon' => [\Central::class],
     ]);
 
+    // Native GLPI dashboard cards (Dashboards → add card → group "Tanium")
+    $PLUGIN_HOOKS[Hooks::DASHBOARD_CARDS]['tanium'] = [TaniumDashboardCards::class, 'register'];
+
     // Cron task registration — sync
     CronTask::register(
         TaniumCron::class,
@@ -107,12 +111,74 @@ function plugin_init_tanium(): void {
             'mode'    => CronTask::MODE_EXTERNAL,
         ]
     );
+
+    // Cron task registration — daily EPSS/KEV threat-intel enrichment.
+    // allowmode INTERNAL+EXTERNAL keeps the "Execute" button available.
+    CronTask::register(
+        TaniumCron::class,
+        'epsskev',
+        DAY_TIMESTAMP,
+        [
+            'comment'   => 'Tanium — refresh EPSS scores and CISA KEV flags for tracked CVEs',
+            'mode'      => CronTask::MODE_EXTERNAL,
+            'allowmode' => CronTask::MODE_INTERNAL | CronTask::MODE_EXTERNAL,
+        ]
+    );
+
+    // Cron task registration — daily agent-health check
+    CronTask::register(
+        TaniumCron::class,
+        'agenthealth',
+        DAY_TIMESTAMP,
+        [
+            'comment'   => 'Tanium — detect silent agents and open a consolidated ticket',
+            'mode'      => CronTask::MODE_EXTERNAL,
+            'allowmode' => CronTask::MODE_INTERNAL | CronTask::MODE_EXTERNAL,
+        ]
+    );
+
+    // Cron task registration — daily compliance benchmark import (Comply)
+    CronTask::register(
+        TaniumCron::class,
+        'complysync',
+        DAY_TIMESTAMP,
+        [
+            'comment'   => 'Tanium — import compliance benchmark results from Tanium Comply',
+            'mode'      => CronTask::MODE_EXTERNAL,
+            'allowmode' => CronTask::MODE_INTERNAL | CronTask::MODE_EXTERNAL,
+        ]
+    );
+
+    // Cron task registration — Threat Response alert import (15 min)
+    CronTask::register(
+        TaniumCron::class,
+        'threatsync',
+        900,
+        [
+            'comment'   => 'Tanium — import Threat Response alerts and open tickets',
+            'mode'      => CronTask::MODE_EXTERNAL,
+            'allowmode' => CronTask::MODE_INTERNAL | CronTask::MODE_EXTERNAL,
+        ]
+    );
+
+    // Cron task registration — daily SLA-breach webhook alert
+    CronTask::register(
+        TaniumCron::class,
+        'slabreach',
+        DAY_TIMESTAMP,
+        [
+            'comment'   => 'Tanium — daily webhook alert while remediation-SLA breaches exist',
+            'mode'      => CronTask::MODE_EXTERNAL,
+            'allowmode' => CronTask::MODE_INTERNAL | CronTask::MODE_EXTERNAL,
+        ]
+    );
 }
 
 // ── Hook callback — must be a named function, not a closure ──────────────────
 // Fired when a Ticket approval request (TicketValidation) is created or updated.
 function plugin_tanium_validation_update($validation): void {
     \GlpiPlugin\Tanium\PatchDeploy::onValidationUpdate($validation);
+    \GlpiPlugin\Tanium\RemoteAction::onValidationUpdate($validation);
 }
 
 function plugin_version_tanium(): array {

@@ -127,6 +127,81 @@ class PdfReport {
         return self::render('Tanium - Relatorio Semanal', $html);
     }
 
+    /**
+     * Side-by-side endpoint comparison, mirroring front/compare.php.
+     * $ep1/$ep2 are the arrays built by that page's endpoint loader
+     * (keys: asset, cves, patches, sev, cve_ids).
+     */
+    public static function compare(array $ep1, array $ep2): ?string {
+        $esc = static fn($v): string => htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
+
+        $sevColor = static fn(string $s): string => match (strtolower($s)) {
+            'critical' => '#e8212a',
+            'high'     => '#f97316',
+            'medium'   => '#e8c42a',
+            'low'      => '#1eb464',
+            default    => '#7a8da8',
+        };
+
+        $sideHtml = static function (array $ep, array $other) use ($esc, $sevColor): string {
+            $a  = $ep['asset'];
+            $rs = (int)($a['risk_score'] ?? 0);
+            $riskColor = $rs >= 70 ? '#e8212a' : ($rs >= 40 ? '#f97316' : ($rs >= 15 ? '#e8c42a' : '#1eb464'));
+
+            $html = '<h3 style="color:#1c2330;margin:0 0 4px 0">' . $esc($a['tanium_name'] ?: $a['tanium_eid']) . '</h3>'
+                  . '<p style="font-size:8pt;color:#5a6a85;margin:0 0 6px 0">'
+                  . 'IP: ' . $esc($a['ip_address'] ?: '—')
+                  . ' | OS: ' . $esc($a['os_name'] ?: '—') . ' ' . $esc($a['os_version'] ?? '')
+                  . ' | Risco: <span style="color:' . $riskColor . ';font-weight:bold">' . $rs . '</span>'
+                  . ' | Visto: ' . $esc($a['last_seen'] ?: '—')
+                  . '</p>'
+                  . '<p style="font-size:8pt;margin:0 0 6px 0">'
+                  . '<span style="color:#e8212a;font-weight:bold">' . (int)$ep['sev']['critical'] . ' críticos</span> · '
+                  . '<span style="color:#f97316;font-weight:bold">' . (int)$ep['sev']['high'] . ' altos</span> · '
+                  . (int)$ep['sev']['medium'] . ' médios · '
+                  . (int)$ep['sev']['low'] . ' baixos · '
+                  . '<span style="font-weight:bold">' . count($ep['patches']) . ' patches ausentes</span>'
+                  . '</p>';
+
+            if (!empty($ep['cves'])) {
+                $otherIds = $other['cve_ids'] ?? [];
+                $html .= '<table border="0" cellpadding="3" style="font-size:8pt;width:100%">'
+                       . '<tr style="background-color:#f0f2f6;color:#1c2330;font-weight:bold">'
+                       . '<td width="42%">CVE</td><td width="22%">Severidade</td><td width="14%">CVSS</td><td width="22%">Presença</td></tr>';
+                foreach (array_slice($ep['cves'], 0, 15) as $c) {
+                    $shared = in_array($c['cve_id'], $otherIds, true);
+                    $html .= '<tr>'
+                           . '<td>' . $esc($c['cve_id']) . '</td>'
+                           . '<td style="color:' . $sevColor((string)$c['severity']) . ';font-weight:bold">' . $esc(ucfirst((string)$c['severity'])) . '</td>'
+                           . '<td>' . ($c['cvss_score'] !== null ? number_format((float)$c['cvss_score'], 1) : '—') . '</td>'
+                           . '<td style="color:' . ($shared ? '#1a6dff' : '#e8212a') . '">' . ($shared ? 'ambos' : 'exclusivo') . '</td>'
+                           . '</tr>';
+                }
+                $html .= '</table>';
+            } else {
+                $html .= '<p style="font-size:8pt;color:#5a6a85">Sem CVEs registrados.</p>';
+            }
+
+            return $html;
+        };
+
+        $shared  = count(array_intersect($ep1['cve_ids'], $ep2['cve_ids']));
+        $only1   = count($ep1['cve_ids']) - $shared;
+        $only2   = count($ep2['cve_ids']) - $shared;
+
+        $html = '<h1 style="color:#e8212a;font-size:14pt">Comparação de Endpoints</h1>'
+              . '<p style="font-size:8pt;color:#5a6a85">Gerado em ' . date('d/m/Y H:i') . ' pelo plugin Tanium para GLPI</p>'
+              . '<p style="font-size:9pt"><strong>' . $shared . '</strong> CVE(s) em comum · '
+              . '<strong>' . $only1 . '</strong> exclusivo(s) de A · '
+              . '<strong>' . $only2 . '</strong> exclusivo(s) de B</p>'
+              . '<h2 style="color:#e8212a;font-size:11pt;border-bottom:1px solid #e8212a">Endpoint A</h2>'
+              . $sideHtml($ep1, $ep2)
+              . '<br/><h2 style="color:#1a6dff;font-size:11pt;border-bottom:1px solid #1a6dff">Endpoint B</h2>'
+              . $sideHtml($ep2, $ep1);
+
+        return self::render('Tanium - Comparacao de Endpoints', $html);
+    }
+
     private static function render(string $title, string $html): ?string {
         try {
             $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);

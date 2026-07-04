@@ -62,9 +62,12 @@ foreach ($cves as $cve) {
     $sevCount[$sev] = ($sevCount[$sev] ?? 0) + 1;
 }
 
-// Load exceptions for this endpoint (keyed by cve_id)
+// Load exceptions for this endpoint (keyed by cve_id). An exception past its
+// expires_at no longer suppresses SLA — it is kept here only to render the
+// "expired" badge so the analyst sees the risk acceptance has lapsed.
 $exceptions = [];
 foreach ($DB->request(['FROM' => 'glpi_plugin_tanium_cve_exceptions', 'WHERE' => ['tanium_eid' => $eid]]) as $ex) {
+    $ex['is_active'] = !$ex['expires_at'] || strtotime($ex['expires_at']) > time();
     $exceptions[$ex['cve_id']] = $ex;
 }
 
@@ -177,6 +180,14 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
             <button onclick="openTicketModal()" class="tanium-btn tanium-btn-primary">
                 <span class="ti ti-ticket"></span> <?= __('Open ticket', 'tanium') ?>
             </button>
+            <button onclick="requestRemoteAction('restart_client')" class="tanium-btn tanium-btn-secondary"
+                    title="<?= __('Opens an approval ticket — the action only runs on Tanium after approval', 'tanium') ?>">
+                <span class="ti ti-refresh"></span> <?= __('Restart client', 'tanium') ?>
+            </button>
+            <button onclick="requestRemoteAction('quarantine')" class="tanium-btn tanium-btn-secondary" style="color:#e8212a"
+                    title="<?= __('Opens an approval ticket — the endpoint is only isolated after approval', 'tanium') ?>">
+                <span class="ti ti-shield-lock"></span> <?= __('Quarantine', 'tanium') ?>
+            </button>
             <?php endif; ?>
         </div>
     </div>
@@ -281,8 +292,10 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
             </thead>
             <tbody>
             <?php foreach ($cves as $cve):
-                $hasException = isset($exceptions[$cve['cve_id']]);
-                $hasAssignment = isset($assignments[$cve['cve_id']]);
+                $exRow          = $exceptions[$cve['cve_id']] ?? null;
+                $hasException   = $exRow && $exRow['is_active'];
+                $hasExpiredEx   = $exRow && !$exRow['is_active'];
+                $hasAssignment  = isset($assignments[$cve['cve_id']]);
                 $sev = strtolower($cve['severity'] ?? 'low');
                 $slaDayLimit = $slaDays[$sev] ?? null;
                 $detectedTs  = $cve['detected_at'] ? strtotime($cve['detected_at']) : 0;
@@ -295,8 +308,12 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                             <?= htmlspecialchars($cve['cve_id']) ?>
                         </a>
                         <?php if ($hasException): ?>
-                        <span class="tanium-badge tanium-badge-muted" style="font-size:.65rem;margin-left:4px" title="<?= htmlspecialchars($exceptions[$cve['cve_id']]['reason']) ?>">
-                            <span class="ti ti-shield-off"></span> Exceção
+                        <span class="tanium-badge tanium-badge-muted" style="font-size:.65rem;margin-left:4px" title="<?= htmlspecialchars($exRow['reason']) ?>">
+                            <span class="ti ti-shield-off"></span> <?= __('Exception', 'tanium') ?>
+                        </span>
+                        <?php elseif ($hasExpiredEx): ?>
+                        <span class="tanium-badge tanium-badge-warning" style="font-size:.65rem;margin-left:4px" title="<?= htmlspecialchars($exRow['reason']) ?>">
+                            <span class="ti ti-alert-triangle"></span> <?= __('Exception expired', 'tanium') ?>
                         </span>
                         <?php endif; ?>
                     </td>
@@ -342,7 +359,7 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                             <span class="ti ti-shield-off"></span>
                         </button>
                         <?php else: ?>
-                        <button onclick="revokeException('<?= htmlspecialchars(addslashes($cve['cve_id'])) ?>', <?= (int)$exceptions[$cve['cve_id']]['id'] ?>)"
+                        <button onclick="revokeException('<?= htmlspecialchars(addslashes($cve['cve_id'])) ?>', <?= (int)$exRow['id'] ?>)"
                                 class="tanium-btn-xs tanium-btn-danger" title="<?= __('Revoke exception', 'tanium') ?>">
                             <span class="ti ti-shield-check"></span>
                         </button>
@@ -400,6 +417,48 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
         <?php endif; ?>
     </div>
 </div>
+
+<?php
+// ── Compliance (Tanium Comply benchmarks) — shown only when data exists ──
+$complyScore = \GlpiPlugin\Tanium\Compliance::scoreForEndpoint($eid);
+if ($complyScore !== null):
+    $complyFailed = \GlpiPlugin\Tanium\Compliance::failedRules($eid, 15);
+    $complyColor  = $complyScore >= 90 ? '#1eb464' : ($complyScore >= 70 ? '#e8c42a' : '#e8212a');
+?>
+<!-- ── Compliance benchmarks ──────────────────────────────────── -->
+<div class="tanium-card" style="margin-top:16px">
+    <div class="tanium-card-header">
+        <span class="ti ti-checklist"></span> <?= __('Compliance benchmarks (Tanium Comply)', 'tanium') ?>
+        <span style="margin-left:auto;font-weight:800;color:<?= $complyColor ?>"><?= $complyScore ?>%</span>
+    </div>
+    <div class="tanium-card-body tanium-p0">
+        <?php if (empty($complyFailed)): ?>
+            <p class="tanium-empty"><?= __('All benchmark checks pass on this endpoint.', 'tanium') ?></p>
+        <?php else: ?>
+        <table class="tanium-table">
+            <thead>
+                <tr>
+                    <th><?= __('Benchmark', 'tanium') ?></th>
+                    <th><?= __('Failed rule', 'tanium') ?></th>
+                    <th><?= __('Severity', 'tanium') ?></th>
+                    <th><?= __('Checked', 'tanium') ?></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($complyFailed as $cr): ?>
+                <tr>
+                    <td class="tanium-small"><?= htmlspecialchars($cr['benchmark'] ?: '—') ?></td>
+                    <td class="tanium-small"><?= htmlspecialchars(substr($cr['rule_title'], 0, 100)) ?></td>
+                    <td><span class="tanium-badge <?= $sevClass($cr['severity']) ?>"><?= ucfirst($cr['severity']) ?></span></td>
+                    <td class="tanium-small"><?= $cr['checked_at'] ? Html::convDateTime($cr['checked_at']) : '—' ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- ── Ticket modal ───────────────────────────────────────────── -->
 <div id="tanium-ticket-modal" class="tanium-modal-overlay" style="display:none">
@@ -543,6 +602,29 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
 const _webDir = <?= json_encode($webDir) ?>;
 const _eid    = <?= json_encode($eid) ?>;
 const _csrf   = <?= json_encode(Session::getNewCSRFToken()) ?>;
+
+// Remote actions (approval-gated)
+function requestRemoteAction(action) {
+    const labels = {
+        quarantine:     'QUARENTENA DE REDE (isolar o endpoint)',
+        restart_client: 'reinício do Tanium Client'
+    };
+    if (!confirm('Abrir chamado de aprovação para ' + (labels[action] || action) +
+                 '?\n\nA ação só é executada no Tanium depois que a aprovação for aceita.')) {
+        return;
+    }
+    fetch(_webDir + '/ajax/remote_action.php', {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
+        body: JSON.stringify({eid: _eid, action: action})
+    }).then(r => r.json()).then(d => {
+        if (d.success) {
+            alert(d.message || ('Chamado #' + d.ticket_id + ' criado.'));
+            window.open(d.ticket_url, '_blank');
+        } else {
+            alert(d.error || 'Error');
+        }
+    });
+}
 
 // Exception modal
 function openExceptionModal(cveId) {

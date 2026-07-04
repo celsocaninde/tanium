@@ -86,6 +86,27 @@ class Dashboard {
         $stats['last_sync']       = $config['last_sync'];
         $stats['last_sync_count'] = (int) $config['last_sync_count'];
 
+        // Agent health: endpoints silent past the configured threshold
+        $stats['agent_stale_days'] = (int)($config['agent_stale_days'] ?? 7);
+        $stats['agents_stale']     = AgentHealth::countStale($stats['agent_stale_days']);
+
+        // Hardening: fleet-wide Comply benchmark score (null = module not used)
+        $stats['comply_score'] = Compliance::fleetScore();
+
+        // Open Threat Response alerts
+        $stats['threat_alerts'] = ThreatResponse::countOpen();
+
+        // KEV exposure: open findings whose CVE has confirmed exploitation
+        Enrichment::ensureTable();
+        $kevRow = $DB->doQuery("
+            SELECT COUNT(*) AS cpt
+            FROM glpi_plugin_tanium_endpoint_cves ec
+            JOIN glpi_plugin_tanium_cve_enrichment e
+                 ON e.cve_id = ec.cve_id AND e.is_kev = 1
+            WHERE ec.status != 'remediated'
+        ")->fetch_assoc();
+        $stats['kev_findings'] = (int)($kevRow['cpt'] ?? 0);
+
         // Last sync status from logs
         $logRow = $DB->request([
             'FROM'  => 'glpi_plugin_tanium_sync_logs',
@@ -425,6 +446,32 @@ class Dashboard {
                 <div class="tanium-kpi-label"><?= __('Total unique CVEs', 'tanium') ?></div>
                 <a href="<?= $webDir ?>/front/vulnerabilities.php" class="tanium-kpi-link"><?= __('View all', 'tanium') ?> →</a>
             </div>
+            <div class="tanium-kpi-card">
+                <div class="tanium-kpi-icon" style="background:rgba(232,33,42,.15);color:#e8212a">&#128293;</div>
+                <div class="tanium-kpi-value <?= $stats['kev_findings'] > 0 ? 'tanium-text-red' : '' ?>"><?= number_format($stats['kev_findings']) ?></div>
+                <div class="tanium-kpi-label" title="<?= __('Open findings on CVEs with confirmed exploitation (CISA KEV)', 'tanium') ?>"><?= __('KEV exposure', 'tanium') ?></div>
+            </div>
+            <div class="tanium-kpi-card">
+                <div class="tanium-kpi-icon" style="background:rgba(122,141,168,.15);color:#7a8da8">&#128263;</div>
+                <div class="tanium-kpi-value" style="<?= $stats['agents_stale'] > 0 ? 'color:#f0a030' : '' ?>"><?= number_format($stats['agents_stale']) ?></div>
+                <div class="tanium-kpi-label"><?= sprintf(__('Silent agents (> %d days)', 'tanium'), $stats['agent_stale_days']) ?></div>
+            </div>
+            <?php if ($stats['comply_score'] !== null):
+                $csColor = $stats['comply_score'] >= 90 ? '#1eb464' : ($stats['comply_score'] >= 70 ? '#e8c42a' : '#e8212a');
+            ?>
+            <div class="tanium-kpi-card">
+                <div class="tanium-kpi-icon" style="background:<?= $csColor ?>22;color:<?= $csColor ?>">&#9989;</div>
+                <div class="tanium-kpi-value" style="color:<?= $csColor ?>"><?= $stats['comply_score'] ?>%</div>
+                <div class="tanium-kpi-label"><?= __('Benchmark compliance (Comply)', 'tanium') ?></div>
+            </div>
+            <?php endif; ?>
+            <?php if ($stats['threat_alerts'] > 0): ?>
+            <div class="tanium-kpi-card">
+                <div class="tanium-kpi-icon" style="background:rgba(232,33,42,.15);color:#e8212a">&#128737;</div>
+                <div class="tanium-kpi-value tanium-text-red"><?= number_format($stats['threat_alerts']) ?></div>
+                <div class="tanium-kpi-label"><?= __('Open threat alerts (TR)', 'tanium') ?></div>
+            </div>
+            <?php endif; ?>
             <div class="tanium-kpi-card">
                 <?php
                 $compliance = $stats['patch_compliance'];

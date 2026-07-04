@@ -38,6 +38,15 @@ Plugin que conecta a plataforma **Tanium** ao **GLPI 11**, trazendo visibilidade
 | 💻 **Aba no Computador** | Dados Tanium diretamente na ficha do ativo no GLPI |
 | 🎯 **Widget Central** | Resumo de risco no painel inicial do GLPI |
 | 🔒 **Perfis** | Controle de acesso granular por perfil GLPI |
+| 🔥 **EPSS / CISA KEV** | Enriquecimento diário de CVEs com probabilidade de exploração e catálogo KEV |
+| ⏱️ **SLA + MTTR** | Prazos de remediação por severidade, compliance, MTTR 90d e webhook diário de violação |
+| 🛰️ **Saúde do agente** | Detecção de agentes silenciosos com chamado consolidado automático |
+| 📐 **Comply / Threat Response** | Benchmarks CIS/DISA por endpoint e alertas de ameaça → chamados |
+| 🛡️ **Ações remotas** | Quarentena / reinício do client condicionados à aprovação do chamado |
+| 🧩 **Dashboard cards nativos** | 7 cards no dashboard nativo do GLPI (grupo "Tanium") |
+| 🔗 **Correlação cross-plugin** | Badges quando o CVE também é visto pelo Nessus/SentinelOne |
+| 📄 **Exportações** | PDF do comparativo de endpoints e busca nativa GLPI com CSV |
+| 🌐 **i18n completa** | 515 strings traduzidas para pt_BR (.mo compilado) |
 
 ### 🚀 Requisitos
 
@@ -122,6 +131,15 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | 💻 **Computer Tab** | Tanium data directly on the asset record in GLPI |
 | 🎯 **Central Widget** | Risk summary on the GLPI home panel |
 | 🔒 **Profiles** | Granular access control per GLPI profile |
+| 🔥 **EPSS / CISA KEV** | Daily CVE enrichment with exploitation probability and the KEV catalog |
+| ⏱️ **SLA + MTTR** | Per-severity remediation deadlines, compliance, 90-day MTTR and daily breach webhook |
+| 🛰️ **Agent health** | Silent-agent detection with automatic consolidated ticket |
+| 📐 **Comply / Threat Response** | CIS/DISA benchmarks per endpoint and threat alerts → tickets |
+| 🛡️ **Remote actions** | Quarantine / client restart gated by ticket approval |
+| 🧩 **Native dashboard cards** | 7 cards in the native GLPI dashboard ("Tanium" group) |
+| 🔗 **Cross-plugin correlation** | Badges when a CVE is also seen by Nessus/SentinelOne |
+| 📄 **Exports** | Endpoint comparison PDF and native GLPI search with CSV |
+| 🌐 **Full i18n** | 515 strings translated to pt_BR (compiled .mo) |
 
 ### 🚀 Requirements
 
@@ -153,6 +171,11 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | `taniumsync` | 1 hour | Syncs endpoints and vulnerabilities |
 | `weeklyreport` | 7 days | Sends weekly security report by e-mail |
 | `checkdeployments` | 5 minutes | Monitors and closes completed patch tickets |
+| `epsskev` | 1 day | Refreshes EPSS scores and CISA KEV flags |
+| `agenthealth` | 1 day | Flags silent agents and opens a consolidated ticket |
+| `complysync` | 1 day | Imports Comply benchmark results (CIS/DISA) |
+| `threatsync` | 15 minutes | Imports Threat Response alerts and opens tickets |
+| `slabreach` | 1 day | Webhook alert while SLA breaches exist |
 
 ### 🗂️ Code Structure
 

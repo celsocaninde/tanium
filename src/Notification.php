@@ -99,6 +99,97 @@ class Notification {
         ];
     }
 
+    /**
+     * @param array $stats        Sla::getStats() result
+     * @param array $topEndpoints Sla::getTopBreachedEndpoints() rows
+     */
+    public static function buildSlaBreachPayload(array $stats, array $topEndpoints): array {
+        $comp    = $stats['compliance'] === null ? '—' : $stats['compliance'] . '%';
+        $summary = "⏰ SLA de remediação violado: *{$stats['breached']}* finding(s) além do prazo"
+                 . " ({$stats['due_soon']} vencem em breve). Compliance geral: {$comp}.";
+
+        $fields = [
+            ['title' => 'Vencidos',         'value' => (string)$stats['breached'], 'short' => true],
+            ['title' => 'Vencem em breve',  'value' => (string)$stats['due_soon'], 'short' => true],
+            ['title' => 'Compliance geral', 'value' => $comp,                      'short' => true],
+            ['title' => 'Monitorados',      'value' => (string)$stats['tracked'],  'short' => true],
+        ];
+
+        $worst = [];
+        foreach (array_slice($topEndpoints, 0, 5) as $ep) {
+            $worst[] = ($ep['tanium_name'] ?: $ep['tanium_eid']) . ' (' . (int)$ep['breached'] . ')';
+        }
+        if ($worst) {
+            $fields[] = ['title' => 'Piores endpoints', 'value' => implode(', ', $worst), 'short' => false];
+        }
+
+        return [
+            'username'    => 'Tanium + GLPI',
+            'icon_emoji'  => ':alarm_clock:',
+            'attachments' => [[
+                'color'  => '#e8212a',
+                'title'  => '⏰ Tanium — violação de SLA de remediação',
+                'text'   => $summary,
+                'fields' => $fields,
+                'footer' => 'GLPI Tanium Plugin • ' . date('d/m/Y H:i'),
+            ]],
+            'text'  => $summary,
+            'title' => 'Tanium — violação de SLA de remediação',
+        ];
+    }
+
+    /**
+     * @param string $event 'started' | 'deployed' | 'failed'
+     */
+    public static function buildDeployPayload(
+        string $event,
+        string $endpointName,
+        int $patchCount,
+        int $ticketId,
+        string $taniumDeploymentId = '',
+        string $error = ''
+    ): array {
+        [$emoji, $color, $label] = match ($event) {
+            'deployed' => ['✅', '#1eb464', 'Deploy de patches concluído'],
+            'failed'   => ['❌', '#e8212a', 'Falha no deploy de patches'],
+            default    => ['🚀', '#f0a030', 'Deploy de patches iniciado'],
+        };
+
+        $summary = "{$emoji} {$label}: *{$patchCount}* patch(es) em *{$endpointName}*"
+                 . ($ticketId > 0 ? " (chamado #{$ticketId})" : '');
+        if ($event === 'failed' && $error !== '') {
+            $summary .= " — {$error}";
+        }
+
+        $fields = [
+            ['title' => 'Endpoint', 'value' => $endpointName,       'short' => true],
+            ['title' => 'Patches',  'value' => (string)$patchCount, 'short' => true],
+        ];
+        if ($ticketId > 0) {
+            $fields[] = ['title' => 'Chamado GLPI', 'value' => '#' . $ticketId, 'short' => true];
+        }
+        if ($taniumDeploymentId !== '') {
+            $fields[] = ['title' => 'ID Tanium', 'value' => $taniumDeploymentId, 'short' => true];
+        }
+        if ($event === 'failed' && $error !== '') {
+            $fields[] = ['title' => 'Erro', 'value' => $error, 'short' => false];
+        }
+
+        return [
+            'username'    => 'Tanium + GLPI',
+            'icon_emoji'  => ':package:',
+            'attachments' => [[
+                'color'  => $color,
+                'title'  => "{$emoji} Tanium — {$label}",
+                'text'   => $summary,
+                'fields' => $fields,
+                'footer' => 'GLPI Tanium Plugin • ' . date('d/m/Y H:i'),
+            ]],
+            'text'  => $summary,
+            'title' => "Tanium — {$label}",
+        ];
+    }
+
     // ── GLPI internal email notification ──────────────────────────────────
 
     /**
@@ -109,6 +200,14 @@ class Notification {
     public static function sendEmail(string $to, string $subject, string $body, array $attachments = []): bool {
         if (empty($to)) {
             return false;
+        }
+
+        // No attachment → GLPI native queue (glpi_queuednotifications): admins
+        // see/retry it in Administration → Notification queue and the standard
+        // queuednotification cron delivers it. The queue cannot carry
+        // attachments, so PDF reports still go out directly via GLPIMailer.
+        if (empty($attachments) && self::queueViaGLPI($to, $subject, $body)) {
+            return true;
         }
 
         // Prefer GLPI's own mailer (respects the configured SMTP transport)
@@ -122,6 +221,41 @@ class Notification {
         $headers .= "From: GLPI Tanium Plugin <noreply@glpi>\r\n";
 
         return @mail($to, $subject, $body, $headers);
+    }
+
+    /**
+     * Enqueue an HTML email in glpi_queuednotifications. Delivery then follows
+     * the GLPI standard path: queuednotification cron + configured SMTP.
+     */
+    private static function queueViaGLPI(string $to, string $subject, string $body): bool {
+        global $CFG_GLPI;
+
+        if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+
+        try {
+            $queued = new \QueuedNotification();
+            $id = $queued->add([
+                'itemtype'                 => \GlpiPlugin\Tanium\Sync::class,
+                'items_id'                 => 0,
+                'notificationtemplates_id' => 0,
+                'entities_id'              => 0,
+                'mode'                     => \Notification_NotificationTemplate::MODE_MAIL,
+                'event'                    => 'tanium_alert',
+                'name'                     => $subject,
+                'sender'                   => $CFG_GLPI['admin_email'] ?? '',
+                'sendername'               => $CFG_GLPI['admin_email_name'] ?? 'GLPI',
+                'recipient'                => $to,
+                'recipientname'            => $to,
+                'body_html'                => $body,
+                'body_text'                => trim(strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>', '</tr>'], "\n", $body))),
+            ]);
+            return (bool)$id;
+        } catch (\Throwable $e) {
+            Toolbox::logInFile('tanium', '[Tanium] Falha ao enfileirar e-mail: ' . $e->getMessage() . "\n");
+            return false;
+        }
     }
 
     /**

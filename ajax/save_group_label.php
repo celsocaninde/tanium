@@ -10,11 +10,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $body          = json_decode(file_get_contents('php://input'), true) ?? [];
 $taniumGroupId = (int)($body['tanium_group_id'] ?? 0);
-$label         = trim((string)($body['label'] ?? ''));
 
 if ($taniumGroupId <= 0) {
     echo json_encode(['success' => false, 'error' => 'tanium_group_id required']); exit;
 }
 
-\GlpiPlugin\Tanium\ComputerGroup::saveLabel($taniumGroupId, $label);
+// Entity mapping update (select onchange) and label update (text input) come
+// through the same endpoint; the payload decides which field is being saved.
+if (array_key_exists('entities_id', $body)) {
+    \GlpiPlugin\Tanium\ComputerGroup::saveEntity($taniumGroupId, (int)$body['entities_id']);
+} else {
+    \GlpiPlugin\Tanium\ComputerGroup::saveLabel($taniumGroupId, trim((string)($body['label'] ?? '')));
+}
 echo json_encode(['success' => true]);

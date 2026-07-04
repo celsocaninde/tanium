@@ -168,7 +168,7 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                 $slaBreachRow = $DB->doQuery("
                     SELECT COUNT(*) AS cnt FROM glpi_plugin_tanium_endpoint_cves ec
                     JOIN glpi_plugin_tanium_vulnerabilities v ON ec.cve_id = v.cve_id
-                    LEFT JOIN glpi_plugin_tanium_cve_exceptions ex ON ex.tanium_eid = ec.tanium_eid AND ex.cve_id = ec.cve_id
+                    " . \GlpiPlugin\Tanium\Sla::activeExceptionJoin() . "
                     WHERE ec.tanium_eid = '" . $DB->escape($ep['tanium_eid']) . "'
                     AND ec.status != 'remediated' AND ex.id IS NULL
                     AND (

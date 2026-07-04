@@ -61,6 +61,7 @@ Html::header(__('Tanium — Grupos de Computadores', 'tanium'), $_SERVER['PHP_SE
                 <th style="width:80px">ID Tanium</th>
                 <th>Nome no Tanium</th>
                 <th>Rótulo personalizado</th>
+                <th style="width:220px"><?= __('GLPI Entity', 'tanium') ?></th>
                 <th style="width:100px"></th>
             </tr>
         </thead>
@@ -90,6 +91,16 @@ Html::header(__('Tanium — Grupos de Computadores', 'tanium'), $_SERVER['PHP_SE
                     oninput="markChosen(<?= $gid ?>, this)"
                     onkeydown="if(event.key==='Enter'){saveLabel(<?= $gid ?>,this)}"
                 />
+            </td>
+            <td>
+                <?php
+                $entSel = array_key_exists('entities_id', $g) && $g['entities_id'] !== null ? (int)$g['entities_id'] : null;
+                echo str_replace(
+                    "name='group_entity'",
+                    "name='group_entity' data-gid='{$gid}' onchange='saveEntity({$gid}, this)'",
+                    \GlpiPlugin\Tanium\Config::entitySelect('group_entity', $entSel, true)
+                );
+                ?>
             </td>
             <td>
                 <button
@@ -141,6 +152,26 @@ async function syncGroups(btn) {
 }
 
 // Feedback imediato: ao escolher/editar o rótulo, o botão Salvar fica verde.
+async function saveEntity(gid, select) {
+    const entityId = parseInt(select.value, 10);
+    select.disabled = true;
+    try {
+        const r = await fetch(_webDir + '/ajax/save_group_label.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': _csrf},
+            body: JSON.stringify({tanium_group_id: gid, entities_id: entityId})
+        });
+        const d = await r.json();
+        if (!d.success) { alert('Erro ao salvar entidade: ' + (d.error || 'Desconhecido')); }
+        const row = document.getElementById('row-' + gid);
+        row.classList.remove('tg-flash'); void row.offsetWidth; row.classList.add('tg-flash');
+    } catch(e) {
+        alert('Erro de rede: ' + e.message);
+    } finally {
+        select.disabled = false;
+    }
+}
+
 function markChosen(gid, input) {
     const row = document.getElementById('row-' + gid);
     const btn = row.querySelector('button');

@@ -48,6 +48,19 @@ class Config extends CommonDBTM {
             'sla_medium_days'      => 90,
             'patch_limiting_group_id' => 0,
             'ticket_entity_id'        => 0,
+            'default_entity_id'       => 0,
+            'sync_group_membership'   => 0,
+            'agent_stale_days'        => 7,
+            'agent_health_ticket'     => 0,
+            'sync_compliance'         => 0,
+            'sync_threats'            => 0,
+            'threat_ticket'           => 1,
+            'threat_min_severity'     => 'high',
+            'webhook_sla'             => 0,
+            'webhook_deploy'          => 0,
+            'auto_ticket_critical'    => 0,
+            'quarantine_package'      => '',
+            'restart_package'         => '',
         ];
     }
 
@@ -186,6 +199,7 @@ class Config extends CommonDBTM {
         $this->renderCheckbox('sync_software',        __('Installed software inventory', 'tanium'),                       $config['sync_software']);
         $this->renderCheckbox('sync_vulnerabilities', __('Vulnerabilities / CVEs (requires Tanium Comply)', 'tanium'),    $config['sync_vulnerabilities']);
         $this->renderCheckbox('sync_patches',         __('Missing patches (requires Tanium Patch)', 'tanium'),            $config['sync_patches'] ?? 0);
+        $this->renderCheckbox('sync_compliance',      __('Compliance benchmarks CIS/DISA (requires Tanium Comply — daily cron)', 'tanium'), $config['sync_compliance'] ?? 0);
 
         // ── Sync behaviour ────────────────────────────────────────────────
         echo "<div class='tanium-section-title'>" . __('Sync behaviour', 'tanium') . "</div>";
@@ -202,6 +216,72 @@ class Config extends CommonDBTM {
             __('Endpoint import limit per run', 'tanium'),
             "<input type='number' name='import_limit' class='tanium-input tanium-input-sm' value='" . intval($config['import_limit']) . "' min='10' max='5000'/>",
             __('Max endpoints fetched per API page. Tanium REST API v2 max is 500.', 'tanium')
+        );
+
+        $this->renderField(
+            __('Default entity for new computers', 'tanium'),
+            self::entitySelect('default_entity_id', (int)($config['default_entity_id'] ?? 0)),
+            __('New computers created by the sync are placed in this entity. A Tanium group mapped to an entity (Computer Groups page) takes precedence.', 'tanium')
+        );
+
+        $this->renderCheckbox(
+            'sync_group_membership',
+            __('Fetch computer group membership per endpoint (experimental — enables group → entity mapping)', 'tanium'),
+            (int)($config['sync_group_membership'] ?? 0)
+        );
+
+        // ── Agent health ──────────────────────────────────────────────────
+        echo "<div class='tanium-section-title'>" . __('Agent health', 'tanium') . "</div>";
+
+        $this->renderField(
+            __('Silent agent threshold (days)', 'tanium'),
+            "<input type='number' name='agent_stale_days' class='tanium-input tanium-input-sm' value='" . intval($config['agent_stale_days'] ?? 7) . "' min='1' max='365'/>",
+            __('An endpoint not seen for this long is flagged as a silent agent (service stopped, uninstalled, isolated…).', 'tanium')
+        );
+
+        $this->renderCheckbox(
+            'agent_health_ticket',
+            __('Open a consolidated ticket automatically when silent agents are detected (daily check)', 'tanium'),
+            (int)($config['agent_health_ticket'] ?? 0)
+        );
+
+        // ── Threat Response ───────────────────────────────────────────────
+        echo "<div class='tanium-section-title'>" . __('Threat Response', 'tanium') . "</div>";
+
+        $this->renderCheckbox(
+            'sync_threats',
+            __('Import threat alerts (requires Tanium Threat Response — every 15 min)', 'tanium'),
+            (int)($config['sync_threats'] ?? 0)
+        );
+
+        $this->renderCheckbox(
+            'threat_ticket',
+            __('Open a GLPI ticket for each NEW alert at or above the minimum severity', 'tanium'),
+            (int)($config['threat_ticket'] ?? 1)
+        );
+
+        $sevSel = '';
+        foreach (['info', 'low', 'medium', 'high', 'critical'] as $sev) {
+            $sel     = ($config['threat_min_severity'] ?? 'high') === $sev ? ' selected' : '';
+            $sevSel .= "<option value='{$sev}'{$sel}>" . ucfirst($sev) . "</option>";
+        }
+        $this->renderField(
+            __('Minimum alert severity for tickets', 'tanium'),
+            "<select name='threat_min_severity' class='tanium-input tanium-select'>{$sevSel}</select>"
+        );
+
+        // ── Remote actions (approval-gated) ───────────────────────────────
+        echo "<div class='tanium-section-title'>" . __('Remote actions (approval-gated)', 'tanium') . "</div>";
+
+        $this->renderField(
+            __('Quarantine package name', 'tanium'),
+            "<input type='text' name='quarantine_package' class='tanium-input' value='" . htmlspecialchars($config['quarantine_package'] ?? '') . "' placeholder='" . htmlspecialchars(\GlpiPlugin\Tanium\RemoteAction::ACTIONS['quarantine']['default']) . "'/>",
+            __('Tanium package run when a quarantine request is approved. Leave empty to use the default. Package names are tenant-specific — check your Tanium console.', 'tanium')
+        );
+        $this->renderField(
+            __('Client restart package name', 'tanium'),
+            "<input type='text' name='restart_package' class='tanium-input' value='" . htmlspecialchars($config['restart_package'] ?? '') . "' placeholder='" . htmlspecialchars(\GlpiPlugin\Tanium\RemoteAction::ACTIONS['restart_client']['default']) . "'/>",
+            __('Tanium package run when a client-restart request is approved. Leave empty to use the default.', 'tanium')
         );
 
         // ── Last sync status ──────────────────────────────────────────────
@@ -227,7 +307,11 @@ class Config extends CommonDBTM {
             __('Slack, Microsoft Teams, or any HTTP endpoint that accepts JSON POST. Compatible with Slack incoming webhooks and Teams connectors.', 'tanium')
         );
 
+        $this->renderCheckbox('webhook_sla', __('Webhook daily alert while findings breach the remediation SLA', 'tanium'), (int)($config['webhook_sla'] ?? 0));
+        $this->renderCheckbox('webhook_deploy', __('Webhook on patch deployment events (started / completed / failed)', 'tanium'), (int)($config['webhook_deploy'] ?? 0));
+
         $this->renderCheckbox('notify_critical', __('Notify when new Critical CVEs are detected', 'tanium'), (int)($config['notify_critical'] ?? 1));
+        $this->renderCheckbox('auto_ticket_critical', __('Open a consolidated GLPI ticket when new Critical CVEs are detected', 'tanium'), (int)($config['auto_ticket_critical'] ?? 0));
 
         $notifyUserIds = array_filter(array_map('intval', explode(',', (string)($config['notify_users'] ?? ''))));
         ob_start();
@@ -300,6 +384,26 @@ class Config extends CommonDBTM {
         echo "</div>";
         echo "</form>";
         echo "</div></div>";
+    }
+
+    /**
+     * Plain <select> of active entities. -1 renders an extra "no mapping"
+     * option (used by the per-group mapping UI); the config default uses 0+.
+     */
+    public static function entitySelect(string $name, ?int $selected, bool $allowNone = false): string {
+        global $DB;
+
+        $html = "<select name='" . htmlspecialchars($name) . "' class='tanium-input tanium-select'>";
+        if ($allowNone) {
+            $sel   = $selected === null ? ' selected' : '';
+            $html .= "<option value='-1'{$sel}>" . __('— no mapping —', 'tanium') . "</option>";
+        }
+        foreach ($DB->request(['SELECT' => ['id', 'completename'], 'FROM' => 'glpi_entities', 'ORDER' => 'completename ASC']) as $e) {
+            $sel   = ($selected !== null && (int)$e['id'] === $selected) ? ' selected' : '';
+            $html .= "<option value='" . (int)$e['id'] . "'{$sel}>" . htmlspecialchars($e['completename'] ?: __('Root entity')) . "</option>";
+        }
+        $html .= "</select>";
+        return $html;
     }
 
     private function renderField(string $label, string $input, string $hint = ''): void {

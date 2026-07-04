@@ -27,7 +27,7 @@ class Api {
     // the same query via @include directives, gated per sync so we don't fetch
     // heavy data nobody asked for.
     private const ENDPOINT_QUERY = <<<'GQL'
-query($first: Int!, $after: Cursor, $withCves: Boolean!, $withApps: Boolean!, $withPatches: Boolean!) {
+query($first: Int!, $after: Cursor, $withCves: Boolean!, $withApps: Boolean!, $withPatches: Boolean!, $withGroups: Boolean!) {
   endpoints(first: $first, after: $after) {
     totalRecords
     pageInfo { hasNextPage endCursor }
@@ -45,6 +45,9 @@ query($first: Int!, $after: Cursor, $withCves: Boolean!, $withApps: Boolean!, $w
         sensorReadings(sensors: [{name: "Applicable Patches"}]) @include(if: $withPatches) {
           columns { name values }
         }
+        computerGroupMemberships @include(if: $withGroups) {
+          computerGroup { id name }
+        }
       }
     }
   }
@@ -60,7 +63,7 @@ GQL;
         // $offset is ignored — the GraphQL connection is cursor-paginated.
         $data = $this->graphql(self::ENDPOINT_QUERY, [
             'first' => $limit, 'after' => null,
-            'withCves' => false, 'withApps' => false, 'withPatches' => false,
+            'withCves' => false, 'withApps' => false, 'withPatches' => false, 'withGroups' => false,
         ]);
         $edges = $data['endpoints']['edges'] ?? [];
         return array_map(fn($e) => self::mapEndpointNode($e['node'] ?? []), $edges);
@@ -72,7 +75,7 @@ GQL;
      * caller controls peak memory — essential for large fleets with CVE/software
      * enrichment, which would otherwise hold 1 GB+ at once.
      */
-    public function eachEndpointPage(int $pageSize, bool $withCves, bool $withApps, bool $withPatches, callable $onPage): void {
+    public function eachEndpointPage(int $pageSize, bool $withCves, bool $withApps, bool $withPatches, callable $onPage, bool $withGroups = false): void {
         if ($withCves || $withApps || $withPatches) {
             $pageSize = min($pageSize, self::ENRICHED_PAGE_SIZE);
         }
@@ -86,6 +89,7 @@ GQL;
                 'withCves'    => $withCves,
                 'withApps'    => $withApps,
                 'withPatches' => $withPatches,
+                'withGroups'  => $withGroups,
             ]);
             $conn = $data['endpoints'] ?? [];
 
@@ -103,13 +107,13 @@ GQL;
         } while ($hasNext && $after !== null && $count < self::MAX_ENDPOINTS);
     }
 
-    public function getAllEndpoints(int $pageSize = 500, bool $withCves = false, bool $withApps = false, bool $withPatches = false): array {
+    public function getAllEndpoints(int $pageSize = 500, bool $withCves = false, bool $withApps = false, bool $withPatches = false, bool $withGroups = false): array {
         $all = [];
         $this->eachEndpointPage($pageSize, $withCves, $withApps, $withPatches, function (array $page) use (&$all): void {
             foreach ($page as $endpoint) {
                 $all[] = $endpoint;
             }
-        });
+        }, $withGroups);
         return $all;
     }
 
@@ -178,10 +182,23 @@ GQL;
                 'core'  => ['count' => (int) ($proc['logicalProcessors'] ?? 0)],
             ],
             // Enrichment (present only when requested via @include).
-            'cves'     => self::mapCveFindings($n['compliance']['cveFindings'] ?? []),
-            'software' => self::mapInstalledApplications($n['installedApplications'] ?? []),
-            'patches'  => self::mapApplicablePatches($n['sensorReadings'] ?? []),
+            'cves'           => self::mapCveFindings($n['compliance']['cveFindings'] ?? []),
+            'software'       => self::mapInstalledApplications($n['installedApplications'] ?? []),
+            'patches'        => self::mapApplicablePatches($n['sensorReadings'] ?? []),
+            'computerGroups' => self::mapGroupMemberships($n['computerGroupMemberships'] ?? []),
         ];
+    }
+
+    /** @return array<int,array{id:int,name:string}> */
+    private static function mapGroupMemberships(array $memberships): array {
+        $groups = [];
+        foreach ($memberships as $m) {
+            $g = $m['computerGroup'] ?? $m;
+            if (!empty($g['id'])) {
+                $groups[] = ['id' => (int)$g['id'], 'name' => (string)($g['name'] ?? '')];
+            }
+        }
+        return $groups;
     }
 
     /**
@@ -340,6 +357,24 @@ GQL;
     /**
      * All patch findings — pending/missing patches across all endpoints.
      */
+    /**
+     * Compliance (benchmark) findings from Tanium Comply. Endpoint shape varies
+     * per Comply version; both known paths are tried, mirroring the CVE-findings
+     * fallback above.
+     */
+    public function getComplianceFindings(int $pageSize = 500): array {
+        try {
+            return $this->paginate('/plugin/products/comply/v1/compliance-findings', [], $pageSize);
+        } catch (\Throwable $e) {
+            return $this->paginate('/plugin/products/comply/v1/findings', ['type' => 'compliance'], $pageSize);
+        }
+    }
+
+    /** Threat Response alerts (module optional — callers handle failures). */
+    public function getThreatAlerts(int $pageSize = 500): array {
+        return $this->paginate('/plugin/products/threat-response/api/v1/alerts', [], $pageSize);
+    }
+
     public function getAllPatchFindings(int $pageSize = 500): array {
         try {
             return $this->paginate('/plugin/products/patch/v1/patch-findings', [], $pageSize);
@@ -449,6 +484,60 @@ GQL;
         $id = $data['patchCreateDeployment']['deployment']['id'] ?? null;
         if (!$id) {
             throw new \RuntimeException(__('Tanium did not return a deployment id.', 'tanium'));
+        }
+
+        return ['id' => (string)$id];
+    }
+
+    /**
+     * Run a Tanium package on a single endpoint via the Gateway mutation
+     * `actionCreate` (approval-gated remote actions: quarantine, agent
+     * restart…). Targeting mirrors deployPatches: "Computer Name == <name>"
+     * scoped by the limiting group.
+     *
+     * @return array ['id' => actionId]
+     */
+    public function createAction(string $computerName, string $packageName, string $actionName, int $limitingGroupId): array {
+        $computerName = trim($computerName);
+        if ($computerName === '') {
+            throw new \RuntimeException(__('Cannot run the action: the endpoint computer name is unknown. Run a sync first.', 'tanium'));
+        }
+        if (trim($packageName) === '') {
+            throw new \RuntimeException(__('Cannot run the action: no Tanium package configured for it.', 'tanium'));
+        }
+        if ($limitingGroupId <= 0) {
+            throw new \RuntimeException(__('Cannot run the action: set the "Patch deployment scope group" (target limiting group) in the Tanium plugin configuration.', 'tanium'));
+        }
+
+        $input = [
+            'name'    => mb_substr($actionName, 0, 255),
+            'package' => ['name' => $packageName],
+            'targets' => [
+                'questionCriteria' => [
+                    'filter'         => [
+                        'sensor'  => ['name' => 'Computer Name'],
+                        'op'      => 'EQ',
+                        'value'   => $computerName,
+                        'negated' => false,
+                        'any'     => false,
+                    ],
+                    'limitingGroups' => [['id' => (string)$limitingGroupId]],
+                ],
+            ],
+        ];
+
+        $mutation = 'mutation($input: ActionCreateInput!) {'
+                  . ' actionCreate(input: $input) { action { id } error { message } } }';
+
+        $data = $this->graphql($mutation, ['input' => $input]);
+
+        $err = $data['actionCreate']['error']['message'] ?? null;
+        if ($err) {
+            throw new \RuntimeException(sprintf(__('Tanium rejected the action: %s', 'tanium'), $err));
+        }
+        $id = $data['actionCreate']['action']['id'] ?? null;
+        if (!$id) {
+            throw new \RuntimeException(__('Tanium did not return an action id.', 'tanium'));
         }
 
         return ['id' => (string)$id];
@@ -767,31 +856,49 @@ GQL;
         return $data ?? [];
     }
 
+    /**
+     * GETs are idempotent, so transient failures (network error, HTTP 429/5xx)
+     * are retried with exponential backoff. POST/GraphQL are NOT retried: the
+     * patch-deployment mutation goes through them and a retry could deploy twice.
+     */
     private function get(string $path, array $query = [], ?int $timeout = null): array {
         $url = $this->baseUrl . $path;
         if ($query) {
             $url .= '?' . http_build_query($query);
         }
 
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL            => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => $timeout ?? $this->timeout,
-            CURLOPT_HTTPHEADER     => [
-                'session: ' . $this->token,
-                'Content-Type: application/json',
-                'Accept: application/json',
-            ],
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_FOLLOWLOCATION => true,
-        ]);
+        $maxAttempts = 3;
+        $body        = false;
+        $error       = '';
+        $code        = 0;
 
-        $body  = curl_exec($ch);
-        $error = curl_error($ch);
-        $code  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => $timeout ?? $this->timeout,
+                CURLOPT_HTTPHEADER     => [
+                    'session: ' . $this->token,
+                    'Content-Type: application/json',
+                    'Accept: application/json',
+                ],
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_FOLLOWLOCATION => true,
+            ]);
+
+            $body  = curl_exec($ch);
+            $error = curl_error($ch);
+            $code  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            $transient = ($error !== '') || $code === 429 || $code >= 500;
+            if (!$transient || $attempt === $maxAttempts) {
+                break;
+            }
+            sleep(2 ** ($attempt - 1)); // 1s, 2s
+        }
 
         if ($error) {
             throw new \RuntimeException(sprintf(__('cURL error: %s', 'tanium'), $error));

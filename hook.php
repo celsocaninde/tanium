@@ -86,6 +86,19 @@ function plugin_tanium_install(): bool {
             'sla_medium_days'    => "int NOT NULL DEFAULT 90",
             'patch_limiting_group_id' => "int unsigned NOT NULL DEFAULT 0",
             'ticket_entity_id'        => "int unsigned NOT NULL DEFAULT 0",
+            'default_entity_id'       => "int unsigned NOT NULL DEFAULT 0",
+            'sync_group_membership'   => "tinyint(1) NOT NULL DEFAULT 0",
+            'agent_stale_days'        => "int NOT NULL DEFAULT 7",
+            'agent_health_ticket'     => "tinyint(1) NOT NULL DEFAULT 0",
+            'sync_compliance'         => "tinyint(1) NOT NULL DEFAULT 0",
+            'sync_threats'            => "tinyint(1) NOT NULL DEFAULT 0",
+            'threat_ticket'           => "tinyint(1) NOT NULL DEFAULT 1",
+            'threat_min_severity'     => "varchar(20) NOT NULL DEFAULT 'high'",
+            'webhook_sla'             => "tinyint(1) NOT NULL DEFAULT 0",
+            'webhook_deploy'          => "tinyint(1) NOT NULL DEFAULT 0",
+            'auto_ticket_critical'    => "tinyint(1) NOT NULL DEFAULT 0",
+            'quarantine_package'      => "varchar(255) NOT NULL DEFAULT ''",
+            'restart_package'         => "varchar(255) NOT NULL DEFAULT ''",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_configs` LIKE '{$col}'");
@@ -438,6 +451,10 @@ function plugin_tanium_uninstall(): bool {
         'glpi_plugin_tanium_saved_filters',
         'glpi_plugin_tanium_patch_deployments',
         'glpi_plugin_tanium_computer_groups',
+        'glpi_plugin_tanium_cve_enrichment',
+        'glpi_plugin_tanium_compliance',
+        'glpi_plugin_tanium_threat_alerts',
+        'glpi_plugin_tanium_remote_actions',
     ] as $table) {
         if ($DB->tableExists($table)) {
             $DB->dropTable($table);

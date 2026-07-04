@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: GLPI Plugin Tanium 1.0.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-12\n"
+"POT-Creation-Date: 2026-07-04 07:20-0400\n"
 "PO-Revision-Date: 2026-06-12\n"
 "Last-Translator: \n"
 "Language-Team: pt_BR\n"
@@ -12,182 +12,1666 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-msgid "Tanium Configuration"
-msgstr "Configuração Tanium"
+#, php-format
+msgid "%d endpoint(s) silent for more than %d days."
+msgstr "%d endpoint(s) sem comunicação há mais de %d dias."
 
-msgid "Tanium Sync"
-msgstr "Sincronização Tanium"
+#, php-format
+msgid "%d exception expires within 14 days."
+msgid_plural "%d exceptions expire within 14 days."
+msgstr[0] "%d exceção expira em 14 dias."
+msgstr[1] "%d exceções expiram em 14 dias."
 
-msgid "Tanium Cron"
-msgstr "Cron Tanium"
+#, php-format
+msgid ""
+"%d exception has expired — its CVE is counting toward SLA again. Review and "
+"revoke or renew it."
+msgid_plural ""
+"%d exceptions have expired — their CVEs are counting toward SLA again. "
+"Review and revoke or renew them."
+msgstr[0] "%d exceção expirou — o CVE dela voltou a contar no SLA. Revise e revogue ou renove."
+msgstr[1] "%d exceções expiraram — os CVEs delas voltaram a contar no SLA. Revise e revogue ou renove."
 
-msgid "Tanium"
-msgstr "Tanium"
+#, php-format
+msgid "%d-day deadline"
+msgstr "prazo de %d dias"
 
-msgid "API & Sync Configuration"
-msgstr "Configuração de API e Sincronização"
+msgid "(no category)"
+msgstr "(sem categoria)"
 
-msgid "Tanium Cloud API URL"
-msgstr "URL da API Tanium Cloud"
-
-msgid "Base URL of your Tanium Cloud instance, without trailing slash."
-msgstr "URL base da sua instância Tanium Cloud, sem barra final."
+msgid "API &amp; Sync Configuration"
+msgstr "Configuração de API &amp; Sincronização"
 
 msgid "API Token"
 msgstr "Token de API"
 
-msgid "Leave blank to keep the existing token. Tokens are generated in Tanium → Administration → API Tokens."
-msgstr "Deixe em branco para manter o token existente. Tokens são gerados em Tanium → Administração → Tokens de API."
-
-msgid "Data to synchronize"
-msgstr "Dados a sincronizar"
-
-msgid "Endpoints / Computers"
-msgstr "Endpoints / Computadores"
-
-msgid "Hardware details (CPU, RAM, disk)"
-msgstr "Detalhes de hardware (CPU, RAM, disco)"
-
-msgid "Installed software inventory"
-msgstr "Inventário de software instalado"
-
-msgid "Vulnerabilities & Patches (requires Tanium Comply)"
-msgstr "Vulnerabilidades e Patches (requer Tanium Comply)"
-
-msgid "Scheduler"
-msgstr "Agendador"
-
-msgid "Cron frequency (hours)"
-msgstr "Frequência do cron (horas)"
-
-msgid "How often the automatic sync runs. Minimum 1 hour."
-msgstr "Com que frequência a sincronização automática executa. Mínimo 1 hora."
-
-msgid "Endpoint import limit per run"
-msgstr "Limite de importação de endpoints por execução"
-
-msgid "Max endpoints fetched per API page. Tanium REST API v2 max is 500."
-msgstr "Máximo de endpoints buscados por página da API. O máximo da API REST v2 do Tanium é 500."
-
-msgid "Last sync: %s — %d endpoints processed"
-msgstr "Última sincronização: %s — %d endpoints processados"
-
-msgid "Save configuration"
-msgstr "Salvar configuração"
-
-msgid "Test connection"
-msgstr "Testar conexão"
-
-msgid "Sync now"
-msgstr "Sincronizar agora"
-
-msgid "Tanium — Configuration"
-msgstr "Tanium — Configuração"
-
-msgid "Tanium — Synchronization"
-msgstr "Tanium — Sincronização"
-
-msgid "Endpoint Synchronization"
-msgstr "Sincronização de Endpoints"
-
 msgid "API URL"
 msgstr "URL da API"
 
-msgid "Not configured"
-msgstr "Não configurado"
+msgid "Accept Risk"
+msgstr "Aceitar risco"
 
-msgid "Last sync"
-msgstr "Última sincronização"
+msgid "Accept Risk — CVE Exception"
+msgstr "Aceitar risco — Exceção de CVE"
 
-msgid "Endpoints processed"
-msgstr "Endpoints processados"
+msgid "Accept risk / create exception"
+msgstr "Aceitar risco / criar exceção"
 
-msgid "Cron frequency"
-msgstr "Frequência do cron"
+msgid "Accepted by"
+msgstr "Aceito por"
 
-msgid "Run synchronization now"
-msgstr "Executar sincronização agora"
+msgid "Actions"
+msgstr "Ações"
+
+msgid "Additional notes"
+msgstr "Observações adicionais"
+
+msgid "Additional notification email(s)"
+msgstr "E-mail(s) adicionais de notificação"
+
+msgid "Advanced search"
+msgstr "Busca avançada"
+
+msgid "Affected"
+msgstr "Afetados"
+
+msgid "Affected endpoints"
+msgstr "Endpoints afetados"
+
+#, php-format
+msgid "Affected endpoints — %s"
+msgstr "Endpoints afetados — %s"
+
+msgid "Agent health"
+msgstr "Saúde do agente"
+
+#, php-format
+msgid "Agents silent > %d days"
+msgstr "Agentes sem comunicação > %d dias"
+
+msgid "All"
+msgstr "Todos"
+
+msgid "All CVEs"
+msgstr "Todos os CVEs"
+
+msgid "All GLPI computers have a Tanium agent. Full coverage achieved!"
+msgstr "Todos os computadores do GLPI têm agente Tanium. Cobertura total alcançada!"
+
+msgid "All OS"
+msgstr "Todos os SO"
+
+msgid "All Tanium endpoints are matched to GLPI computers."
+msgstr "Todos os endpoints Tanium estão vinculados a computadores do GLPI."
+
+msgid "All benchmark checks pass on this endpoint."
+msgstr "Todas as verificações de benchmark passam neste endpoint."
+
+msgid "All endpoints"
+msgstr "Todos os endpoints"
+
+msgid "All patches"
+msgstr "Todos os patches"
+
+msgid "All risk levels"
+msgstr "Todos os níveis de risco"
+
+msgid "All severities"
+msgstr "Todas as severidades"
+
+msgid "All statuses"
+msgstr "Todos os status"
+
+#, php-format
+msgid "Also reported by SentinelOne on %d agent(s)"
+msgstr "Também reportado pelo SentinelOne em %d agente(s)"
+
+#, php-format
+msgid "Also reported by Tenable Nessus on %d finding(s)"
+msgstr "Também reportado pelo Tenable Nessus em %d achado(s)"
+
+msgid ""
+"An endpoint not seen for this long is flagged as a silent agent (service "
+"stopped, uninstalled, isolated…)."
+msgstr "Um endpoint sem contato por esse período é marcado como agente silencioso (serviço parado, desinstalado, isolado…)."
+
+msgid "Approved by"
+msgstr "Aprovado por"
+
+msgid "Assign"
+msgstr "Atribuir"
+
+msgid "Assign CVE for Remediation"
+msgstr "Atribuir CVE para remediação"
+
+msgid "Assign to"
+msgstr "Atribuir a"
+
+msgid "Assign to user"
+msgstr "Atribuir ao usuário"
+
+msgid "Assigned to"
+msgstr "Atribuído a"
+
+msgid "Assignments"
+msgstr "Atribuições"
+
+msgid "Average risk"
+msgstr "Risco médio"
+
+msgid "Back"
+msgstr "Voltar"
+
+msgid "Back to CVEs"
+msgstr "Voltar aos CVEs"
+
+msgid "Base URL of your Tanium Cloud instance, without trailing slash."
+msgstr "URL base da sua instância Tanium Cloud, sem barra final."
+
+msgid "Benchmark"
+msgstr "Benchmark"
+
+msgid "Benchmark compliance (Comply)"
+msgstr "Conformidade de benchmark (Comply)"
+
+msgid "Build"
+msgstr "Build"
+
+msgid "CISA KEV — actively exploited AND used in ransomware campaigns"
+msgstr "CISA KEV — exploração ativa E uso em campanhas de ransomware"
+
+msgid "CISA KEV — confirmed active exploitation in the wild"
+msgstr "CISA KEV — exploração ativa confirmada em ambiente real"
+
+msgid "CVE"
+msgstr "CVE"
+
+msgid "CVE / Patch Assignments"
+msgstr "Atribuições de CVE / Patch"
+
+msgid "CVE Exceptions"
+msgstr "Exceções de CVE"
+
+msgid "CVE Exceptions (Accepted Risk)"
+msgstr "Exceções de CVE (risco aceito)"
+
+msgid "CVE ID"
+msgstr "CVE ID"
+
+msgid "CVE Severity Distribution"
+msgstr "Distribuição de severidade de CVEs"
+
+msgid "CVE Status History"
+msgstr "Histórico de status do CVE"
+
+msgid "CVE Summary"
+msgstr "Resumo de CVEs"
+
+msgid "CVEs"
+msgstr "CVEs"
+
+msgid "CVEs / Vulnerabilities"
+msgstr "CVEs / Vulnerabilidades"
+
+msgid "CVEs found"
+msgstr "CVEs encontrados"
+
+msgid "CVSS"
+msgstr "CVSS"
+
+msgid "CVSS Score"
+msgstr "Pontuação CVSS"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid ""
+"Cannot deploy: set the \"Patch deployment scope group\" (target limiting "
+"group) in the Tanium plugin configuration."
+msgstr "Não é possível implantar: defina o \"Grupo de escopo da implantação de patches\" (grupo limitante) na configuração do plugin Tanium."
+
+msgid "Cannot deploy: the endpoint computer name is unknown. Run a sync first."
+msgstr "Não é possível implantar: o nome do computador é desconhecido. Execute uma sincronização primeiro."
+
+msgid "Cannot run the action: no Tanium package configured for it."
+msgstr "Não é possível executar a ação: nenhum pacote Tanium configurado para ela."
+
+msgid ""
+"Cannot run the action: set the \"Patch deployment scope group\" (target "
+"limiting group) in the Tanium plugin configuration."
+msgstr "Não é possível executar a ação: defina o \"Grupo de escopo da implantação de patches\" (grupo limitante) na configuração do plugin Tanium."
+
+msgid ""
+"Cannot run the action: the endpoint computer name is unknown. Run a sync "
+"first."
+msgstr "Não é possível executar a ação: o nome do computador é desconhecido. Execute uma sincronização primeiro."
+
+msgid "Category"
+msgstr "Categoria"
+
+msgid "Checked"
+msgstr "Verificado"
+
+msgid "Clear"
+msgstr "Limpar"
+
+msgid "Click \"Sync now\" to start the first synchronization"
+msgstr "Clique em \"Sincronizar agora\" para iniciar a primeira sincronização"
+
+msgid "Client restart package name"
+msgstr "Nome do pacote de reinício do cliente"
+
+msgid ""
+"Comma-separated list of extra emails (e.g. distribution lists not registered "
+"as GLPI users). Leave both fields blank to disable email alerts."
+msgstr "Lista de e-mails extras separados por vírgula (ex.: listas de distribuição não registradas como usuários GLPI). Deixe ambos os campos vazios para desativar alertas por e-mail."
+
+msgid "Compare"
+msgstr "Comparar"
+
+msgid "Compare Endpoints"
+msgstr "Comparar endpoints"
+
+msgid "Compliance"
+msgstr "Conformidade"
+
+msgid "Compliance benchmarks (Tanium Comply)"
+msgstr "Benchmarks de conformidade (Tanium Comply)"
+
+msgid "Compliance benchmarks CIS/DISA (requires Tanium Comply — daily cron)"
+msgstr "Benchmarks de conformidade CIS/DISA (requer Tanium Comply — cron diário)"
+
+msgid "Compliance by severity"
+msgstr "Conformidade por severidade"
+
+msgid "Compliance sync disabled in plugin settings. Skipping."
+msgstr "Sincronização de conformidade desativada nas configurações do plugin. Ignorando."
+
+#, php-format
+msgid "Compliance sync finished — %d findings imported."
+msgstr "Sincronização de conformidade concluída — %d achados importados."
+
+msgid "Computer"
+msgstr "Computador"
+
+msgid "Configuration"
+msgstr "Configuração"
 
 msgid "Configure"
 msgstr "Configurar"
 
-msgid "Sync History"
-msgstr "Histórico de Sincronização"
+msgid "Configure now"
+msgstr "Configurar agora"
 
-msgid "No sync runs recorded yet."
-msgstr "Nenhuma execução de sincronização registrada ainda."
+msgid "Connection"
+msgstr "Conexão"
 
-msgid "Started"
-msgstr "Início"
+#, php-format
+msgid "Connection successful. %s endpoints found in Tanium."
+msgstr "Conexão bem-sucedida. %s endpoints encontrados no Tanium."
 
-msgid "Finished"
-msgstr "Término"
+msgid ""
+"Could not queue the Tanium sync task. Make sure GLPI automatic actions "
+"(cron) are running."
+msgstr "Não foi possível enfileirar a sincronização Tanium. Verifique se as ações automáticas do GLPI (cron) estão em execução."
 
-msgid "Status"
-msgstr "Status"
+#, php-format
+msgid "Could not resolve these patches to a Tanium UID: %s"
+msgstr "Não foi possível resolver estes patches para um UID Tanium: %s"
 
-msgid "Total"
-msgstr "Total"
+msgid "Coverage"
+msgstr "Cobertura"
+
+msgid "Create Bulk Ticket"
+msgstr "Criar chamado em lote"
+
+msgid "Create GLPI computer now"
+msgstr "Criar computador no GLPI agora"
+
+msgid "Create Remediation Ticket"
+msgstr "Criar chamado de remediação"
+
+msgid "Create ticket"
+msgstr "Criar chamado"
 
 msgid "Created"
 msgstr "Criados"
 
-msgid "Updated"
-msgstr "Atualizados"
+#, php-format
+msgid "Created by Tanium sync (EID %s)"
+msgstr "Criado pela sincronização Tanium (EID %s)"
+
+#, php-format
+msgid "Created from Tanium coverage page (EID %s)"
+msgstr "Criado pela página de cobertura Tanium (EID %s)"
+
+msgid "Critical"
+msgstr "Crítico"
+
+#, php-format
+msgid "Critical %dd · High %dd · Medium %dd"
+msgstr "Crítico %dd · Alto %dd · Médio %dd"
+
+msgid "Critical (≥70)"
+msgstr "Crítico (≥70)"
+
+msgid "Critical CVEs"
+msgstr "CVEs críticos"
+
+msgid "Critical patches"
+msgstr "Patches críticos"
+
+msgid "Critical risk"
+msgstr "Risco crítico"
+
+msgid "Cron frequency"
+msgstr "Frequência do cron"
+
+msgid "Cron frequency (hours)"
+msgstr "Frequência do cron (horas)"
+
+msgid "Dashboard"
+msgstr "Dashboard"
+
+msgid "Data to synchronize"
+msgstr "Dados a sincronizar"
+
+msgid "Date"
+msgstr "Data"
+
+msgid "Days overdue"
+msgstr "Dias em atraso"
+
+msgid "Deadlines"
+msgstr "Prazos"
+
+msgid "Default entity for new computers"
+msgstr "Entidade padrão para novos computadores"
+
+msgid "Define what this profile can see and manage in the Tanium plugin."
+msgstr "Defina o que este perfil pode ver e gerenciar no plugin Tanium."
+
+msgid "Delete assignment"
+msgstr "Excluir atribuição"
+
+msgid "Delete saved filter"
+msgstr "Excluir filtro salvo"
+
+msgid "Delete this assignment?"
+msgstr "Excluir esta atribuição?"
+
+msgid "Deploy / manage patches for this endpoint"
+msgstr "Implantar / gerenciar patches deste endpoint"
+
+msgid "Deploy selected"
+msgstr "Implantar selecionados"
+
+msgid "Deployed at"
+msgstr "Implantado em"
+
+msgid "Deployment History"
+msgstr "Histórico de implantações"
+
+msgid "Deployment in progress…"
+msgstr "Implantação em andamento…"
+
+msgid "Deployments active"
+msgstr "Implantações ativas"
+
+msgid ""
+"Describe why this CVE is accepted as risk (e.g. mitigating controls in "
+"place, not exploitable in this environment)"
+msgstr "Descreva por que este CVE é aceito como risco (ex.: controles mitigadores em vigor, não explorável neste ambiente)"
+
+msgid "Description"
+msgstr "Descrição"
+
+msgid "Deselect all"
+msgstr "Desmarcar todos"
+
+msgid "Detail"
+msgstr "Detalhe"
+
+msgid "Details"
+msgstr "Detalhes"
+
+msgid "Detected"
+msgstr "Detectado"
+
+msgid "Due date"
+msgstr "Data limite"
+
+msgid "Due soon"
+msgstr "Vence em breve"
+
+#, php-format
+msgid "Due within %d days"
+msgstr "Vencem em %d dias"
+
+msgid "Duration"
+msgstr "Duração"
+
+msgid "EID:"
+msgstr "EID:"
+
+#, php-format
+msgid "EPSS/KEV enrichment finished — EPSS rows: %d | KEV matches: %d"
+msgstr "Enriquecimento EPSS/KEV concluído — linhas EPSS: %d | correspondências KEV: %d"
+
+msgid "EPSS/KEV enrichment started…"
+msgstr "Enriquecimento EPSS/KEV iniciado…"
+
+msgid "Enable patch sync"
+msgstr "Ativar sincronização de patches"
+
+msgid "Enable webhook on sync completion"
+msgstr "Ativar webhook ao concluir a sincronização"
+
+msgid "Endpoint"
+msgstr "Endpoint"
+
+msgid "Endpoint A"
+msgstr "Endpoint A"
+
+msgid "Endpoint B"
+msgstr "Endpoint B"
+
+msgid "Endpoint Risk Heatmap"
+msgstr "Mapa de calor de risco dos endpoints"
+
+msgid "Endpoint Risk Overview"
+msgstr "Visão geral de risco dos endpoints"
+
+msgid "Endpoint Synchronization"
+msgstr "Sincronização de Endpoints"
+
+msgid "Endpoint import limit per run"
+msgstr "Limite de importação de endpoints por execução"
+
+msgid "Endpoint not found."
+msgstr "Endpoint não encontrado."
+
+msgid "Endpoints"
+msgstr "Endpoints"
+
+msgid "Endpoints / Computers"
+msgstr "Endpoints / Computadores"
+
+msgid "Endpoints affected"
+msgstr "Endpoints afetados"
+
+msgid "Endpoints breaching SLA"
+msgstr "Endpoints violando o SLA"
+
+msgid "Endpoints processed"
+msgstr "Endpoints processados"
+
+msgid "Endpoints synced"
+msgstr "Endpoints sincronizados"
+
+msgid "Entity"
+msgstr "Entidade"
+
+msgid ""
+"Entity where Tanium tickets (CVE, patch remediation) will be created. Choose "
+"the entity that owns the security team or service desk queue."
+msgstr "Entidade onde os chamados Tanium (CVE, remediação de patches) serão criados. Escolha a entidade da equipe de segurança ou da fila do service desk."
 
 msgid "Errors"
 msgstr "Erros"
 
-msgid "Message"
-msgstr "Mensagem"
+msgid "Exception"
+msgstr "Exceção"
 
-msgid "Tanium configuration saved."
-msgstr "Configuração Tanium salva."
+msgid "Exception expired"
+msgstr "Exceção expirada"
 
-msgid "Please enter the API URL and token before testing."
-msgstr "Por favor, insira a URL da API e o token antes de testar."
+msgid "Expired"
+msgstr "Expirada"
 
-msgid "Connection successful. %s endpoints found in Tanium."
-msgstr "Conexão bem-sucedida. %s endpoints encontrados no Tanium."
+msgid "Expires"
+msgstr "Expira"
 
-msgid "Tanium API authentication failed. Check your API token."
-msgstr "Autenticação da API Tanium falhou. Verifique seu token de API."
+msgid "Expiring soon"
+msgstr "Expira em breve"
 
-msgid "Tanium API access forbidden. The token may lack required permissions."
-msgstr "Acesso à API Tanium proibido. O token pode não ter as permissões necessárias."
+msgid "Expiry date (optional)"
+msgstr "Data de expiração (opcional)"
 
-msgid "Tanium API returned HTTP %d for %s"
-msgstr "A API Tanium retornou HTTP %d para %s"
+msgid ""
+"Exploit Prediction Scoring System — probability of exploitation within 30 "
+"days (FIRST.org)"
+msgstr "Exploit Prediction Scoring System — probabilidade de exploração em 30 dias (FIRST.org)"
 
-msgid "Invalid JSON from Tanium API: %s"
-msgstr "JSON inválido da API Tanium: %s"
+msgid "Export PDF"
+msgstr "Exportar PDF"
 
-msgid "cURL error: %s"
-msgstr "Erro cURL: %s"
+msgid "Failed rule"
+msgstr "Regra reprovada"
 
-msgid "Unexpected API response structure."
-msgstr "Estrutura de resposta da API inesperada."
+msgid "Falha ao criar chamado. Verifique as permissões no GLPI."
+msgstr "Falha ao criar chamado. Verifique as permissões no GLPI."
 
-msgid "Tanium plugin: API URL or token not configured. Skipping."
-msgstr "Plugin Tanium: URL da API ou token não configurado. Pulando."
+msgid ""
+"Fetch computer group membership per endpoint (experimental — enables group → "
+"entity mapping)"
+msgstr "Buscar os grupos de computadores de cada endpoint (experimental — habilita o mapeamento grupo → entidade)"
 
-msgid "Tanium sync started…"
-msgstr "Sincronização Tanium iniciada…"
+msgid "Filter"
+msgstr "Filtrar"
 
-msgid "Tanium sync finished — total: %d | created: %d | updated: %d | errors: %d"
-msgstr "Sincronização Tanium concluída — total: %d | criados: %d | atualizados: %d | erros: %d"
+msgid "Finished"
+msgstr "Término"
 
-msgid "Tanium sync complete — %d endpoints processed: %d created, %d updated, %d errors."
-msgstr "Sincronização Tanium concluída — %d endpoints processados: %d criados, %d atualizados, %d erros."
+msgid "First detected"
+msgstr "Primeira detecção"
 
-msgid "Tanium — synchronize endpoints, software and hardware into GLPI assets."
-msgstr "Tanium — sincronizar endpoints, software e hardware nos ativos do GLPI."
+msgid "First seen"
+msgstr "Visto pela primeira vez"
+
+msgid "From"
+msgstr "De"
+
+msgid "Full dashboard →"
+msgstr "Dashboard completo →"
+
+msgid "Full history"
+msgstr "Histórico completo"
+
+msgid "GLPI Computer"
+msgstr "Computador GLPI"
+
+msgid "GLPI Computers"
+msgstr "Computadores GLPI"
+
+msgid "GLPI Entity"
+msgstr "Entidade GLPI"
+
+msgid "GLPI computers not in Tanium"
+msgstr "Computadores GLPI fora do Tanium"
+
+msgid "GLPI native search with saved searches and CSV export"
+msgstr "Busca nativa do GLPI com pesquisas salvas e exportação CSV"
+
+msgid "Global Report"
+msgstr "Relatório global"
+
+msgid "Group"
+msgstr "Grupo"
+
+msgid "Hardware details (CPU, RAM)"
+msgstr "Detalhes de hardware (CPU, RAM)"
+
+msgid "High"
+msgstr "Alto"
+
+msgid "High (40-69)"
+msgstr "Alto (40-69)"
+
+msgid "High CVEs"
+msgstr "CVEs altos"
+
+msgid "High patches"
+msgstr "Patches altos"
+
+msgid "High severity CVEs"
+msgstr "CVEs de severidade alta"
 
 msgid "Hours between runs (overrides plugin setting)"
 msgstr "Horas entre execuções (substitui a configuração do plugin)"
 
-msgid "The PHP cURL extension is required by the Tanium plugin."
-msgstr "A extensão PHP cURL é necessária pelo plugin Tanium."
+msgid "How often the automatic sync runs. Minimum 1 hour."
+msgstr "Com que frequência a sincronização automática executa. Mínimo 1 hora."
+
+msgid ""
+"ID de fallback usado quando nenhum grupo é selecionado no modal de deploy. "
+"Com a lista de grupos sincronizada, este campo raramente é necessário."
+msgstr "ID de fallback usado quando nenhum grupo é selecionado no modal de deploy. Com a lista de grupos sincronizada, este campo raramente é necessário."
+
+msgid "IP"
+msgstr "IP"
+
+msgid "IP Address"
+msgstr "Endereço IP"
+
+msgid "IP address"
+msgstr "Endereço IP"
+
+msgid "Import threat alerts (requires Tanium Threat Response — every 15 min)"
+msgstr "Importar alertas de ameaça (requer Tanium Threat Response — a cada 15 min)"
+
+msgid "In progress"
+msgstr "Em andamento"
+
+msgid "Incremental"
+msgstr "Incremental"
+
+msgid "Incremental sync (only changed endpoints per run)"
+msgstr "Sincronização incremental (apenas endpoints alterados por execução)"
+
+msgid "Installed"
+msgstr "Instalado"
+
+msgid "Installed software inventory"
+msgstr "Inventário de software instalado"
+
+#, php-format
+msgid "Invalid JSON from Tanium API: %s"
+msgstr "JSON inválido da API Tanium: %s"
+
+msgid "KB"
+msgstr "KB"
+
+msgid "KEV exposure"
+msgstr "Exposição KEV"
+
+#, php-format
+msgid "Last %d syncs"
+msgstr "Últimas %d sincronizações"
+
+msgid "Last 20 changes"
+msgstr "Últimas 20 alterações"
+
+msgid "Last detected"
+msgstr "Última detecção"
+
+msgid "Last modified"
+msgstr "Última modificação"
+
+msgid "Last seen"
+msgstr "Visto por último"
+
+msgid "Last seen in Tanium"
+msgstr "Visto por último no Tanium"
+
+msgid "Last sync"
+msgstr "Última sincronização"
+
+msgid "Last sync completed successfully"
+msgstr "Última sincronização concluída com sucesso"
+
+msgid "Last sync finished with errors"
+msgstr "Última sincronização terminou com erros"
+
+#, php-format
+msgid "Last sync: %s — %d endpoints processed"
+msgstr "Última sincronização: %s — %d endpoints processados"
+
+msgid ""
+"Leave blank to keep the existing token. Generate tokens in Tanium → "
+"Administration → API Tokens."
+msgstr "Deixe em branco para manter o token atual. Gere tokens em Tanium → Administration → API Tokens."
+
+msgid "Location"
+msgstr "Localização"
+
+msgid "Low"
+msgstr "Baixo"
+
+msgid "Low (<15)"
+msgstr "Baixo (<15)"
+
+msgid "MAC Address"
+msgstr "Endereço MAC"
+
+msgid "Max endpoints fetched per API page. Tanium REST API v2 max is 500."
+msgstr ""
+"Máximo de endpoints buscados por página da API. O máximo da API REST v2 do "
+"Tanium é 500."
+
+msgid ""
+"Maximum days allowed before a CVE is flagged as overdue. Overdue CVEs are "
+"highlighted in red throughout the plugin."
+msgstr "Máximo de dias permitidos antes de um CVE ser marcado como em atraso. CVEs em atraso são destacados em vermelho em todo o plugin."
+
+msgid "Mean Time To Remediate — last 90 days"
+msgstr "Tempo médio de remediação (MTTR) — últimos 90 dias"
+
+msgid "Medium"
+msgstr "Médio"
+
+msgid "Medium (15-39)"
+msgstr "Médio (15-39)"
+
+msgid "Medium CVEs"
+msgstr "CVEs médios"
+
+msgid "Message"
+msgstr "Mensagem"
+
+msgid "Minimum alert severity for tickets"
+msgstr "Severidade mínima do alerta para chamados"
+
+msgid "Missing"
+msgstr "Ausente"
+
+msgid "Missing Patches"
+msgstr "Patches ausentes"
+
+msgid "Missing patches"
+msgstr "Patches ausentes"
+
+msgid "Missing patches (requires Tanium Patch)"
+msgstr "Patches ausentes (requer Tanium Patch)"
+
+msgid "Most Vulnerable Endpoints"
+msgstr "Endpoints mais vulneráveis"
+
+msgid "Most overdue findings"
+msgstr "Achados mais atrasados"
+
+msgid "Name"
+msgstr "Nome"
+
+msgid "Name for this filter:"
+msgstr "Nome para este filtro:"
+
+msgid "Network"
+msgstr "Rede"
+
+msgid "Network adapters (IP &amp; MAC address)"
+msgstr "Adaptadores de rede (IP &amp; endereço MAC)"
+
+msgid "Never"
+msgstr "Nunca"
+
+msgid ""
+"New computers created by the sync are placed in this entity. A Tanium group "
+"mapped to an entity (Computer Groups page) takes precedence."
+msgstr "Novos computadores criados pela sincronização são colocados nesta entidade. Um grupo Tanium mapeado para uma entidade (página Grupos de Computadores) tem precedência."
+
+msgid "No"
+msgstr "Não"
+
+msgid "No CVE data. Enable \"Vulnerabilities\" sync and run a sync."
+msgstr "Sem dados de CVE. Ative a sincronização de \"Vulnerabilidades\" e execute uma sincronização."
+
+msgid ""
+"No CVE exceptions defined yet. Use the \"Accept Risk\" button on a CVE to "
+"add one."
+msgstr "Nenhuma exceção de CVE definida ainda. Use o botão \"Aceitar risco\" em um CVE para adicionar."
+
+msgid "No CVEs"
+msgstr "Sem CVEs"
+
+msgid "No CVEs detected for this endpoint."
+msgstr "Nenhum CVE detectado para este endpoint."
+
+msgid "No CVEs found for this computer."
+msgstr "Nenhum CVE encontrado para este computador."
+
+msgid "No CVEs found for this endpoint."
+msgstr "Nenhum CVE encontrado para este endpoint."
+
+msgid ""
+"No CVEs found. Enable \"Vulnerabilities\" sync and run a sync with Tanium "
+"Comply."
+msgstr "Nenhum CVE encontrado. Ative a sincronização de \"Vulnerabilidades\" e execute uma sincronização com o Tanium Comply."
+
+msgid "No CVEs to measure yet"
+msgstr "Ainda não há CVEs para medir"
+
+msgid "No SLA-breached findings today. Nothing to notify."
+msgstr "Nenhum achado com SLA violado hoje. Nada a notificar."
+
+msgid "No affected endpoints found for this CVE."
+msgstr "Nenhum endpoint afetado encontrado para este CVE."
+
+msgid ""
+"No assignments found. Use the \"Assign\" button on a CVE or patch to create "
+"one."
+msgstr "Nenhuma atribuição encontrada. Use o botão \"Atribuir\" em um CVE ou patch para criar."
+
+msgid "No data yet. Run a sync with CVE scanning enabled."
+msgstr "Ainda sem dados. Execute uma sincronização com a varredura de CVEs ativada."
+
+msgid "No endpoint data yet."
+msgstr "Ainda sem dados de endpoints."
+
+msgid "No endpoints currently breaching SLA. 🎉"
+msgstr "Nenhum endpoint violando o SLA no momento. 🎉"
+
+msgid "No endpoints found. Run a sync first."
+msgstr "Nenhum endpoint encontrado. Execute uma sincronização primeiro."
+
+msgid "No missing patches recorded. Excellent!"
+msgstr "Nenhum patch ausente registrado. Excelente!"
+
+msgid "No missing patches — this endpoint is up to date."
+msgstr "Nenhum patch ausente — este endpoint está atualizado."
+
+msgid ""
+"No open CVEs to measure yet. Enable \"Vulnerabilities\" sync (Tanium Comply) "
+"and run a sync."
+msgstr "Ainda não há CVEs abertos para medir. Ative a sincronização de \"Vulnerabilidades\" (Tanium Comply) e execute uma sincronização."
+
+msgid ""
+"No patch data found. Enable \"Missing patches\" sync (requires Tanium Patch "
+"module) and run a sync."
+msgstr "Nenhum dado de patch encontrado. Ative a sincronização de \"Patches ausentes\" (requer o módulo Tanium Patch) e execute uma sincronização."
+
+msgid "No patch data yet — run a sync"
+msgstr "Ainda sem dados de patches — execute uma sincronização"
+
+msgid ""
+"No remediations recorded in the window yet. MTTR appears after synced CVEs "
+"transition to \"remediated\"."
+msgstr "Nenhuma remediação registrada na janela ainda. O MTTR aparece quando CVEs sincronizados passam a \"remediado\"."
+
+msgid "No results found for"
+msgstr "Nenhum resultado encontrado para"
+
+msgid "No results found."
+msgstr "Nenhum resultado encontrado."
+
+msgid "No sync history yet. Risk timeline will appear after the first sync."
+msgstr "Ainda sem histórico de sincronização. A linha do tempo de risco aparece após a primeira sincronização."
+
+msgid "No sync performed yet"
+msgstr "Nenhuma sincronização executada ainda"
+
+msgid "No sync runs recorded yet."
+msgstr "Nenhuma execução de sincronização registrada ainda."
+
+msgid "No sync runs yet."
+msgstr "Nenhuma execução de sincronização ainda."
+
+msgid "No webhook URL configured."
+msgstr "Nenhuma URL de webhook configurada."
+
+msgid "Not configured"
+msgstr "Não configurado"
+
+msgid "Not seen for >7 days"
+msgstr "Sem contato há >7 dias"
+
+msgid "Notes"
+msgstr "Observações"
+
+msgid "Nothing overdue. 🎉"
+msgstr "Nada em atraso. 🎉"
+
+msgid "Notification recipients (GLPI users)"
+msgstr "Destinatários de notificação (usuários GLPI)"
+
+msgid "Notifications &amp; Webhook"
+msgstr "Notificações &amp; Webhook"
+
+msgid "Notify when new Critical CVEs are detected"
+msgstr "Notificar quando novos CVEs críticos forem detectados"
+
+msgid "OS"
+msgstr "SO"
+
+msgid "OS Build"
+msgstr "Build do SO"
+
+msgid "OS Distribution"
+msgstr "Distribuição de SO"
+
+msgid "OS Version"
+msgstr "Versão do SO"
+
+msgid "OS details (version, build, architecture)"
+msgstr "Detalhes do SO (versão, build, arquitetura)"
+
+msgid "Oldest"
+msgstr "Mais antigo"
+
+msgid "Open"
+msgstr "Aberto"
+
+msgid "Open CVEs measured against your remediation deadlines"
+msgstr "CVEs abertos medidos contra seus prazos de remediação"
+
+msgid "Open GLPI Ticket"
+msgstr "Abrir chamado GLPI"
+
+msgid "Open a GLPI ticket for each NEW alert at or above the minimum severity"
+msgstr "Abrir um chamado GLPI para cada NOVO alerta na severidade mínima ou acima"
+
+msgid "Open a consolidated GLPI ticket when new Critical CVEs are detected"
+msgstr "Abrir um chamado GLPI consolidado quando novos CVEs críticos forem detectados"
+
+msgid ""
+"Open a consolidated ticket automatically when silent agents are detected "
+"(daily check)"
+msgstr "Abrir automaticamente um chamado consolidado quando agentes silenciosos forem detectados (verificação diária)"
+
+msgid "Open agent-install ticket for selected"
+msgstr "Abrir chamado de instalação de agente para os selecionados"
+
+msgid "Open critical CVEs"
+msgstr "CVEs críticos abertos"
+
+msgid "Open critical findings"
+msgstr "Achados críticos abertos"
+
+msgid "Open findings by severity"
+msgstr "Achados abertos por severidade"
+
+msgid "Open findings on CVEs with confirmed exploitation (CISA KEV)"
+msgstr "Achados abertos em CVEs com exploração confirmada (CISA KEV)"
+
+msgid "Open threat alerts"
+msgstr "Alertas de ameaça abertos"
+
+msgid "Open threat alerts (TR)"
+msgstr "Alertas de ameaça abertos (TR)"
+
+msgid "Open ticket"
+msgstr "Abrir chamado"
+
+#, php-format
+msgid "Opened consolidated agent-health ticket #%d."
+msgstr "Chamado consolidado de saúde de agentes #%d aberto."
+
+msgid ""
+"Opens an approval ticket — the action only runs on Tanium after approval"
+msgstr "Abre um chamado de aprovação — a ação só executa no Tanium após a aprovação"
+
+msgid "Opens an approval ticket — the endpoint is only isolated after approval"
+msgstr "Abre um chamado de aprovação — o endpoint só é isolado após a aprovação"
+
+msgid "Operating System"
+msgstr "Sistema operacional"
+
+msgid "Operating system"
+msgstr "Sistema operacional"
+
+msgid "Overall"
+msgstr "Geral"
+
+msgid "Overall SLA compliance"
+msgstr "Conformidade geral com o SLA"
+
+msgid "Overdue"
+msgstr "Em atraso"
+
+msgid "PDF generation failed — check tanium.log."
+msgstr "Falha ao gerar o PDF — verifique o tanium.log."
+
+msgid "Patch / KB"
+msgstr "Patch / KB"
+
+msgid "Patch / Title"
+msgstr "Patch / Título"
+
+msgid "Patch Deployment"
+msgstr "Implantação de patches"
+
+msgid "Patch ID"
+msgstr "ID do patch"
+
+msgid "Patch Inventory"
+msgstr "Inventário de patches"
+
+msgid "Patch Remediation"
+msgstr "Remediação de patches"
+
+msgid "Patch compliance"
+msgstr "Conformidade de patches"
+
+msgid "Patch deployment scope group (ID — fallback)"
+msgstr "Grupo de escopo da implantação de patches (ID — fallback)"
+
+msgid "Patches"
+msgstr "Patches"
+
+msgid "Pending"
+msgstr "Pendente"
+
+msgid "Pick registered GLPI users — their account email is used automatically."
+msgstr "Escolha usuários registrados no GLPI — o e-mail da conta é usado automaticamente."
+
+msgid "Platform"
+msgstr "Plataforma"
+
+msgid "Please enter at least 2 characters."
+msgstr "Digite pelo menos 2 caracteres."
+
+msgid "Please enter the API URL and token before testing."
+msgstr "Por favor, insira a URL da API e o token antes de testar."
+
+msgid "Priority"
+msgstr "Prioridade"
+
+msgid "Profile not found."
+msgstr "Perfil não encontrado."
+
+msgid "Quarantine"
+msgstr "Quarentena"
+
+msgid "Quarantine package name"
+msgstr "Nome do pacote de quarentena"
+
+msgid "Read"
+msgstr "Leitura"
+
+msgid "Reason"
+msgstr "Motivo"
+
+msgid "Reason / Justification"
+msgstr "Motivo / Justificativa"
+
+msgid "Recent Sync History"
+msgstr "Histórico recente de sincronizações"
+
+msgid "Release"
+msgstr "Lançamento"
+
+msgid "Release date"
+msgstr "Data de lançamento"
+
+msgid "Released"
+msgstr "Lançado"
+
+msgid "Remediated"
+msgstr "Remediado"
+
+msgid "Remediation notes or instructions"
+msgstr "Notas ou instruções de remediação"
+
+msgid "Remote actions (approval-gated)"
+msgstr "Ações remotas (condicionadas à aprovação)"
+
+msgid "Report"
+msgstr "Relatório"
+
+msgid "Resolved"
+msgstr "Resolvido"
+
+msgid "Restart client"
+msgstr "Reiniciar cliente"
+
+msgid "Revoke exception"
+msgstr "Revogar exceção"
+
+msgid "Revoke this exception? The CVE will become active again."
+msgstr "Revogar esta exceção? O CVE voltará a ficar ativo."
+
+msgid "Risk"
+msgstr "Risco"
+
+msgid "Risk Heatmap"
+msgstr "Mapa de calor de risco"
+
+msgid "Risk Score"
+msgstr "Pontuação de risco"
+
+msgid "Risk Score Timeline"
+msgstr "Linha do tempo da pontuação de risco"
+
+msgid "Run synchronization now"
+msgstr "Executar sincronização agora"
+
+msgid "SLA"
+msgstr "SLA"
+
+msgid "SLA Compliance"
+msgstr "Conformidade com SLA"
+
+#, php-format
+msgid "SLA breach webhook (%d findings overdue): %s"
+msgstr "Webhook de violação de SLA (%d achados em atraso): %s"
+
+msgid "SLA breach webhook disabled in plugin settings. Skipping."
+msgstr "Webhook de violação de SLA desativado nas configurações do plugin. Ignorando."
+
+msgid "SLA breached (overdue)"
+msgstr "SLA violado (em atraso)"
+
+msgid "SLA breaches"
+msgstr "Violações de SLA"
+
+msgid "SLA compliance"
+msgstr "Conformidade com SLA"
+
+msgid "SLA compliance (%)"
+msgstr "Conformidade com SLA (%)"
+
+msgid "SLA settings"
+msgstr "Configurações de SLA"
+
+msgid "SLA — Remediation Deadlines"
+msgstr "SLA — Prazos de remediação"
+
+msgid "Save configuration"
+msgstr "Salvar configuração"
+
+msgid "Save current filter"
+msgstr "Salvar filtro atual"
+
+msgid "Save filter"
+msgstr "Salvar filtro"
+
+msgid "Save permissions"
+msgstr "Salvar permissões"
+
+msgid "Save this filter"
+msgstr "Salvar este filtro"
+
+msgid "Saved filters:"
+msgstr "Filtros salvos:"
+
+msgid "Search"
+msgstr "Buscar"
+
+msgid "Search CVE ID or title..."
+msgstr "Buscar CVE ID ou título..."
+
+msgid "Search by name, IP or EID..."
+msgstr "Buscar por nome, IP ou EID..."
+
+msgid "Search by name, IP, serial…"
+msgstr "Buscar por nome, IP, número de série…"
+
+msgid "Search endpoints, CVE IDs, patch titles, IPs…"
+msgstr "Buscar endpoints, CVE IDs, títulos de patch, IPs…"
+
+msgid "Search patch, title or KB…"
+msgstr "Buscar patch, título ou KB…"
+
+msgid "Security Dashboard"
+msgstr "Dashboard de segurança"
+
+msgid "Security posture by platform"
+msgstr "Postura de segurança por plataforma"
+
+msgid "Select all"
+msgstr "Selecionar todos"
+
+msgid "Select for agent-install ticket"
+msgstr "Selecionar para chamado de instalação de agente"
+
+msgid "Select two endpoints to compare."
+msgstr "Selecione dois endpoints para comparar."
+
+msgid "Serial"
+msgstr "Número de série"
+
+msgid "Settings"
+msgstr "Configurações"
+
+msgid "Severity"
+msgstr "Severidade"
+
+msgid "Silent agent threshold (days)"
+msgstr "Limite de silêncio do agente (dias)"
+
+#, php-format
+msgid "Silent agents (> %d days)"
+msgstr "Agentes sem comunicação (> %d dias)"
+
+msgid ""
+"Slack, Microsoft Teams, or any HTTP endpoint that accepts JSON POST. "
+"Compatible with Slack incoming webhooks and Teams connectors."
+msgstr "Slack, Microsoft Teams ou qualquer endpoint HTTP que aceite JSON via POST. Compatível com webhooks do Slack e conectores do Teams."
+
+msgid "Started"
+msgstr "Início"
+
+msgid "State"
+msgstr "Estado"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Sync History"
+msgstr "Histórico de Sincronização"
+
+msgid "Sync behaviour"
+msgstr "Comportamento da sincronização"
+
+msgid "Sync now"
+msgstr "Sincronizar agora"
+
+msgid "Sync status"
+msgstr "Status da sincronização"
+
+msgid "Synced Endpoints"
+msgstr "Endpoints sincronizados"
+
+msgid ""
+"Synchronization queued — it runs in the background within a minute (no risk "
+"to the web server). Watch the history below; refresh to see progress."
+msgstr "Sincronização enfileirada — executa em segundo plano em até um minuto (sem risco ao servidor web). Acompanhe o histórico abaixo; atualize para ver o progresso."
+
+msgid "Synchronize"
+msgstr "Sincronizar"
+
+msgid "Syncing endpoints..."
+msgstr "Sincronizando endpoints..."
+
+msgid "Tanium"
+msgstr "Tanium"
+
+msgid "Tanium API access forbidden."
+msgstr "Acesso à API do Tanium negado."
+
+msgid "Tanium API access forbidden. The token may lack required permissions."
+msgstr ""
+"Acesso à API Tanium proibido. O token pode não ter as permissões necessárias."
+
+msgid "Tanium API authentication failed."
+msgstr "Falha na autenticação da API Tanium."
+
+msgid "Tanium API authentication failed. Check your API token."
+msgstr "Autenticação da API Tanium falhou. Verifique seu token de API."
+
+#, php-format
+msgid "Tanium API endpoint not found: %s"
+msgstr "Endpoint da API Tanium não encontrado: %s"
+
+#, php-format
+msgid "Tanium API returned HTTP %d for %s"
+msgstr "A API Tanium retornou HTTP %d para %s"
+
+#, php-format
+msgid "Tanium API returned HTTP %d for POST %s"
+msgstr "A API Tanium retornou HTTP %d para POST %s"
+
+msgid "Tanium CVEs"
+msgstr "CVEs Tanium"
+
+#, php-format
+msgid "Tanium CVEs (%d)"
+msgstr "CVEs Tanium (%d)"
+
+msgid "Tanium Cloud API URL"
+msgstr "URL da API Tanium Cloud"
+
+msgid "Tanium Configuration"
+msgstr "Configuração Tanium"
+
+msgid "Tanium Coverage"
+msgstr "Cobertura Tanium"
+
+msgid "Tanium Cron"
+msgstr "Cron Tanium"
+
+msgid "Tanium EID"
+msgstr "EID Tanium"
+
+#, php-format
+msgid "Tanium GraphQL API returned HTTP %d"
+msgstr "A API GraphQL do Tanium retornou HTTP %d"
+
+#, php-format
+msgid "Tanium GraphQL error: %s"
+msgstr "Erro GraphQL do Tanium: %s"
+
+msgid "Tanium Name"
+msgstr "Nome no Tanium"
+
+msgid "Tanium Only"
+msgstr "Somente Tanium"
+
+msgid "Tanium Patch Deployment"
+msgstr "Implantação de patches Tanium"
+
+msgid "Tanium Security"
+msgstr "Segurança Tanium"
+
+msgid "Tanium Sync"
+msgstr "Sincronização Tanium"
+
+msgid "Tanium Vulnerabilities"
+msgstr "Vulnerabilidades Tanium"
+
+msgid "Tanium configuration saved."
+msgstr "Configuração Tanium salva."
+
+msgid "Tanium did not return a deployment id."
+msgstr "O Tanium não retornou um ID de implantação."
+
+msgid "Tanium did not return an action id."
+msgstr "O Tanium não retornou um ID de ação."
+
+msgid "Tanium endpoints"
+msgstr "Endpoints Tanium"
+
+msgid ""
+"Tanium package run when a client-restart request is approved. Leave empty to "
+"use the default."
+msgstr "Pacote Tanium executado quando um pedido de reinício do cliente é aprovado. Deixe vazio para usar o padrão."
+
+msgid ""
+"Tanium package run when a quarantine request is approved. Leave empty to use "
+"the default. Package names are tenant-specific — check your Tanium console."
+msgstr "Pacote Tanium executado quando um pedido de quarentena é aprovado. Deixe vazio para usar o padrão. Nomes de pacote variam por tenant — verifique no console Tanium."
+
+msgid "Tanium permissions updated successfully."
+msgstr "Permissões do Tanium atualizadas com sucesso."
+
+msgid "Tanium plugin is not configured yet."
+msgstr "O plugin Tanium ainda não está configurado."
+
+msgid "Tanium plugin: API URL or token not configured. Skipping."
+msgstr "Plugin Tanium: URL da API ou token não configurado. Pulando."
+
+#, php-format
+msgid "Tanium rejected the action: %s"
+msgstr "O Tanium rejeitou a ação: %s"
+
+#, php-format
+msgid "Tanium rejected the deployment: %s"
+msgstr "O Tanium rejeitou a implantação: %s"
+
+#, php-format
+msgid ""
+"Tanium sync finished — total: %d | created: %d | updated: %d | errors: %d"
+msgstr ""
+"Sincronização Tanium concluída — total: %d | criados: %d | atualizados: %d | "
+"erros: %d"
+
+msgid "Tanium sync started…"
+msgstr "Sincronização Tanium iniciada…"
+
+#, php-format
+msgid "Tanium sync: %1$d new CVE finding(s), %2$d status change(s)"
+msgstr "Sincronização Tanium: %1$d novo(s) achado(s) de CVE, %2$d mudança(s) de status"
+
+msgid "Tanium — CVE Assignments"
+msgstr "Tanium — Atribuições de CVE"
+
+msgid "Tanium — CVE Exceptions"
+msgstr "Tanium — Exceções de CVE"
+
+msgid "Tanium — Compare Endpoints"
+msgstr "Tanium — Comparar endpoints"
+
+msgid "Tanium — Configuration"
+msgstr "Tanium — Configuração"
+
+msgid "Tanium — Coverage Analysis"
+msgstr "Tanium — Análise de cobertura"
+
+msgid "Tanium — Dashboard"
+msgstr "Tanium — Dashboard"
+
+msgid "Tanium — Endpoint Detail"
+msgstr "Tanium — Detalhe do endpoint"
+
+msgid "Tanium — Endpoints"
+msgstr "Tanium — Endpoints"
+
+msgid "Tanium — Global Search"
+msgstr "Tanium — Busca global"
+
+msgid "Tanium — Grupos de Computadores"
+msgstr "Tanium — Grupos de Computadores"
+
+msgid "Tanium — KEV exposure (actively exploited)"
+msgstr "Tanium — Exposição KEV (exploração ativa)"
+
+msgid "Tanium — Open critical findings"
+msgstr "Tanium — Achados críticos abertos"
+
+msgid "Tanium — Open findings by severity"
+msgstr "Tanium — Achados abertos por severidade"
+
+msgid "Tanium — Open threat alerts"
+msgstr "Tanium — Alertas de ameaça abertos"
+
+msgid "Tanium — Patch Remediation"
+msgstr "Tanium — Remediação de patches"
+
+msgid "Tanium — Patches"
+msgstr "Tanium — Patches"
+
+msgid "Tanium — Permissions"
+msgstr "Tanium — Permissões"
+
+msgid "Tanium — Risk Heatmap"
+msgstr "Tanium — Mapa de calor de risco"
+
+msgid "Tanium — SLA Compliance"
+msgstr "Tanium — Conformidade com SLA"
+
+msgid "Tanium — SLA compliance (%)"
+msgstr "Tanium — Conformidade com SLA (%)"
+
+msgid "Tanium — Silent agents"
+msgstr "Tanium — Agentes sem comunicação"
+
+msgid "Tanium — Synced endpoints"
+msgstr "Tanium — Endpoints sincronizados"
+
+msgid "Tanium — Synchronization"
+msgstr "Tanium — Sincronização"
+
+msgid "Tanium — Vulnerabilities"
+msgstr "Tanium — Vulnerabilidades"
+
+msgid "Tanium — daily webhook alert while remediation-SLA breaches exist."
+msgstr "Tanium — alerta diário via webhook enquanto houver violações do SLA de remediação."
+
+msgid ""
+"Tanium — detect endpoints whose agent stopped reporting and open a "
+"consolidated ticket."
+msgstr "Tanium — detectar endpoints cujo agente parou de reportar e abrir um chamado consolidado."
+
+msgid ""
+"Tanium — import Threat Response alerts and open tickets for new high-"
+"severity ones."
+msgstr "Tanium — importar alertas do Threat Response e abrir chamados para os novos de severidade alta."
+
+msgid ""
+"Tanium — import compliance benchmark results (CIS/DISA) from Tanium Comply."
+msgstr "Tanium — importar resultados de benchmark de conformidade (CIS/DISA) do Tanium Comply."
+
+msgid "Tanium — refresh EPSS scores and CISA KEV flags for tracked CVEs."
+msgstr "Tanium — atualizar pontuações EPSS e marcações CISA KEV dos CVEs monitorados."
+
+msgid "Tanium — synchronize endpoints, software and hardware into GLPI assets."
+msgstr ""
+"Tanium — sincronizar endpoints, software e hardware nos ativos do GLPI."
+
+msgid "Test connection"
+msgstr "Testar conexão"
+
+msgid "Test webhook"
+msgstr "Testar webhook"
 
 msgid "The PHP JSON extension is required by the Tanium plugin."
 msgstr "A extensão PHP JSON é necessária pelo plugin Tanium."
+
+msgid "The PHP cURL extension is required by the Tanium plugin."
+msgstr "A extensão PHP cURL é necessária pelo plugin Tanium."
+
+msgid "This computer was not imported from Tanium."
+msgstr "Este computador não foi importado do Tanium."
+
+msgid "Threat Response"
+msgstr "Threat Response"
+
+msgid "Threat Response sync disabled in plugin settings. Skipping."
+msgstr "Sincronização do Threat Response desativada nas configurações do plugin. Ignorando."
+
+#, php-format
+msgid "Threat sync finished — %d new alerts, %d tickets opened."
+msgstr "Sincronização de ameaças concluída — %d novos alertas, %d chamados abertos."
+
+msgid "Ticket entity"
+msgstr "Entidade do chamado"
+
+msgid "Ticket title"
+msgstr "Título do chamado"
+
+msgid "Ticket title is required."
+msgstr "O título do chamado é obrigatório."
+
+msgid "Title"
+msgstr "Título"
+
+msgid "To"
+msgstr "Até"
+
+msgid "Total"
+msgstr "Total"
+
+msgid "Total overdue"
+msgstr "Total em atraso"
+
+msgid "Total unique CVEs"
+msgstr "Total de CVEs únicos"
+
+msgid "Unexpected API response structure."
+msgstr "Estrutura de resposta da API inesperada."
+
+msgid "Unknown GraphQL error"
+msgstr "Erro GraphQL desconhecido"
+
+msgid "Update"
+msgstr "Atualização"
+
+msgid "Updated"
+msgstr "Atualizados"
+
+msgid "User"
+msgstr "Usuário"
+
+msgid "Version"
+msgstr "Versão"
+
+msgid "Very High"
+msgstr "Muito alto"
+
+msgid "Very Low"
+msgstr "Muito baixo"
+
+msgid "View"
+msgstr "Ver"
+
+msgid "View all"
+msgstr "Ver todos"
+
+msgid "Virtual"
+msgstr "Virtual"
+
+msgid "Virtual machine"
+msgstr "Máquina virtual"
+
+msgid "Vulnerabilities"
+msgstr "Vulnerabilidades"
+
+msgid "Vulnerabilities / CVEs"
+msgstr "Vulnerabilidades / CVEs"
+
+msgid "Vulnerabilities / CVEs (requires Tanium Comply)"
+msgstr "Vulnerabilidades / CVEs (requer Tanium Comply)"
+
+msgid "Webhook URL"
+msgstr "URL do webhook"
+
+msgid "Webhook daily alert while findings breach the remediation SLA"
+msgstr "Alerta diário via webhook enquanto houver achados violando o SLA de remediação"
+
+msgid "Webhook on patch deployment events (started / completed / failed)"
+msgstr "Webhook em eventos de implantação de patches (iniciada / concluída / falhou)"
+
+msgid "Webhook test failed. Check the URL and your server logs."
+msgstr "Falha no teste do webhook. Verifique a URL e os logs do servidor."
+
+msgid "Webhook test sent successfully!"
+msgstr "Teste de webhook enviado com sucesso!"
+
+msgid "When"
+msgstr "Quando"
+
+msgid "Within SLA"
+msgstr "Dentro do SLA"
+
+msgid "Without Tanium Agent"
+msgstr "Sem agente Tanium"
+
+msgid "Yes"
+msgstr "Sim"
+
+msgid "[Tanium] Security findings..."
+msgstr "[Tanium] Achados de segurança..."
+
+msgid "breached"
+msgstr "violados"
+
+#, php-format
+msgid "cURL error: %s"
+msgstr "Erro cURL: %s"
+
+msgid "days"
+msgstr "dias"
+
+msgid "due soon"
+msgstr "vencem em breve"
+
+msgid "endpoints"
+msgstr "endpoints"
+
+msgid "errors"
+msgstr "erros"
+
+msgid "findings tracked"
+msgstr "achados monitorados"
+
+#, php-format
+msgid "matches %d catalog versions — title required"
+msgstr "corresponde a %d versões do catálogo — título obrigatório"
+
+msgid "more"
+msgstr "mais"
+
+msgid "not found in Tanium catalog"
+msgstr "não encontrado no catálogo Tanium"
+
+msgid "not matched in GLPI"
+msgstr "sem correspondência no GLPI"
+
+msgid "overdue"
+msgstr "em atraso"
+
+msgid "records"
+msgstr "registros"
+
+msgid "remediations"
+msgstr "remediações"
+
+msgid "results for"
+msgstr "resultados para"
+
+msgid "total active"
+msgstr "total ativos"
+
+msgid "within"
+msgstr "dentro do prazo"
+
+msgid "— no mapping —"
+msgstr "— sem mapeamento —"
+
+msgid "— select endpoint —"
+msgstr "— selecione o endpoint —"
+
+msgid "— select user —"
+msgstr "— selecione o usuário —"
+
+#, php-format
+msgid "◈ Tanium only (%s)"
+msgstr "◈ Somente Tanium (%s)"
+
+#, php-format
+msgid "⚠ Without Tanium (%s)"
+msgstr "⚠ Sem Tanium (%s)"
+
+#, php-format
+msgid "✓ With Tanium (%s)"
+msgstr "✓ Com Tanium (%s)"
+
+#~ msgid "Scheduler"
+#~ msgstr "Agendador"
+
+#~ msgid ""
+#~ "Tanium sync complete — %d endpoints processed: %d created, %d updated, %d "
+#~ "errors."
+#~ msgstr ""
+#~ "Sincronização Tanium concluída — %d endpoints processados: %d criados, %d "
+#~ "atualizados, %d erros."

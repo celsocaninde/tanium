@@ -34,6 +34,41 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
 ?>
 <div class="tanium-page-wrap">
 
+<?php
+$nExpired  = 0;
+$nExpiring = 0;
+foreach ($exceptions as $ex) {
+    if ($ex['expires_at'] && strtotime($ex['expires_at']) < $now) {
+        $nExpired++;
+    } elseif ($ex['expires_at'] && (strtotime($ex['expires_at']) - $now) < 86400 * 14) {
+        $nExpiring++;
+    }
+}
+?>
+<?php if ($nExpired > 0): ?>
+<div class="alert alert-danger" style="display:flex;align-items:center;gap:8px">
+    <span class="ti ti-alert-triangle"></span>
+    <?= sprintf(
+        _n(
+            '%d exception has expired — its CVE is counting toward SLA again. Review and revoke or renew it.',
+            '%d exceptions have expired — their CVEs are counting toward SLA again. Review and revoke or renew them.',
+            $nExpired,
+            'tanium'
+        ),
+        $nExpired
+    ) ?>
+</div>
+<?php endif; ?>
+<?php if ($nExpiring > 0): ?>
+<div class="alert alert-warning" style="display:flex;align-items:center;gap:8px">
+    <span class="ti ti-clock-exclamation"></span>
+    <?= sprintf(
+        _n('%d exception expires within 14 days.', '%d exceptions expire within 14 days.', $nExpiring, 'tanium'),
+        $nExpiring
+    ) ?>
+</div>
+<?php endif; ?>
+
 <div class="tanium-card">
     <div class="tanium-card-header">
         <span class="ti ti-shield-off"></span> <?= __('CVE Exceptions (Accepted Risk)', 'tanium') ?>
