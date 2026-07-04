@@ -883,7 +883,8 @@ class Sync extends CommonGLPI {
         $summary = [];
         foreach ($cves as $finding) {
             $cveId = $finding['cveId'] ?? $finding['cve'] ?? $finding['id'] ?? '';
-            if (!$cveId) {
+            // Sensors can emit artifacts like "[no results]" — only real CVE ids enter.
+            if (!preg_match('/^CVE-\d{4}-\d+$/i', (string)$cveId)) {
                 continue;
             }
             if (!isset($summary[$cveId])) {
@@ -937,7 +938,8 @@ class Sync extends CommonGLPI {
         $now = date('Y-m-d H:i:s');
         foreach ($cves as $finding) {
             $cveId = $finding['cveId'] ?? $finding['cve'] ?? $finding['id'] ?? '';
-            if (!$cveId) {
+            // Sensors can emit artifacts like "[no results]" — only real CVE ids enter.
+            if (!preg_match('/^CVE-\d{4}-\d+$/i', (string)$cveId)) {
                 continue;
             }
 

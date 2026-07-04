@@ -484,6 +484,25 @@
     color: var(--t-text);
 }
 
+/* ── Computer tab (embedded in the GLPI page, light or dark theme) ───────── */
+
+/* Self-contained branded dark card: every inner component (tables, badges,
+   summary strip) is designed for a dark surface, so the tab stays readable
+   regardless of the surrounding GLPI theme. */
+.tanium-computer-tab {
+    background: var(--t-dark);
+    border: 1px solid var(--t-border);
+    border-top: 3px solid var(--t-red);
+    border-radius: var(--t-radius);
+    overflow: hidden;
+    color: var(--t-text);
+    font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+    margin: 4px 0 16px;
+}
+.tanium-computer-tab .tanium-table thead tr { background: var(--t-darker); }
+.tanium-computer-tab .tanium-tab-section-title .tanium-link { margin-left: auto; }
+.tanium-computer-tab .tanium-empty { margin: 0; }
+
 /* ── Computer tab summary ────────────────────────────────────────────────── */
 
 .tanium-tab-summary {

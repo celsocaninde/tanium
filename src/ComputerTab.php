@@ -39,6 +39,12 @@ class ComputerTab extends CommonGLPI {
         $patches = self::getPatches($computerId);
         $webDir  = Plugin::getWebDir('tanium');
 
+        // Defense against sensor artifacts imported as CVEs by older versions
+        // (e.g. "[no results]") — the sync now rejects them on entry.
+        $cves = array_values(array_filter($cves, fn($c) => preg_match('/^CVE-\d{4}-\d+$/i', (string)$c['cve_id'])));
+
+        $enrich = Enrichment::forCves(array_column($cves, 'cve_id'));
+
         $cveCounts = ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];
         foreach ($cves as $c) {
             $s = strtolower($c['severity']);
@@ -46,7 +52,7 @@ class ComputerTab extends CommonGLPI {
         }
         $missingPatches = count(array_filter($patches, fn($p) => $p['status'] === 'missing'));
         ?>
-        <div class="tanium-page-wrap" style="padding:0;font-family:'Segoe UI',system-ui,sans-serif">
+        <div class="tanium-computer-tab">
 
             <!-- Summary row -->
             <div class="tanium-tab-summary">
@@ -92,7 +98,7 @@ class ComputerTab extends CommonGLPI {
             <div class="tanium-tab-section">
                 <div class="tanium-tab-section-title">
                     &#9762; <?= __('Vulnerabilities', 'tanium') ?>
-                    <a href="<?= $webDir ?>/front/vulnerabilities.php" class="tanium-link tanium-small" style="margin-left:8px"><?= __('All CVEs', 'tanium') ?> →</a>
+                    <a href="<?= $webDir ?>/front/vulnerabilities.php" class="tanium-link tanium-small"><?= __('All CVEs', 'tanium') ?> →</a>
                 </div>
                 <?php if (empty($cves)): ?>
                     <p class="tanium-empty tanium-small"><?= __('No CVEs detected for this endpoint.', 'tanium') ?></p>
@@ -111,24 +117,43 @@ class ComputerTab extends CommonGLPI {
                             <th><?= __('CVE ID', 'tanium') ?></th>
                             <th><?= __('Severity', 'tanium') ?></th>
                             <th><?= __('CVSS', 'tanium') ?></th>
+                            <th title="<?= __('Exploit Prediction Scoring System — probability of exploitation within 30 days (FIRST.org)', 'tanium') ?>">EPSS</th>
                             <th><?= __('Status', 'tanium') ?></th>
                         </tr>
                     </thead>
                     <tbody>
-                    <?php foreach (array_slice($cves, 0, 10) as $cve): ?>
+                    <?php foreach (array_slice($cves, 0, 10) as $cve):
+                        $e = $enrich[strtoupper((string)$cve['cve_id'])] ?? null;
+                    ?>
                         <tr>
                             <td class="tanium-mono">
                                 <a href="https://nvd.nist.gov/vuln/detail/<?= htmlspecialchars($cve['cve_id']) ?>" target="_blank" class="tanium-link">
                                     <?= htmlspecialchars($cve['cve_id']) ?>
                                 </a>
+                                <?php if ($e !== null && !empty($e['is_kev'])): ?>
+                                <span class="tanium-badge tanium-badge-critical" style="font-size:.62rem;margin-left:4px"
+                                      title="<?= !empty($e['kev_ransomware'])
+                                          ? __('CISA KEV — actively exploited AND used in ransomware campaigns', 'tanium')
+                                          : __('CISA KEV — confirmed active exploitation in the wild', 'tanium') ?>">
+                                    &#128293; KEV<?= !empty($e['kev_ransomware']) ? ' &#9760;' : '' ?>
+                                </span>
+                                <?php endif; ?>
                             </td>
                             <td><span class="tanium-badge <?= Vulnerability::sevClass($cve['severity']) ?>"><?= ucfirst($cve['severity']) ?></span></td>
                             <td class="tanium-center tanium-mono"><?= $cve['cvss_score'] !== null ? number_format((float)$cve['cvss_score'], 1) : '—' ?></td>
-                            <td><?= htmlspecialchars($cve['status'] ?? 'open') ?></td>
+                            <td class="tanium-center tanium-mono tanium-small">
+                                <?php if ($e !== null && $e['epss_score'] !== null):
+                                    $epssPct = (float)$e['epss_score'] * 100; ?>
+                                    <span style="<?= $epssPct >= 50 ? 'color:#ff4d57;font-weight:700' : ($epssPct >= 10 ? 'font-weight:600' : '') ?>">
+                                        <?= number_format($epssPct, $epssPct >= 10 ? 0 : 1) ?>%
+                                    </span>
+                                <?php else: ?><span class="tanium-muted">—</span><?php endif; ?>
+                            </td>
+                            <td><span class="tanium-badge tanium-badge-<?= ($cve['status'] ?? 'open') === 'remediated' ? 'success' : 'error' ?>"><?= htmlspecialchars($cve['status'] ?? 'open') ?></span></td>
                         </tr>
                     <?php endforeach; ?>
                     <?php if (count($cves) > 10): ?>
-                        <tr><td colspan="4" class="tanium-center tanium-small tanium-muted">... <?= count($cves) - 10 ?> <?= __('more', 'tanium') ?></td></tr>
+                        <tr><td colspan="5" class="tanium-center tanium-small tanium-muted">... <?= count($cves) - 10 ?> <?= __('more', 'tanium') ?></td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
@@ -140,7 +165,7 @@ class ComputerTab extends CommonGLPI {
             <div class="tanium-tab-section">
                 <div class="tanium-tab-section-title">
                     &#128396; <?= __('Missing Patches', 'tanium') ?>
-                    <a href="<?= $webDir ?>/front/patches.php" class="tanium-link tanium-small" style="margin-left:8px"><?= __('All patches', 'tanium') ?> →</a>
+                    <a href="<?= $webDir ?>/front/patches.php" class="tanium-link tanium-small"><?= __('All patches', 'tanium') ?> →</a>
                 </div>
                 <table class="tanium-table">
                     <thead>
@@ -161,7 +186,7 @@ class ComputerTab extends CommonGLPI {
                                 <?php endif; ?>
                             </td>
                             <td><span class="tanium-badge <?= Vulnerability::sevClass($p['severity']) ?>"><?= ucfirst($p['severity']) ?></span></td>
-                            <td class="tanium-small"><?= $p['release_date'] ?? '—' ?></td>
+                            <td class="tanium-small"><?= $p['release_date'] ? Html::convDate($p['release_date']) : '—' ?></td>
                             <td><span class="tanium-badge tanium-badge-<?= $p['status'] === 'missing' ? 'error' : 'success' ?>"><?= htmlspecialchars($p['status']) ?></span></td>
                         </tr>
                     <?php endforeach; ?>

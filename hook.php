@@ -452,6 +452,14 @@ function plugin_tanium_install(): bool {
     // Encrypt a clear-text API token left by versions < 2.1
     \GlpiPlugin\Tanium\Config::migrateTokenEncryption();
 
+    // Purge sensor artifacts imported as CVEs by versions < 2.2.1
+    // (e.g. "[no results]"); the sync now rejects non-CVE ids on entry.
+    foreach (['glpi_plugin_tanium_vulnerabilities', 'glpi_plugin_tanium_endpoint_cves', 'glpi_plugin_tanium_cve_history'] as $cveTable) {
+        if ($DB->tableExists($cveTable)) {
+            $DB->doQuery("DELETE FROM `{$cveTable}` WHERE cve_id NOT REGEXP '^CVE-[0-9]{4}-[0-9]+$'");
+        }
+    }
+
     return true;
 }
 
