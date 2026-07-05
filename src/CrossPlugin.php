@@ -112,7 +112,7 @@ class CrossPlugin {
 
         $counts = [];
         foreach ($DB->request([
-            'SELECT'  => ['cve_id', 'COUNT' => 'cpt'],
+            'SELECT'  => ['cve_id', 'COUNT' => 'id AS cpt'],
             'FROM'    => 'glpi_plugin_sentinelone_cves',
             'WHERE'   => ['cve_id' => $cveIds],
             'GROUPBY' => 'cve_id',
