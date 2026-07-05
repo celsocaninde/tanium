@@ -83,6 +83,11 @@ class Sync extends CommonGLPI {
                     'page'  => Plugin::getWebDir('tanium') . '/front/sla.php',
                     'icon'  => 'ti ti-clock-check',
                 ],
+                'trend'           => [
+                    'title' => __('Trend', 'tanium'),
+                    'page'  => Plugin::getWebDir('tanium') . '/front/trend.php',
+                    'icon'  => 'ti ti-trending-up',
+                ],
                 'exceptions'      => [
                     'title' => __('CVE Exceptions', 'tanium'),
                     'page'  => Plugin::getWebDir('tanium') . '/front/exceptions.php',
