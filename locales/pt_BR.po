@@ -1966,3 +1966,66 @@ msgstr "Alertas do Threat Response"
 
 msgid "Ticket"
 msgstr "Chamado"
+
+msgid "These users have no email registered in GLPI and will NOT receive alerts or reports: %s. Add an email in Administration &gt; Users."
+msgstr "Estes usuários não têm e-mail cadastrado no GLPI e NÃO vão receber alertas nem relatórios: %s. Cadastre um e-mail em Administração &gt; Usuários."
+
+msgid "Warning: these users have no email registered in GLPI and will NOT receive alerts or reports: %s"
+msgstr "Atenção: estes usuários não têm e-mail cadastrado no GLPI e NÃO vão receber alertas nem relatórios: %s"
+
+msgid "Weekly report schedule"
+msgstr "Agendamento do relatório semanal"
+
+msgid "The weekly report is sent on the selected day, from the selected hour on. Last sent: %s."
+msgstr "O relatório semanal é enviado no dia selecionado, a partir da hora selecionada. Último envio: %s."
+
+msgid "never"
+msgstr "nunca"
+
+msgid "Sunday"
+msgstr "Domingo"
+
+msgid "Monday"
+msgstr "Segunda-feira"
+
+msgid "Tuesday"
+msgstr "Terça-feira"
+
+msgid "Wednesday"
+msgstr "Quarta-feira"
+
+msgid "Thursday"
+msgstr "Quinta-feira"
+
+msgid "Friday"
+msgstr "Sexta-feira"
+
+msgid "Saturday"
+msgstr "Sábado"
+
+msgid "Test email"
+msgstr "Testar e-mail"
+
+msgid "Send report now"
+msgstr "Enviar relatório agora"
+
+msgid "No email recipient configured. Pick GLPI users or type extra emails first."
+msgstr "Nenhum destinatário de e-mail configurado. Selecione usuários GLPI ou digite e-mails avulsos primeiro."
+
+msgid "[Tanium] Test email"
+msgstr "[Tanium] E-mail de teste"
+
+msgid "This is a test email from the Tanium plugin. If you can read this, email notifications are working."
+msgstr "Este é um e-mail de teste do plugin Tanium. Se você está lendo isto, as notificações por e-mail estão funcionando."
+
+msgid "Test email queued for %d recipient(s): %s"
+msgstr "E-mail de teste enviado para %d destinatário(s): %s"
+
+msgid "Test email FAILED for: %s — check tanium.log and the email settings in Setup > Notifications."
+msgstr "E-mail de teste FALHOU para: %s — verifique o tanium.log e as configurações de e-mail em Configurar > Notificações."
+
+msgid "Weekly report sent now to %d recipient(s)."
+msgstr "Relatório semanal enviado agora para %d destinatário(s)."
+
+msgid "Weekly report was NOT sent — no valid recipient configured (or every send failed; check tanium.log)."
+msgstr "O relatório semanal NÃO foi enviado — nenhum destinatário válido configurado (ou todos os envios falharam; verifique o tanium.log)."

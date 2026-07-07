@@ -71,6 +71,9 @@ class Config extends CommonDBTM {
             'retention_days'          => 365,
             'custom_sensors'          => '',
             'auto_deploy_kev'         => 0,
+            'report_day'              => 1,
+            'report_hour'             => 8,
+            'last_weekly_report'      => null,
         ];
     }
 
@@ -184,6 +187,33 @@ class Config extends CommonDBTM {
         }
 
         return array_values($emails);
+    }
+
+    /**
+     * Among the picked notification users, the ones that will silently NOT
+     * receive anything because their GLPI account has no (valid) email.
+     * Returns [id => login] so callers can build actionable warnings.
+     *
+     * @return array<int,string>
+     */
+    public static function usersWithoutEmail(array $userIds): array {
+        $out = [];
+        foreach ($userIds as $userId) {
+            $userId = (int)$userId;
+            if ($userId <= 0) {
+                continue;
+            }
+            $user = new \User();
+            if (!$user->getFromDB($userId)) {
+                $out[$userId] = "#{$userId}";
+                continue;
+            }
+            $email = $user->getDefaultEmail();
+            if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $out[$userId] = (string)($user->fields['name'] ?? "#{$userId}");
+            }
+        }
+        return $out;
     }
 
     /**
@@ -418,10 +448,61 @@ class Config extends CommonDBTM {
             __('Pick registered GLPI users — their account email is used automatically.', 'tanium')
         );
 
+        // Visible warning for picked users that would be silently skipped
+        $noEmail = self::usersWithoutEmail($notifyUserIds);
+        if ($noEmail !== []) {
+            $logins = implode(', ', array_map('htmlspecialchars', $noEmail));
+            echo "<div style='background:rgba(232,196,42,.12);border:1px solid rgba(232,196,42,.5);border-left:4px solid #e8c42a;"
+               . "border-radius:6px;padding:10px 14px;margin:0 0 14px;font-size:.85rem;color:#e8c42a'>"
+               . '&#9888;&#65039; '
+               . sprintf(
+                   __('These users have no email registered in GLPI and will NOT receive alerts or reports: %s. Add an email in Administration &gt; Users.', 'tanium'),
+                   "<strong>{$logins}</strong>"
+               )
+               . '</div>';
+        }
+
         $this->renderField(
             __('Additional notification email(s)', 'tanium'),
             "<input type='text' name='notify_email' class='tanium-input' value='" . htmlspecialchars($config['notify_email'] ?? '') . "' placeholder='security@company.com, admin@company.com'/>",
             __('Comma-separated list of extra emails (e.g. distribution lists not registered as GLPI users). Leave both fields blank to disable email alerts.', 'tanium')
+        );
+
+        // ── Weekly report schedule ────────────────────────────────────────
+        $dayNames = [
+            0 => __('Sunday', 'tanium'),
+            1 => __('Monday', 'tanium'),
+            2 => __('Tuesday', 'tanium'),
+            3 => __('Wednesday', 'tanium'),
+            4 => __('Thursday', 'tanium'),
+            5 => __('Friday', 'tanium'),
+            6 => __('Saturday', 'tanium'),
+        ];
+        $curDay  = max(0, min(6, (int)($config['report_day'] ?? 1)));
+        $curHour = max(0, min(23, (int)($config['report_hour'] ?? 8)));
+
+        $daySelect = "<select name='report_day' class='tanium-input tanium-select' style='width:auto'>";
+        foreach ($dayNames as $d => $label) {
+            $sel = $d === $curDay ? ' selected' : '';
+            $daySelect .= "<option value='{$d}'{$sel}>{$label}</option>";
+        }
+        $daySelect .= '</select>';
+
+        $hourSelect = "<select name='report_hour' class='tanium-input tanium-select' style='width:auto'>";
+        for ($h = 0; $h < 24; $h++) {
+            $sel = $h === $curHour ? ' selected' : '';
+            $hourSelect .= sprintf("<option value='%d'%s>%02d:00</option>", $h, $sel, $h);
+        }
+        $hourSelect .= '</select>';
+
+        $lastReport = !empty($config['last_weekly_report'])
+            ? date('d/m/Y H:i', strtotime($config['last_weekly_report']))
+            : __('never', 'tanium');
+
+        $this->renderField(
+            __('Weekly report schedule', 'tanium'),
+            "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap'>{$daySelect}{$hourSelect}</div>",
+            sprintf(__('The weekly report is sent on the selected day, from the selected hour on. Last sent: %s.', 'tanium'), "<strong>{$lastReport}</strong>")
         );
 
         // ── SLA Remediation ───────────────────────────────────────────────
@@ -469,6 +550,8 @@ class Config extends CommonDBTM {
         echo "<button type='submit' name='save' class='tanium-btn tanium-btn-primary'>&#128190; " . __('Save configuration', 'tanium') . "</button> ";
         echo "<button type='submit' name='test' class='tanium-btn tanium-btn-secondary'>&#128268; " . __('Test connection', 'tanium') . "</button> ";
         echo "<button type='submit' name='test_webhook' class='tanium-btn tanium-btn-secondary'>&#128279; " . __('Test webhook', 'tanium') . "</button> ";
+        echo "<button type='submit' name='test_email' class='tanium-btn tanium-btn-secondary'>&#9993;&#65039; " . __('Test email', 'tanium') . "</button> ";
+        echo "<button type='submit' name='send_report' class='tanium-btn tanium-btn-secondary'>&#128200; " . __('Send report now', 'tanium') . "</button> ";
         echo "<a href='" . Plugin::getWebDir('tanium') . "/front/sync.form.php' class='tanium-btn tanium-btn-success'>&#9654; " . __('Sync now', 'tanium') . "</a>";
         echo "</div>";
         echo "</form>";

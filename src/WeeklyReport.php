@@ -10,6 +10,10 @@ class WeeklyReport {
 
     // ── GLPI cron entry point ─────────────────────────────────────────────
 
+    /**
+     * Runs hourly (see setup.php); only sends on the configured day-of-week
+     * and from the configured hour on, at most once per week.
+     */
     public static function cronWeeklyreport(CronTask $task): int {
         $config = Config::getConfig();
 
@@ -19,11 +23,44 @@ class WeeklyReport {
             return 0;
         }
 
-        global $CFG_GLPI;
+        $day  = max(0, min(6, (int)($config['report_day'] ?? 1)));   // 0=Sunday … 6=Saturday
+        $hour = max(0, min(23, (int)($config['report_hour'] ?? 8)));
+        if ((int)date('w') !== $day || (int)date('G') < $hour) {
+            return 0;
+        }
+
+        // Already sent this week? (6-day guard tolerates cron latency)
+        $last = $config['last_weekly_report'] ?? null;
+        if (!empty($last) && strtotime($last) > time() - 6 * DAY_TIMESTAMP) {
+            return 0;
+        }
+
+        $sent = self::send();
+        $task->addVolume($sent);
+        $task->log("Weekly report sent to {$sent} recipient(s).");
+        return $sent > 0 ? 1 : 0;
+    }
+
+    /**
+     * Builds and emails the report to every configured recipient, right now
+     * (no schedule gate). Used by the cron and by the "Send report now"
+     * button in the configuration page.
+     *
+     * @return int number of recipients the email was sent to
+     */
+    public static function send(): int {
+        global $CFG_GLPI, $DB;
+
+        $config = Config::getConfig();
+        $emails = Config::resolveNotifyRecipients($config);
+        if (empty($emails)) {
+            return 0;
+        }
+
         $baseUrl = $CFG_GLPI['url_base'] ?? '';
 
-        $stats  = self::gatherStats();
-        $html   = self::buildHtml($stats);
+        $stats   = self::gatherStats();
+        $html    = self::buildHtml($stats);
         $subject = sprintf('[Tanium] Weekly Security Report — %s', date('d/m/Y'));
 
         $attachments = [];
@@ -43,9 +80,13 @@ class WeeklyReport {
             }
         }
 
-        $task->addVolume($sent);
-        $task->log("Weekly report sent to {$sent} recipient(s).");
-        return $sent > 0 ? 1 : 0;
+        if ($sent > 0 && ($config['id'] ?? 0) > 0) {
+            $DB->update('glpi_plugin_tanium_configs', [
+                'last_weekly_report' => date('Y-m-d H:i:s'),
+            ], ['id' => $config['id']]);
+        }
+
+        return $sent;
     }
 
     // ── Stat gathering ────────────────────────────────────────────────────

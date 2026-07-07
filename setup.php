@@ -12,7 +12,7 @@ use GlpiPlugin\Tanium\CentralWidget as TaniumCentralWidget;
 use GlpiPlugin\Tanium\PatchDeploy as TaniumPatchDeploy;
 use GlpiPlugin\Tanium\Vulnerability;
 
-define('PLUGIN_TANIUM_VERSION', '2.2.5');
+define('PLUGIN_TANIUM_VERSION', '2.3.0');
 define('PLUGIN_TANIUM_MIN_GLPI', '11.0.0');
 define('PLUGIN_TANIUM_MAX_GLPI', '11.99.99');
 
@@ -90,13 +90,14 @@ function plugin_init_tanium(): void {
         ]
     );
 
-    // Cron task registration — weekly report
+    // Cron task registration — weekly report. Runs hourly; the task itself
+    // decides when to send based on the configured day-of-week and hour.
     CronTask::register(
         TaniumWeeklyReport::class,
         'weeklyreport',
-        604800, // 7 days
+        HOUR_TIMESTAMP,
         [
-            'comment' => 'Tanium — weekly security report by email',
+            'comment' => 'Tanium — weekly security report by email (sends on the configured day/hour)',
             'mode'    => CronTask::MODE_EXTERNAL,
         ]
     );

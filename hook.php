@@ -104,6 +104,9 @@ function plugin_tanium_install(): bool {
             'retention_days'          => "int NOT NULL DEFAULT 365",
             'custom_sensors'          => "varchar(500) NOT NULL DEFAULT ''",
             'auto_deploy_kev'         => "tinyint(1) NOT NULL DEFAULT 0",
+            'report_day'              => "tinyint NOT NULL DEFAULT 1",
+            'report_hour'             => "tinyint NOT NULL DEFAULT 8",
+            'last_weekly_report'      => "timestamp NULL DEFAULT NULL",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_configs` LIKE '{$col}'");
@@ -114,6 +117,14 @@ function plugin_tanium_install(): bool {
         foreach (['last_sync', 'date_mod'] as $col) {
             _tanium_migrate_to_timestamp($DB, 'glpi_plugin_tanium_configs', $col, 'timestamp NULL DEFAULT NULL');
         }
+
+        // v2.3.0: the weekly-report cron now runs hourly and the code decides
+        // when to send (configured day/hour). CronTask::register() never
+        // updates an existing row, so upgrades need an explicit UPDATE.
+        $DB->doQuery(
+            "UPDATE `glpi_crontasks` SET `frequency` = " . HOUR_TIMESTAMP . "
+             WHERE `name` = 'weeklyreport' AND `itemtype` LIKE '%Tanium%' AND `frequency` = 604800"
+        );
     }
 
     // ── Asset mapping table ───────────────────────────────────────────────

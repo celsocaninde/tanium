@@ -55,9 +55,102 @@ if (isset($_POST['save'])) {
         'retention_days'          => max(30, (int)($_POST['retention_days'] ?? 365)),
         'custom_sensors'          => trim($_POST['custom_sensors'] ?? ''),
         'auto_deploy_kev'         => isset($_POST['auto_deploy_kev']) ? 1 : 0,
+        'report_day'              => max(0, min(6, (int)($_POST['report_day'] ?? 1))),
+        'report_hour'             => max(0, min(23, (int)($_POST['report_hour'] ?? 8))),
     ]);
 
     Session::addMessageAfterRedirect(__('Tanium configuration saved.', 'tanium'), true, INFO);
+
+    // Surface picked users that will silently receive nothing
+    $noEmail = TaniumConfig::usersWithoutEmail((array)($_POST['notify_users'] ?? []));
+    if ($noEmail !== []) {
+        Session::addMessageAfterRedirect(
+            sprintf(
+                __('Warning: these users have no email registered in GLPI and will NOT receive alerts or reports: %s', 'tanium'),
+                implode(', ', $noEmail)
+            ),
+            true, WARNING
+        );
+    }
+
+    Html::redirect('config.form.php');
+}
+
+if (isset($_POST['test_email'])) {
+
+    // Test with the values currently typed in the form (fall back to saved
+    // config when the form fields come in empty).
+    $saved  = TaniumConfig::getConfig();
+    $config = [
+        'notify_email' => trim($_POST['notify_email'] ?? '') !== '' ? trim($_POST['notify_email']) : ($saved['notify_email'] ?? ''),
+        'notify_users' => implode(',', array_filter(array_map('intval', (array)($_POST['notify_users'] ?? []))))
+            ?: ($saved['notify_users'] ?? ''),
+    ];
+
+    $recipients = TaniumConfig::resolveNotifyRecipients($config);
+    $noEmail    = TaniumConfig::usersWithoutEmail(array_filter(array_map('intval', explode(',', $config['notify_users']))));
+
+    if ($noEmail !== []) {
+        Session::addMessageAfterRedirect(
+            sprintf(
+                __('Warning: these users have no email registered in GLPI and will NOT receive alerts or reports: %s', 'tanium'),
+                implode(', ', $noEmail)
+            ),
+            true, WARNING
+        );
+    }
+
+    if ($recipients === []) {
+        Session::addMessageAfterRedirect(__('No email recipient configured. Pick GLPI users or type extra emails first.', 'tanium'), true, ERROR);
+    } else {
+        $subject = __('[Tanium] Test email', 'tanium') . ' — ' . date('d/m/Y H:i');
+        $body    = '<div style="font-family:Segoe UI,Arial,sans-serif">'
+                 . '<h2 style="color:#e8212a">Tanium + GLPI</h2>'
+                 . '<p>' . __('This is a test email from the Tanium plugin. If you can read this, email notifications are working.', 'tanium') . '</p>'
+                 . '<p style="color:#6b7280;font-size:12px">' . date('d/m/Y H:i:s') . '</p></div>';
+
+        $ok = 0;
+        $fail = [];
+        foreach ($recipients as $to) {
+            if (TaniumNotification::sendEmail($to, $subject, $body)) {
+                $ok++;
+            } else {
+                $fail[] = $to;
+            }
+        }
+
+        if ($ok > 0) {
+            Session::addMessageAfterRedirect(
+                sprintf(__('Test email queued for %d recipient(s): %s', 'tanium'), $ok, implode(', ', array_diff($recipients, $fail))),
+                true, INFO
+            );
+        }
+        if ($fail !== []) {
+            Session::addMessageAfterRedirect(
+                sprintf(__('Test email FAILED for: %s — check tanium.log and the email settings in Setup > Notifications.', 'tanium'), implode(', ', $fail)),
+                true, ERROR
+            );
+        }
+    }
+
+    Html::redirect('config.form.php');
+}
+
+if (isset($_POST['send_report'])) {
+
+    $sent = \GlpiPlugin\Tanium\WeeklyReport::send();
+    if ($sent > 0) {
+        Session::addMessageAfterRedirect(
+            sprintf(__('Weekly report sent now to %d recipient(s).', 'tanium'), $sent),
+            true, INFO
+        );
+    } else {
+        Session::addMessageAfterRedirect(
+            __('Weekly report was NOT sent — no valid recipient configured (or every send failed; check tanium.log).', 'tanium'),
+            true, ERROR
+        );
+    }
+
     Html::redirect('config.form.php');
 }
 

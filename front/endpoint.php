@@ -62,6 +62,26 @@ foreach ($cves as $cve) {
     $sevCount[$sev] = ($sevCount[$sev] ?? 0) + 1;
 }
 
+// Plain-text CVE list injected into the generic ticket description ($cves is
+// already ordered by CVSS DESC, so the cut keeps the worst ones).
+$cveListText = '';
+if (!empty($cves)) {
+    $lines = [];
+    foreach (array_slice($cves, 0, 30) as $c) {
+        $lines[] = '- ' . $c['cve_id']
+            . ' (' . ucfirst(strtolower((string)($c['severity'] ?? 'unknown')))
+            . ($c['cvss_score'] !== null ? ', CVSS ' . number_format((float)$c['cvss_score'], 1) : '')
+            . ', ' . ($c['status'] ?? 'open') . ')';
+    }
+    if (count($cves) > 30) {
+        $lines[] = sprintf('... e mais %d CVE(s) — lista completa na aba de CVEs do endpoint no GLPI.', count($cves) - 30);
+    }
+    $cveListText = "\n\nCVEs detectados neste endpoint ("
+        . count($cves) . ' no total: '
+        . "{$sevCount['critical']} críticos, {$sevCount['high']} altos, {$sevCount['medium']} médios, {$sevCount['low']} baixos):\n"
+        . implode("\n", $lines);
+}
+
 // Load exceptions for this endpoint (keyed by cve_id). An exception past its
 // expires_at no longer suppresses SLA — it is kept here only to render the
 // "expired" badge so the analyst sees the risk acceptance has lapsed.
@@ -563,8 +583,18 @@ if ($complyScore !== null):
                 <label class="tanium-form-label" style="margin-top:12px"><?= __('Category', 'tanium') ?></label>
                 <select name="itilcategories_id" class="tanium-input tanium-select" style="width:100%">
                     <option value="0"><?= __('(no category)', 'tanium') ?></option>
-                    <?php foreach ($DB->request(['FROM' => 'glpi_itilcategories', 'ORDER' => 'name ASC', 'LIMIT' => 100]) as $cat): ?>
-                    <option value="<?= (int)$cat['id'] ?>"><?= htmlspecialchars($cat['name']) ?></option>
+                    <?php
+                    // Same list the native ticket form offers: ITIL categories
+                    // enabled for incidents, visible in the active entities,
+                    // hierarchical (parent > child) via completename.
+                    foreach ($DB->request([
+                        'SELECT' => ['id', 'completename'],
+                        'FROM'   => 'glpi_itilcategories',
+                        'WHERE'  => ['is_incident' => 1]
+                            + getEntitiesRestrictCriteria('glpi_itilcategories', '', '', true),
+                        'ORDER'  => 'completename ASC',
+                    ]) as $cat): ?>
+                    <option value="<?= (int)$cat['id'] ?>"><?= htmlspecialchars($cat['completename']) ?></option>
                     <?php endforeach; ?>
                 </select>
 
@@ -795,7 +825,8 @@ function openTicketModal(refId, refType) {
                 + 'Endpoint: ' + epName + '\n'
                 + 'EID: <?= htmlspecialchars($eid) ?>\n'
                 + 'IP: <?= htmlspecialchars($asset['ip_address'] ?? '') ?>\n'
-                + 'Risk Score: <?= $riskScore ?>/100';
+                + 'Risk Score: <?= $riskScore ?>/100'
+                + <?= json_encode($cveListText) ?>;
     }
 
     document.getElementById('ticket-title').value   = title;
