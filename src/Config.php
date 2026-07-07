@@ -171,13 +171,13 @@ class Config extends CommonDBTM {
             }
             $user = new \User();
             if (!$user->getFromDB($userId)) {
-                Toolbox::logInFile('tanium', "[Tanium] Usuario de notificacao id={$userId} nao encontrado no GLPI (removido/excluido?).");
+                Toolbox::logInFile('tanium', "[Tanium] Usuario de notificacao id={$userId} nao encontrado no GLPI (removido/excluido?).\n");
                 continue;
             }
             $email = $user->getDefaultEmail();
             if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $login = (string) ($user->fields['name'] ?? $userId);
-                Toolbox::logInFile('tanium', "[Tanium] Usuario de notificacao '{$login}' nao tem e-mail cadastrado no GLPI -- nao vai receber alertas ate isso ser corrigido (Administracao > Usuarios > {$login} > E-mails).");
+                Toolbox::logInFile('tanium', "[Tanium] Usuario de notificacao '{$login}' nao tem e-mail cadastrado no GLPI -- nao vai receber alertas ate isso ser corrigido (Administracao > Usuarios > {$login} > E-mails).\n");
                 continue;
             }
             $emails[strtolower($email)] = $email;

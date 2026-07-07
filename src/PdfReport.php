@@ -17,7 +17,7 @@ class PdfReport {
      */
     public static function critical(array $cves, int $count, string $glpiUrl): ?string {
         if (!class_exists(\TCPDF::class)) {
-            Toolbox::logInFile('tanium', '[Tanium] TCPDF indisponivel -- PDF do alerta de CVE critico nao gerado.');
+            Toolbox::logInFile('tanium', "[Tanium] TCPDF indisponivel -- PDF do alerta de CVE critico nao gerado.\n");
             return null;
         }
 
@@ -66,7 +66,7 @@ class PdfReport {
      */
     public static function weekly(array $s, string $baseUrl): ?string {
         if (!class_exists(\TCPDF::class)) {
-            Toolbox::logInFile('tanium', '[Tanium] TCPDF indisponivel -- PDF do relatorio semanal nao gerado.');
+            Toolbox::logInFile('tanium', "[Tanium] TCPDF indisponivel -- PDF do relatorio semanal nao gerado.\n");
             return null;
         }
 
@@ -257,7 +257,7 @@ class PdfReport {
 
             return $pdf->Output('tanium-report.pdf', 'S');
         } catch (\Throwable $error) {
-            Toolbox::logInFile('tanium', '[Tanium] Falha ao gerar PDF: ' . $error->getMessage());
+            Toolbox::logInFile('tanium', '[Tanium] Falha ao gerar PDF: ' . $error->getMessage() . "\n");
             return null;
         }
     }

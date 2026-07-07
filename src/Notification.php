@@ -31,12 +31,12 @@ class Notification {
         curl_close($ch);
 
         if ($error) {
-            Toolbox::logInFile('tanium','[Tanium] Webhook error: ' . $error);
+            Toolbox::logInFile('tanium','[Tanium] Webhook error: ' . $error . "\n");
             return false;
         }
 
         if ($httpCode < 200 || $httpCode >= 300) {
-            Toolbox::logInFile('tanium',"[Tanium] Webhook HTTP {$httpCode}: " . substr((string)$response, 0, 200));
+            Toolbox::logInFile('tanium',"[Tanium] Webhook HTTP {$httpCode}: " . substr((string)$response, 0, 200) . "\n");
             return false;
         }
 
@@ -273,11 +273,11 @@ class Notification {
         $fromName = (string) ($CFG_GLPI['admin_email_name'] ?? 'GLPI');
 
         if ($from === '' || !\GLPIMailer::validateAddress($from)) {
-            Toolbox::logInFile('tanium', '[Tanium] Remetente inválido. Defina o "E-mail do administrador" em Configurar → Notificações → Configurações de e-mail.');
+            Toolbox::logInFile('tanium', '[Tanium] Remetente inválido. Defina o "E-mail do administrador" em Configurar → Notificações → Configurações de e-mail.' . "\n");
             return false;
         }
         if (!\GLPIMailer::validateAddress($to)) {
-            Toolbox::logInFile('tanium', "[Tanium] Endereço de destino inválido: {$to}");
+            Toolbox::logInFile('tanium', "[Tanium] Endereço de destino inválido: {$to}\n");
             return false;
         }
 
@@ -299,12 +299,12 @@ class Notification {
             }
 
             if (!$mailer->send()) {
-                Toolbox::logInFile('tanium', '[Tanium] Falha no envio do e-mail para ' . $to . ': ' . ($mailer->getError() ?? 'erro desconhecido'));
+                Toolbox::logInFile('tanium', '[Tanium] Falha no envio do e-mail para ' . $to . ': ' . ($mailer->getError() ?? 'erro desconhecido') . "\n");
                 return false;
             }
             return true;
         } catch (\Throwable $e) {
-            Toolbox::logInFile('tanium', '[Tanium] Exceção no envio do e-mail: ' . $e->getMessage());
+            Toolbox::logInFile('tanium', '[Tanium] Exceção no envio do e-mail: ' . $e->getMessage() . "\n");
             return false;
         }
     }

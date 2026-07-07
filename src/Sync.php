@@ -278,7 +278,7 @@ class Sync extends CommonGLPI {
                             }
                         } catch (\Throwable $e) {
                             $errors++;
-                            Toolbox::logInFile('tanium', '[Tanium] Error syncing endpoint: ' . $e->getMessage());
+                            Toolbox::logInFile('tanium', '[Tanium] Error syncing endpoint: ' . $e->getMessage() . "\n");
                         }
                     }
 
