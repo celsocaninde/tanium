@@ -69,14 +69,19 @@ switch ($action) {
         }
 
         $config   = \GlpiPlugin\Tanium\Config::getConfig();
-        $ticket   = new Ticket();
-        $ticketId = (int)$ticket->add([
+        $ticketData = [
             'name'        => sprintf('[Tanium] Instalar agente em %d computador(es)', count($names)),
             'content'     => implode("\n", $lines),
             'entities_id' => (int)($config['ticket_entity_id'] ?? 0),
             'type'        => Ticket::DEMAND_TYPE,
             'priority'    => 3,
-        ]);
+        ];
+        $requester = \GlpiPlugin\Tanium\Config::ticketRequesterId(Session::getLoginUserID(), $config);
+        if ($requester > 0) {
+            $ticketData['_users_id_requester'] = $requester;
+        }
+        $ticket   = new Ticket();
+        $ticketId = (int)$ticket->add($ticketData);
         if (!$ticketId) {
             echo json_encode(['success' => false, 'error' => 'Failed to create ticket']);
             exit;

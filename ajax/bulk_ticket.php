@@ -83,6 +83,7 @@ $ticketId = $ticket->add([
     'urgency'         => $totalCritical > 0 ? 5 : ($totalHigh > 0 ? 4 : 3),
     'impact'          => $totalCritical > 0 ? 5 : ($totalHigh > 0 ? 4 : 3),
     '_users_id_assign'=> [],
+    '_users_id_requester' => \GlpiPlugin\Tanium\Config::ticketRequesterId(Session::getLoginUserID(), $config),
 ]);
 
 if (!$ticketId) {

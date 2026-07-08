@@ -138,7 +138,7 @@ class RemoteAction {
             'priority'            => $isQuarantine ? 5 : 3,
             'entities_id'         => $entityId,
             'requesttypes_id'     => 1,
-            '_users_id_requester' => Session::getLoginUserID(),
+            '_users_id_requester' => Config::ticketRequesterId(Session::getLoginUserID(), $config),
         ]);
         if (!$ticketId) {
             return ['success' => false, 'error' => 'Ticket creation failed'];

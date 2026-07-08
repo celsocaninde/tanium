@@ -36,6 +36,7 @@ if (isset($_POST['save'])) {
         'sla_medium_days'      => max(1, (int)($_POST['sla_medium_days']   ?? 90)),
         'patch_limiting_group_id' => max(0, (int)($_POST['patch_limiting_group_id'] ?? 0)),
         'ticket_entity_id'        => max(0, (int)($_POST['ticket_entity_id'] ?? 0)),
+        'ticket_requester_id'     => max(0, (int)($_POST['ticket_requester_id'] ?? 0)),
         'default_entity_id'       => max(0, (int)($_POST['default_entity_id'] ?? 0)),
         'sync_group_membership'   => isset($_POST['sync_group_membership']) ? 1 : 0,
         'agent_stale_days'        => max(1, (int)($_POST['agent_stale_days'] ?? 7)),

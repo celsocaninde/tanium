@@ -42,6 +42,7 @@ function plugin_tanium_install(): bool {
                 `sla_medium_days`       int NOT NULL DEFAULT 90,
                 `patch_limiting_group_id` int unsigned NOT NULL DEFAULT 0,
                 `ticket_entity_id`      int unsigned NOT NULL DEFAULT 0,
+                `ticket_requester_id`   int unsigned NOT NULL DEFAULT 0,
                 `date_mod`              timestamp NULL DEFAULT NULL,
                 PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
@@ -86,6 +87,7 @@ function plugin_tanium_install(): bool {
             'sla_medium_days'    => "int NOT NULL DEFAULT 90",
             'patch_limiting_group_id' => "int unsigned NOT NULL DEFAULT 0",
             'ticket_entity_id'        => "int unsigned NOT NULL DEFAULT 0",
+            'ticket_requester_id'     => "int unsigned NOT NULL DEFAULT 0",
             'default_entity_id'       => "int unsigned NOT NULL DEFAULT 0",
             'sync_group_membership'   => "tinyint(1) NOT NULL DEFAULT 0",
             'agent_stale_days'        => "int NOT NULL DEFAULT 7",

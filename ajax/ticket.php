@@ -42,7 +42,7 @@ $ticketData = [
     'entities_id'         => (int)($config['ticket_entity_id'] ?? 0) > 0
                                 ? (int)$config['ticket_entity_id']
                                 : ($_SESSION['glpiactive_entity'] ?? 0),
-    '_users_id_requester' => Session::getLoginUserID(),
+    '_users_id_requester' => \GlpiPlugin\Tanium\Config::ticketRequesterId(Session::getLoginUserID(), $config),
 ];
 
 if ($itilcategoriesId > 0) {

@@ -421,8 +421,7 @@ class Sync extends CommonGLPI {
         $lines[] = '';
         $lines[] = 'Priorize a remediação conforme o SLA configurado no plugin Tanium.';
 
-        $ticket   = new Ticket();
-        $ticketId = (int)$ticket->add([
+        $ticketData = [
             'name'        => $title,
             'content'     => implode("\n", $lines),
             'entities_id' => (int)($config['ticket_entity_id'] ?? 0),
@@ -430,7 +429,14 @@ class Sync extends CommonGLPI {
             'priority'    => 5,
             'urgency'     => 5,
             'impact'      => 5,
-        ]);
+        ];
+        $requester = Config::ticketRequesterId(0, $config);
+        if ($requester > 0) {
+            $ticketData['_users_id_requester'] = $requester;
+        }
+
+        $ticket   = new Ticket();
+        $ticketId = (int)$ticket->add($ticketData);
         if (!$ticketId) {
             return 0;
         }

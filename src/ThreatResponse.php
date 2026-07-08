@@ -153,8 +153,7 @@ class ThreatResponse {
 
         $urgency = $row['severity'] === 'critical' ? 5 : 4;
 
-        $ticket   = new Ticket();
-        $ticketId = (int)$ticket->add([
+        $ticketData = [
             'name'        => sprintf('[Tanium TR] %s — %s', ucfirst($row['severity']), substr($row['title'], 0, 120)),
             'content'     => implode("\n", $content),
             'entities_id' => $entityId,
@@ -162,7 +161,14 @@ class ThreatResponse {
             'priority'    => $urgency,
             'urgency'     => $urgency,
             'impact'      => $urgency,
-        ]);
+        ];
+        $requester = Config::ticketRequesterId(0, $config);
+        if ($requester > 0) {
+            $ticketData['_users_id_requester'] = $requester;
+        }
+
+        $ticket   = new Ticket();
+        $ticketId = (int)$ticket->add($ticketData);
 
         if ($ticketId > 0 && !empty($row['computers_id'])) {
             (new Item_Ticket())->add([

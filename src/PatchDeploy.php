@@ -513,8 +513,7 @@ class PatchDeploy extends CommonGLPI {
               . "</div>"
               . self::buildTicketHtml($endpoint, $patches, $kevCves, $config);
 
-        $ticket   = new Ticket();
-        $ticketId = (int)$ticket->add([
+        $ticketData = [
             'name'        => sprintf('[Tanium] Auto: remediação KEV — %s (%d patches)', $name, count($patches)),
             'content'     => $html,
             'status'      => Ticket::INCOMING,
@@ -523,7 +522,14 @@ class PatchDeploy extends CommonGLPI {
             'impact'      => 5,
             'priority'    => 5,
             'entities_id' => (int)($config['ticket_entity_id'] ?? 0),
-        ]);
+        ];
+        $requester = Config::ticketRequesterId(0, $config);
+        if ($requester > 0) {
+            $ticketData['_users_id_requester'] = $requester;
+        }
+
+        $ticket   = new Ticket();
+        $ticketId = (int)$ticket->add($ticketData);
         if (!$ticketId) {
             return false;
         }

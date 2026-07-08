@@ -102,7 +102,7 @@ $title        = sprintf('[Tanium] Remediação de Patches — %s (%d patch%s)', 
         'type'             => Ticket::INCIDENT_TYPE,
         'entities_id'      => $entityId,
         'requesttypes_id'  => 1, // Direct
-        '_users_id_requester' => Session::getLoginUserID(),
+        '_users_id_requester' => \GlpiPlugin\Tanium\Config::ticketRequesterId(Session::getLoginUserID(), $config),
     ];
 
     $ticketId = $ticket->add($ticketData);

@@ -53,6 +53,7 @@ class Config extends CommonDBTM {
             'sla_medium_days'      => 90,
             'patch_limiting_group_id' => 0,
             'ticket_entity_id'        => 0,
+            'ticket_requester_id'     => 0,
             'default_entity_id'       => 0,
             'sync_group_membership'   => 0,
             'agent_stale_days'        => 7,
@@ -187,6 +188,30 @@ class Config extends CommonDBTM {
         }
 
         return array_values($emails);
+    }
+
+    /**
+     * Resolves the GLPI user id to set as requester on Tanium tickets.
+     *
+     * Returns the user configured in "Default ticket requester" when it points
+     * to a still-existing, non-deleted account; otherwise returns $fallback
+     * (pass Session::getLoginUserID() for UI-triggered tickets, 0 for cron —
+     * cron has no session, so without a configured requester those tickets
+     * would otherwise have none at all).
+     */
+    public static function ticketRequesterId(int $fallback = 0, ?array $config = null): int {
+        $config = $config ?? self::getConfig();
+        $id     = (int)($config['ticket_requester_id'] ?? 0);
+
+        if ($id > 0) {
+            $user = new \User();
+            if ($user->getFromDB($id) && (int)($user->fields['is_deleted'] ?? 0) === 0) {
+                return $id;
+            }
+            Toolbox::logInFile('tanium', "[Tanium] Requerente padrao id={$id} nao existe mais no GLPI -- usando fallback.\n");
+        }
+
+        return $fallback;
     }
 
     /**
@@ -544,6 +569,22 @@ class Config extends CommonDBTM {
             __('Ticket entity', 'tanium'),
             $entityDropdown,
             __('Entity where Tanium tickets (CVE, patch remediation) will be created. Choose the entity that owns the security team or service desk queue.', 'tanium')
+        );
+
+        ob_start();
+        \User::dropdown([
+            'name'                => 'ticket_requester_id',
+            'value'               => (int)($config['ticket_requester_id'] ?? 0),
+            'right'               => 'all',
+            'display_emptychoice' => true,
+            'width'               => '100%',
+        ]);
+        $requesterDropdown = ob_get_clean();
+
+        $this->renderField(
+            __('Default ticket requester', 'tanium'),
+            $requesterDropdown,
+            __('GLPI user set as requester on every ticket the plugin opens — including automatic (cron) tickets for critical CVEs, silent agents, threats and KEV remediation, which otherwise have no requester. Leave empty to keep the default behaviour (the logged-in user for manual tickets, none for automatic ones).', 'tanium')
         );
 
         echo "<div class='tanium-actions'>";

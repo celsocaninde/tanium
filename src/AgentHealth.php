@@ -101,8 +101,7 @@ class AgentHealth {
 
         $entityId = (int)($config['ticket_entity_id'] ?? 0);
 
-        $ticket   = new Ticket();
-        $ticketId = (int)$ticket->add([
+        $ticketData = [
             'name'        => self::TICKET_TITLE,
             'content'     => implode("\n", $lines),
             'entities_id' => $entityId,
@@ -110,7 +109,14 @@ class AgentHealth {
             'priority'    => 4,
             'urgency'     => 4,
             'impact'      => 4,
-        ]);
+        ];
+        $requester = Config::ticketRequesterId(0, $config);
+        if ($requester > 0) {
+            $ticketData['_users_id_requester'] = $requester;
+        }
+
+        $ticket   = new Ticket();
+        $ticketId = (int)$ticket->add($ticketData);
         if (!$ticketId) {
             return 0;
         }
