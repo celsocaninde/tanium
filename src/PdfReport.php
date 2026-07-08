@@ -15,7 +15,7 @@ class PdfReport {
     /**
      * @param array<int,array{cve_id:string,endpoint:string,cvss:mixed}> $cves
      */
-    public static function critical(array $cves, int $count, string $glpiUrl): ?string {
+    public static function critical(array $cves, int $count, string $glpiUrl, string $groupLabel = ''): ?string {
         if (!class_exists(\TCPDF::class)) {
             Toolbox::logInFile('tanium', "[Tanium] TCPDF indisponivel -- PDF do alerta de CVE critico nao gerado.\n");
             return null;
@@ -30,20 +30,26 @@ class PdfReport {
             $title    = htmlspecialchars((string)($cve['title'] ?? ''));
             $affected = (int)($cve['affected_count'] ?? 0);
 
+            // Column widths must match the <th> widths below on every single row --
+            // TCPDF sizes each row's columns from its own cells, so a row without
+            // explicit widths drifts out of alignment with the header (and with
+            // other rows) instead of sharing one fixed grid.
             $rows .= '<tr>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd"><b>' . htmlspecialchars((string)($cve['cve_id'] ?? '')) . '</b></td>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd">' . $title . '</td>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd">' . $endpoint . ($meta !== '' ? '<br/><span style="color:#6b7280;font-size:7pt">' . htmlspecialchars($meta) . '</span>' : '') . '</td>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd;color:#d6336c"><b>' . htmlspecialchars((string)($cve['cvss'] ?? '-')) . '</b></td>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd">' . ($affected > 0 ? $affected : '-') . '</td>'
+                . '<td width="20%" style="padding:4px;border-bottom:1px solid #dddddd"><b>' . htmlspecialchars((string)($cve['cve_id'] ?? '')) . '</b></td>'
+                . '<td width="30%" style="padding:4px;border-bottom:1px solid #dddddd">' . $title . '</td>'
+                . '<td width="28%" style="padding:4px;border-bottom:1px solid #dddddd">' . $endpoint . ($meta !== '' ? '<br/><span style="color:#6b7280;font-size:7pt">' . htmlspecialchars($meta) . '</span>' : '') . '</td>'
+                . '<td width="11%" style="padding:4px;border-bottom:1px solid #dddddd;color:#d6336c"><b>' . htmlspecialchars((string)($cve['cvss'] ?? '-')) . '</b></td>'
+                . '<td width="11%" style="padding:4px;border-bottom:1px solid #dddddd">' . ($affected > 0 ? $affected : '-') . '</td>'
                 . '</tr>';
         }
         if ($rows === '') {
             $rows = '<tr><td colspan="5" style="padding:4px;color:#6b7280">Nenhum detalhe individual disponivel.</td></tr>';
         }
 
+        $titleSuffix = $groupLabel !== '' ? ' — ' . $groupLabel : '';
+
         $html = '<div style="font-size:9pt">'
-            . '<h2 style="color:#e8212a;font-size:13pt;margin-bottom:2pt">Novos CVEs Criticos</h2>'
+            . '<h2 style="color:#e8212a;font-size:13pt;margin-bottom:2pt">Novos CVEs Criticos' . htmlspecialchars($titleSuffix) . '</h2>'
             . '<p style="color:#4a5568;font-size:9pt">' . $count . ' novo(s) CVE(s) critico(s) detectado(s) em ' . date('d/m/Y H:i') . '.</p>'
             . '<table cellpadding="3" style="width:100%;border-collapse:collapse;font-size:8pt">'
             . '<thead><tr style="background-color:#f1f3f7">'
@@ -58,7 +64,7 @@ class PdfReport {
             . '<p style="color:#9ca3af;font-size:7pt;margin-top:10pt">Gerado automaticamente pelo plugin Tanium para GLPI. ' . htmlspecialchars($glpiUrl) . '</p>'
             . '</div>';
 
-        return self::render('Tanium - CVEs Criticos', $html);
+        return self::render('Tanium - CVEs Criticos' . $titleSuffix, $html);
     }
 
     /**
@@ -72,23 +78,25 @@ class PdfReport {
 
         $compliance = $s['patch_compliance'] !== null ? $s['patch_compliance'] . '%' : 'N/A';
 
+        // Widths repeated on every <td> so TCPDF keeps one fixed column grid instead
+        // of resizing each row to its own content (see note in critical() above).
         $topEpRows = '';
         foreach ($s['top_endpoints'] as $ep) {
             $topEpRows .= '<tr>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars((string)$ep['tanium_name']) . '</td>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars((string)$ep['ip_address']) . '</td>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd"><b>' . (int)$ep['risk_score'] . '</b></td>'
+                . '<td width="45%" style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars((string)$ep['tanium_name']) . '</td>'
+                . '<td width="30%" style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars((string)$ep['ip_address']) . '</td>'
+                . '<td width="25%" style="padding:4px;border-bottom:1px solid #dddddd"><b>' . (int)$ep['risk_score'] . '</b></td>'
                 . '</tr>';
         }
 
         $topCveRows = '';
         foreach ($s['top_cves'] as $cve) {
             $topCveRows .= '<tr>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars((string)$cve['cve_id']) . '</td>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars((string)($cve['title'] ?? '')) . '</td>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars(ucfirst((string)$cve['severity'])) . '</td>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars((string)($cve['cvss_score'] ?? '-')) . '</td>'
-                . '<td style="padding:4px;border-bottom:1px solid #dddddd">' . (int)$cve['affected_count'] . '</td>'
+                . '<td width="17%" style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars((string)$cve['cve_id']) . '</td>'
+                . '<td width="38%" style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars((string)($cve['title'] ?? '')) . '</td>'
+                . '<td width="17%" style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars(ucfirst((string)$cve['severity'])) . '</td>'
+                . '<td width="14%" style="padding:4px;border-bottom:1px solid #dddddd">' . htmlspecialchars((string)($cve['cvss_score'] ?? '-')) . '</td>'
+                . '<td width="14%" style="padding:4px;border-bottom:1px solid #dddddd">' . (int)$cve['affected_count'] . '</td>'
                 . '</tr>';
         }
 
@@ -170,11 +178,13 @@ class PdfReport {
                        . '<td width="42%">CVE</td><td width="22%">Severidade</td><td width="14%">CVSS</td><td width="22%">Presença</td></tr>';
                 foreach (array_slice($ep['cves'], 0, 15) as $c) {
                     $shared = in_array($c['cve_id'], $otherIds, true);
+                    // Widths mirror the header row's 42/22/14/22 split so TCPDF
+                    // doesn't recompute a different column grid for these rows.
                     $html .= '<tr>'
-                           . '<td>' . $esc($c['cve_id']) . '</td>'
-                           . '<td style="color:' . $sevColor((string)$c['severity']) . ';font-weight:bold">' . $esc(ucfirst((string)$c['severity'])) . '</td>'
-                           . '<td>' . ($c['cvss_score'] !== null ? number_format((float)$c['cvss_score'], 1) : '—') . '</td>'
-                           . '<td style="color:' . ($shared ? '#1a6dff' : '#e8212a') . '">' . ($shared ? 'ambos' : 'exclusivo') . '</td>'
+                           . '<td width="42%">' . $esc($c['cve_id']) . '</td>'
+                           . '<td width="22%" style="color:' . $sevColor((string)$c['severity']) . ';font-weight:bold">' . $esc(ucfirst((string)$c['severity'])) . '</td>'
+                           . '<td width="14%">' . ($c['cvss_score'] !== null ? number_format((float)$c['cvss_score'], 1) : '—') . '</td>'
+                           . '<td width="22%" style="color:' . ($shared ? '#1a6dff' : '#e8212a') . '">' . ($shared ? 'ambos' : 'exclusivo') . '</td>'
                            . '</tr>';
                 }
                 $html .= '</table>';
@@ -224,14 +234,16 @@ class PdfReport {
               . '<td width="26%">Endpoint</td><td width="7%">Nota</td><td width="10%">Veredito</td>'
               . '<td width="37%">Diagnóstico</td><td width="10%">CVEs C/A/M</td><td width="10%">Patches</td></tr>';
 
+        // Widths mirror the header row's 26/7/10/37/10/10 split so TCPDF
+        // doesn't recompute a different column grid for these rows.
         foreach ($rows as $r) {
             $html .= '<tr>'
-                   . '<td>' . $esc($r['tanium_name'] ?: $r['tanium_eid']) . '</td>'
-                   . '<td style="color:' . $r['verdict_color'] . ';font-weight:bold">' . number_format($r['score'], 1) . '</td>'
-                   . '<td style="color:' . $r['verdict_color'] . ';font-weight:bold">' . $esc($r['verdict']) . '</td>'
-                   . '<td>' . $esc($r['message']) . '</td>'
-                   . '<td>' . (int)$r['cves_critical'] . ' / ' . (int)$r['cves_high'] . ' / ' . (int)$r['cves_medium'] . '</td>'
-                   . '<td>' . (int)$r['missing_patches'] . '</td>'
+                   . '<td width="26%">' . $esc($r['tanium_name'] ?: $r['tanium_eid']) . '</td>'
+                   . '<td width="7%" style="color:' . $r['verdict_color'] . ';font-weight:bold">' . number_format($r['score'], 1) . '</td>'
+                   . '<td width="10%" style="color:' . $r['verdict_color'] . ';font-weight:bold">' . $esc($r['verdict']) . '</td>'
+                   . '<td width="37%">' . $esc($r['message']) . '</td>'
+                   . '<td width="10%">' . (int)$r['cves_critical'] . ' / ' . (int)$r['cves_high'] . ' / ' . (int)$r['cves_medium'] . '</td>'
+                   . '<td width="10%">' . (int)$r['missing_patches'] . '</td>'
                    . '</tr>';
         }
         $html .= '</table>';

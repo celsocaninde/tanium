@@ -323,24 +323,40 @@ class Sync extends CommonGLPI {
             $critDetails = self::enrichCriticalCveDetails(self::$newCriticalCveDetails);
         }
 
-        // Email on new critical CVEs
+        // Email on new critical CVEs — split into workstations (notebook/desktop)
+        // vs. servers/VMs, each with its own PDF report, in a single email.
         if (!empty($config['notify_critical']) && self::$newCriticalCves > 0) {
             $recipients = Config::resolveNotifyRecipients($config);
             if ($recipients !== []) {
                 global $CFG_GLPI;
                 $glpiUrl = $CFG_GLPI['url_base'] ?? '';
-                $details = $critDetails;
+
+                $workstations = array_values(array_filter($critDetails, static fn(array $d): bool => empty($d['is_virtual'])));
+                $servers      = array_values(array_filter($critDetails, static fn(array $d): bool => !empty($d['is_virtual'])));
+
                 $subject = sprintf('[Tanium] %d new critical CVE(s) detected', self::$newCriticalCves);
-                $body    = Notification::buildCriticalEmailBody(self::$newCriticalCves, $details, $glpiUrl);
+                $body    = Notification::buildCriticalEmailBody(self::$newCriticalCves, $workstations, $servers, $glpiUrl);
 
                 $attachments = [];
-                $pdf = PdfReport::critical($details, self::$newCriticalCves, $glpiUrl);
-                if ($pdf !== null) {
-                    $attachments[] = [
-                        'filename' => 'tanium-cves-criticos-' . date('Y-m-d') . '.pdf',
-                        'content'  => $pdf,
-                        'mime'     => 'application/pdf',
-                    ];
+                if ($workstations !== []) {
+                    $wsPdf = PdfReport::critical($workstations, count($workstations), $glpiUrl, 'Estações de Trabalho (Notebooks/Desktops)');
+                    if ($wsPdf !== null) {
+                        $attachments[] = [
+                            'filename' => 'tanium-cves-criticos-estacoes-' . date('Y-m-d') . '.pdf',
+                            'content'  => $wsPdf,
+                            'mime'     => 'application/pdf',
+                        ];
+                    }
+                }
+                if ($servers !== []) {
+                    $srvPdf = PdfReport::critical($servers, count($servers), $glpiUrl, 'Servidores (VM)');
+                    if ($srvPdf !== null) {
+                        $attachments[] = [
+                            'filename' => 'tanium-cves-criticos-servidores-' . date('Y-m-d') . '.pdf',
+                            'content'  => $srvPdf,
+                            'mime'     => 'application/pdf',
+                        ];
+                    }
                 }
 
                 foreach ($recipients as $to) {
@@ -449,7 +465,7 @@ class Sync extends CommonGLPI {
      * critical CVE, for richer email/PDF content.
      *
      * @param array<int,array{cve_id:string,endpoint:string,eid:string,cvss:mixed}> $details
-     * @return array<int,array{cve_id:string,endpoint:string,eid:string,cvss:mixed,title:string,affected_count:int,ip:string,os_name:string}>
+     * @return array<int,array{cve_id:string,endpoint:string,eid:string,cvss:mixed,title:string,affected_count:int,ip:string,os_name:string,is_virtual:bool}>
      */
     private static function enrichCriticalCveDetails(array $details): array {
         if ($details === []) {
@@ -479,6 +495,8 @@ class Sync extends CommonGLPI {
             $detail['affected_count'] = (int)($vuln['affected_count'] ?? 0);
             $detail['ip']             = trim((string)($asset['ip_address'] ?? ''));
             $detail['os_name']        = trim((string)($asset['os_name'] ?? ''));
+            // Tanium's own VM flag: drives the workstation-vs-server/VM report split below.
+            $detail['is_virtual']     = (bool) ($asset['is_virtual'] ?? false);
         }
         unset($detail);
 
