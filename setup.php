@@ -13,7 +13,7 @@ use GlpiPlugin\Tanium\CentralWidget as TaniumCentralWidget;
 use GlpiPlugin\Tanium\PatchDeploy as TaniumPatchDeploy;
 use GlpiPlugin\Tanium\Vulnerability;
 
-define('PLUGIN_TANIUM_VERSION', '2.10.0');
+define('PLUGIN_TANIUM_VERSION', '2.11.0');
 define('PLUGIN_TANIUM_MIN_GLPI', '11.0.0');
 define('PLUGIN_TANIUM_MAX_GLPI', '11.99.99');
 

@@ -66,14 +66,31 @@ class Kiosk {
             $recentCritical[] = $r;
         }
 
+        ThreatResponse::ensureTable();
+        $recentThreats = [];
+        foreach ($DB->doQuery("
+            SELECT t.title, t.severity, t.detected_at, a.tanium_name
+            FROM `" . ThreatResponse::$table . "` t
+            LEFT JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = t.tanium_eid
+            WHERE t.status NOT IN ('resolved', 'closed', 'suppressed')
+            ORDER BY t.detected_at DESC
+            LIMIT 8
+        ") as $r) {
+            $recentThreats[] = $r;
+        }
+
         return [
             'endpoints'       => $endpoints,
             'severity'        => $severity,
             'kev'             => $kev,
             'sla'             => Sla::getStats(),
+            'mttr'            => Sla::getMttr(90),
+            'most_overdue'    => Sla::getMostOverdue(8),
             'stale'           => AgentHealth::countStale($days),
+            'stale_list'      => array_slice(AgentHealth::getStale($days), 0, 8),
             'stale_days'      => $days,
             'threats'         => ThreatResponse::countOpen(),
+            'recent_threats'  => $recentThreats,
             'top_risk'        => $topRisk,
             'recent_critical' => $recentCritical,
             'last_sync'       => $config['last_sync'] ?? null,
