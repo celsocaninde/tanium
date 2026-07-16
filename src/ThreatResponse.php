@@ -2,6 +2,7 @@
 
 namespace GlpiPlugin\Tanium;
 
+use ITILSolution;
 use Item_Ticket;
 use Ticket;
 use Toolbox;
@@ -114,6 +115,10 @@ class ThreatResponse {
 
             if ($existing) {
                 $DB->update(self::$table, $row, ['id' => $existing['id']]);
+                if (!empty($existing['tickets_id'])
+                    && in_array($status, ['resolved', 'closed', 'suppressed'], true)) {
+                    self::resolveTicket((int)$existing['tickets_id'], $title, $status);
+                }
                 continue;
             }
 
@@ -168,6 +173,34 @@ class ThreatResponse {
         }
 
         return $ticketId;
+    }
+
+    /**
+     * Solve the GLPI ticket linked to an alert once the alert itself is
+     * resolved/closed/suppressed on the Tanium side. Idempotent: tickets
+     * already solved/closed (or deleted) are left untouched.
+     */
+    private static function resolveTicket(int $ticketId, string $alertTitle, string $status): void {
+        $ticket = new Ticket();
+        if (!$ticket->getFromDB($ticketId)
+            || $ticket->fields['is_deleted']
+            || in_array((int)$ticket->fields['status'], [Ticket::SOLVED, Ticket::CLOSED], true)) {
+            return;
+        }
+
+        (new ITILSolution())->add([
+            'itemtype'         => 'Ticket',
+            'items_id'         => $ticketId,
+            'content'          => Notification::autoSolutionHtml(
+                '✅ Alerta resolvido no Tanium Threat Response',
+                sprintf(
+                    'O alerta <strong>%s</strong> mudou para o status <strong>%s</strong> no Tanium. Este chamado foi <strong>encerrado automaticamente</strong>.',
+                    htmlspecialchars($alertTitle),
+                    htmlspecialchars($status)
+                )
+            ),
+            'solutiontypes_id' => 0,
+        ]);
     }
 
     /** Open (non-resolved) alert count for the dashboard KPI. */

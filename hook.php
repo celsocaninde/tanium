@@ -300,15 +300,21 @@ function plugin_tanium_install(): bool {
                 `severity`         varchar(20) NOT NULL DEFAULT 'unknown',
                 `status`           varchar(30) NOT NULL DEFAULT 'open',
                 `detected_at`      timestamp NULL DEFAULT NULL,
+                `tickets_id`       int {$sign} NOT NULL DEFAULT 0,
                 `date_mod`         timestamp NULL DEFAULT NULL,
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `eid_cve` (`tanium_eid`, `cve_id`),
                 KEY `tanium_eid` (`tanium_eid`),
                 KEY `cve_id` (`cve_id`),
-                KEY `computers_id` (`computers_id`)
+                KEY `computers_id` (`computers_id`),
+                KEY `tickets_id` (`tickets_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
         );
     } else {
+        $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_endpoint_cves` LIKE 'tickets_id'");
+        if ($res && $DB->numrows($res) === 0) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_tanium_endpoint_cves` ADD COLUMN `tickets_id` int {$sign} NOT NULL DEFAULT 0, ADD KEY `tickets_id` (`tickets_id`)");
+        }
         foreach (['detected_at', 'date_mod'] as $col) {
             _tanium_migrate_to_timestamp($DB, 'glpi_plugin_tanium_endpoint_cves', $col, 'timestamp NULL DEFAULT NULL');
         }

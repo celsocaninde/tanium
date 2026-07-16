@@ -8,6 +8,7 @@ use DeviceMemory;
 use DeviceProcessor;
 use Domain;
 use IPAddress;
+use ITILSolution;
 use Item_DeviceMemory;
 use Item_DeviceProcessor;
 use Item_SoftwareVersion;
@@ -383,6 +384,10 @@ class Sync extends CommonGLPI {
             self::openCriticalCveTicket($critDetails, $config);
         }
 
+        // Auto-solve previously opened critical-CVE tickets whose findings
+        // have all been remediated since.
+        self::resolveClearedCriticalCveTickets();
+
         // Remediation digest — one email per sync run that recorded fixes
         // (never one per finding), with the PDF report attached.
         $remediationEvents = count(self::$remediatedCves) + count(self::$installedPatches);
@@ -488,7 +493,68 @@ class Sync extends CommonGLPI {
             }
         }
 
+        // Tag the covered findings so a later sync can auto-solve this ticket
+        // once every one of them has been remediated.
+        foreach ($details as $d) {
+            if (!empty($d['eid']) && !empty($d['cve_id'])) {
+                $DB->update(
+                    'glpi_plugin_tanium_endpoint_cves',
+                    ['tickets_id' => $ticketId],
+                    ['tanium_eid' => $d['eid'], 'cve_id' => $d['cve_id']]
+                );
+            }
+        }
+
         return $ticketId;
+    }
+
+    /**
+     * Counterpart of openCriticalCveTicket(): once every finding tagged to a
+     * consolidated critical-CVE ticket is remediated, solve the ticket with an
+     * explanatory solution. Tickets solved/closed by hand only get their tag
+     * cleared, so the check never repeats.
+     */
+    private static function resolveClearedCriticalCveTickets(): void {
+        global $DB;
+
+        $ticketIds = [];
+        foreach ($DB->request([
+            'SELECT'   => 'tickets_id',
+            'DISTINCT' => true,
+            'FROM'     => 'glpi_plugin_tanium_endpoint_cves',
+            'WHERE'    => [['tickets_id' => ['>', 0]]],
+        ]) as $r) {
+            $ticketIds[] = (int)$r['tickets_id'];
+        }
+
+        foreach ($ticketIds as $tid) {
+            $pending = $DB->request([
+                'COUNT' => 'cpt',
+                'FROM'  => 'glpi_plugin_tanium_endpoint_cves',
+                'WHERE' => ['tickets_id' => $tid, 'NOT' => ['status' => 'remediated']],
+            ])->current();
+            if ((int)($pending['cpt'] ?? 0) > 0) {
+                continue;
+            }
+
+            $ticket = new Ticket();
+            if ($ticket->getFromDB($tid)
+                && !$ticket->fields['is_deleted']
+                && !in_array((int)$ticket->fields['status'], [Ticket::SOLVED, Ticket::CLOSED], true)) {
+                (new ITILSolution())->add([
+                    'itemtype'         => 'Ticket',
+                    'items_id'         => $tid,
+                    'content'          => Notification::autoSolutionHtml(
+                        '✅ Todos os CVEs críticos deste chamado foram remediados',
+                        'A sincronização com o Tanium confirmou que todos os findings críticos listados neste chamado foram <strong>remediados</strong>. Este chamado foi <strong>encerrado automaticamente</strong>.'
+                    ),
+                    'solutiontypes_id' => 0,
+                ]);
+            }
+
+            // Clear the tag either way so the check doesn't repeat forever.
+            $DB->update('glpi_plugin_tanium_endpoint_cves', ['tickets_id' => 0], ['tickets_id' => $tid]);
+        }
     }
 
     /**

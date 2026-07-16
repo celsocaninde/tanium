@@ -423,6 +423,15 @@ class Notification {
 </div>";
     }
 
+    /** Green "solved automatically" box used when the plugin closes its own tickets. */
+    public static function autoSolutionHtml(string $title, string $bodyHtml): string {
+        return "<div style='border-left:4px solid #1a9c53;background:#f0faf4;padding:16px 20px;border-radius:8px'>
+  <div style='font-weight:700;color:#256b43;font-size:.95rem;margin-bottom:8px'>{$title}</div>
+  <div style='color:#4a5568;font-size:.88rem;line-height:1.6'>{$bodyHtml}</div>
+  <div style='margin-top:10px;font-size:11px;color:#9ca3af'>Resolvido automaticamente pelo plugin Tanium para GLPI — " . date('d/m/Y H:i') . "</div>
+</div>";
+    }
+
     private static function ticketCallout(string $border, string $bg, string $text, string $html): string {
         return "<div style='border-left:4px solid {$border};background:{$bg};padding:12px 16px;border-radius:8px;margin-top:16px;color:{$text};font-size:13px'>{$html}</div>";
     }

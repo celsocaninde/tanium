@@ -2,6 +2,7 @@
 
 namespace GlpiPlugin\Tanium;
 
+use ITILSolution;
 use Item_Ticket;
 use Ticket;
 
@@ -113,5 +114,47 @@ class AgentHealth {
         }
 
         return $ticketId;
+    }
+
+    /**
+     * Counterpart of openTicketIfNeeded(): once no endpoint remains silent
+     * beyond the threshold, solve the open consolidated ticket automatically.
+     * Returns the solved ticket id, 0 when there is nothing to do.
+     */
+    public static function resolveTicketIfHealthy(int $days): int {
+        global $DB;
+
+        if (self::countStale($days) > 0) {
+            return 0;
+        }
+
+        $open = $DB->request([
+            'SELECT' => ['id'],
+            'FROM'   => 'glpi_tickets',
+            'WHERE'  => [
+                'name'       => self::TICKET_TITLE,
+                'is_deleted' => 0,
+                'NOT'        => ['status' => [Ticket::SOLVED, Ticket::CLOSED]],
+            ],
+            'LIMIT'  => 1,
+        ])->current();
+        if (!$open) {
+            return 0;
+        }
+
+        (new ITILSolution())->add([
+            'itemtype'         => 'Ticket',
+            'items_id'         => (int)$open['id'],
+            'content'          => Notification::autoSolutionHtml(
+                '✅ Todos os agentes voltaram a comunicar',
+                sprintf(
+                    'Nenhum endpoint permanece sem comunicação com o Tanium além do limite configurado (%d dia(s)). Este chamado foi <strong>encerrado automaticamente</strong>.',
+                    $days
+                )
+            ),
+            'solutiontypes_id' => 0,
+        ]);
+
+        return (int)$open['id'];
     }
 }

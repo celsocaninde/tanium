@@ -215,6 +215,11 @@ class Cron extends CommonDBTM {
             $task->log(sprintf(__('Opened consolidated agent-health ticket #%d.', 'tanium'), $ticketId));
         }
 
+        $solvedId = AgentHealth::resolveTicketIfHealthy($days);
+        if ($solvedId > 0) {
+            $task->log(sprintf(__('Solved agent-health ticket #%d — all agents reporting again.', 'tanium'), $solvedId));
+        }
+
         return 1;
     }
 
