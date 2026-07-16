@@ -61,17 +61,10 @@ switch ($action) {
             $names[(int)$c['id']] = $c['name'];
         }
 
-        $lines   = [];
-        $lines[] = sprintf('Instalar o agente Tanium em %d computador(es) sem cobertura:', count($names));
-        $lines[] = '';
-        foreach ($names as $n) {
-            $lines[] = '- ' . $n;
-        }
-
         $config   = \GlpiPlugin\Tanium\Config::getConfig();
         $ticketData = [
             'name'        => sprintf('[Tanium] Instalar agente em %d computador(es)', count($names)),
-            'content'     => implode("\n", $lines),
+            'content'     => \GlpiPlugin\Tanium\Notification::buildAgentInstallTicketHtml(array_values($names)),
             'entities_id' => (int)($config['ticket_entity_id'] ?? 0),
             'type'        => Ticket::DEMAND_TYPE,
             'priority'    => 3,

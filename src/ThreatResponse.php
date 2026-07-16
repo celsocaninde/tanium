@@ -140,22 +140,11 @@ class ThreatResponse {
 
         $endpointLabel = $asset['tanium_name'] ?? ($row['tanium_eid'] ?: 'desconhecido');
 
-        $content   = [];
-        $content[] = "Alerta do Tanium Threat Response";
-        $content[] = "";
-        $content[] = "Alerta:    {$row['title']}";
-        $content[] = "Severidade: " . ucfirst($row['severity']);
-        $content[] = "Endpoint:  {$endpointLabel}";
-        $content[] = "Detectado: {$row['detected_at']}";
-        $content[] = "ID Tanium: {$alertId}";
-        $content[] = "";
-        $content[] = "Investigue no console Tanium (Threat Response → Alerts).";
-
         $urgency = $row['severity'] === 'critical' ? 5 : 4;
 
         $ticketData = [
             'name'        => sprintf('[Tanium TR] %s — %s', ucfirst($row['severity']), substr($row['title'], 0, 120)),
-            'content'     => implode("\n", $content),
+            'content'     => Notification::buildThreatTicketHtml($alertId, $row, $endpointLabel),
             'entities_id' => $entityId,
             'type'        => Ticket::INCIDENT_TYPE,
             'priority'    => $urgency,

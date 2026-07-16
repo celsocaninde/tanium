@@ -80,30 +80,11 @@ class AgentHealth {
             return 0;
         }
 
-        $lines   = [];
-        $lines[] = sprintf('%d endpoint(s) sem comunicação com o Tanium há mais de %d dias:', count($stale), $days);
-        $lines[] = '';
-        foreach (array_slice($stale, 0, 50) as $a) {
-            $lines[] = sprintf(
-                '- %s (IP %s, %s) — silêncio há %d dias (visto por último em %s)',
-                $a['tanium_name'],
-                $a['ip_address'] ?: '?',
-                $a['os_name'] ?: '?',
-                (int)$a['days_silent'],
-                $a['last_seen']
-            );
-        }
-        if (count($stale) > 50) {
-            $lines[] = sprintf('… e mais %d endpoints.', count($stale) - 50);
-        }
-        $lines[] = '';
-        $lines[] = 'Verifique serviço do agente, conectividade ou desinstalação indevida.';
-
         $entityId = (int)($config['ticket_entity_id'] ?? 0);
 
         $ticketData = [
             'name'        => self::TICKET_TITLE,
-            'content'     => implode("\n", $lines),
+            'content'     => Notification::buildAgentHealthTicketHtml($stale, $days),
             'entities_id' => $entityId,
             'type'        => Ticket::INCIDENT_TYPE,
             'priority'    => 4,

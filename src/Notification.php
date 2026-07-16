@@ -381,31 +381,156 @@ class Notification {
         $sections = self::criticalCveTableSection('💻 Estações de Trabalho (Notebooks/Desktops)', $workstations)
                   . self::criticalCveTableSection('🖥️ Servidores (VM)', $servers);
 
+        $summary = "<span style='margin-right:20px'>CVEs: <strong style='color:#1a1a2e'>{$newCritical}</strong></span>
+    <span style='margin-right:20px'>Endpoints afetados: <strong style='color:#1a1a2e'>{$endpoints}</strong></span>
+    <span>CVSS máximo: <strong style='color:#e8212a'>{$cvssMaxLabel}</strong></span>";
+
+        $body = "<p style='color:#1a1a2e;font-size:13px'>A sincronização com o Tanium detectou <strong>{$newCritical} novo(s) CVE(s) crítico(s)</strong>. Detalhes por tipo de máquina abaixo.</p>
+    {$sections}
+    " . self::ticketCallout('#e8212a', '#fff5f5', '#7a0d1f', '⏱️ <strong>Priorize a remediação conforme o SLA configurado no plugin Tanium.</strong>');
+
+        return self::brandedTicketHtml(
+            "🚨 {$newCritical} novo(s) CVE(s) crítico(s) detectado(s)",
+            'Sincronização Tanium → GLPI — ' . date('d/m/Y H:i'),
+            $summary,
+            $body
+        );
+    }
+
+    /**
+     * Tanium-branded wrapper shared by every auto-ticket body: gradient header
+     * with the brand mark, headline, optional summary strip, content and footer.
+     * Self-contained styled block (no doctype/body) so it renders both in the
+     * ticket timeline and in the notification email GLPI derives from it.
+     */
+    public static function brandedTicketHtml(string $headline, string $subtitle, string $summaryHtml, string $bodyHtml, string $footer = 'Chamado aberto automaticamente pelo plugin Tanium para GLPI.'): string {
+        $summary = $summaryHtml !== ''
+            ? "<div style='background:#f9fafb;padding:10px 20px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#4a5568'>{$summaryHtml}</div>"
+            : '';
+
         return "<div style='max-width:680px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-family:Segoe UI,Arial,sans-serif'>
   <div style='background:linear-gradient(120deg,#7a0d1f 0%,#e8212a 100%);padding:16px 20px;color:#ffffff'>
     <table style='border-collapse:collapse;margin-bottom:8px'><tr>
       <td style='width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.18);color:#ffffff;font-weight:900;font-size:15px;text-align:center;vertical-align:middle'>T</td>
       <td style='padding-left:8px;font-size:16px;font-weight:800;letter-spacing:2px;vertical-align:middle;color:#ffffff'>TANIUM</td>
     </tr></table>
-    <div style='font-size:16px;font-weight:700;color:#ffffff'>🚨 {$newCritical} novo(s) CVE(s) crítico(s) detectado(s)</div>
-    <div style='margin-top:6px;font-size:12px;color:#ffd6d9'>Sincronização Tanium → GLPI — " . date('d/m/Y H:i') . "</div>
+    <div style='font-size:16px;font-weight:700;color:#ffffff'>{$headline}</div>
+    <div style='margin-top:6px;font-size:12px;color:#ffd6d9'>{$subtitle}</div>
   </div>
-  <div style='background:#f9fafb;padding:10px 20px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#4a5568'>
-    <span style='margin-right:20px'>CVEs: <strong style='color:#1a1a2e'>{$newCritical}</strong></span>
-    <span style='margin-right:20px'>Endpoints afetados: <strong style='color:#1a1a2e'>{$endpoints}</strong></span>
-    <span>CVSS máximo: <strong style='color:#e8212a'>{$cvssMaxLabel}</strong></span>
-  </div>
-  <div style='padding:4px 20px 16px'>
-    <p style='color:#1a1a2e;font-size:13px'>A sincronização com o Tanium detectou <strong>{$newCritical} novo(s) CVE(s) crítico(s)</strong>. Detalhes por tipo de máquina abaixo.</p>
-    {$sections}
-    <div style='border-left:4px solid #e8212a;background:#fff5f5;padding:12px 16px;border-radius:8px;margin-top:16px;color:#7a0d1f;font-size:13px'>
-      ⏱️ <strong>Priorize a remediação conforme o SLA configurado no plugin Tanium.</strong>
-    </div>
-  </div>
-  <div style='background:#f9fafb;padding:10px 20px;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb'>
-    Chamado aberto automaticamente pelo plugin Tanium para GLPI.
-  </div>
+  {$summary}
+  <div style='padding:16px 20px'>{$bodyHtml}</div>
+  <div style='background:#f9fafb;padding:10px 20px;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb'>{$footer}</div>
 </div>";
+    }
+
+    private static function ticketCallout(string $border, string $bg, string $text, string $html): string {
+        return "<div style='border-left:4px solid {$border};background:{$bg};padding:12px 16px;border-radius:8px;margin-top:16px;color:{$text};font-size:13px'>{$html}</div>";
+    }
+
+    /**
+     * HTML body for the stale-agent health ticket.
+     *
+     * @param array<int,array{tanium_name:string,ip_address:?string,os_name:?string,days_silent:int|string,last_seen:string}> $stale
+     */
+    public static function buildAgentHealthTicketHtml(array $stale, int $days): string {
+        $rows = '';
+        foreach (array_slice($stale, 0, 50) as $a) {
+            $rows .= "<tr>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee'>" . htmlspecialchars((string)($a['tanium_name'] ?? '')) . "</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#4a5568'>" . htmlspecialchars((string)($a['ip_address'] ?: '?')) . "</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#4a5568'>" . htmlspecialchars((string)($a['os_name'] ?: '?')) . "</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#e8212a;font-weight:bold'>" . (int)$a['days_silent'] . " dia(s)</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#4a5568'>" . htmlspecialchars((string)($a['last_seen'] ?? '')) . "</td>
+            </tr>";
+        }
+        $more = count($stale) > 50
+            ? "<p style='margin:4px 0 0;font-size:11px;color:#9ca3af'>… e mais " . (count($stale) - 50) . " endpoint(s).</p>"
+            : '';
+
+        $th = "padding:8px 12px;text-align:left;border-bottom:2px solid #e8212a";
+        $body = "<p style='color:#1a1a2e;font-size:13px'><strong>" . count($stale) . " endpoint(s)</strong> sem comunicação com o Tanium há mais de <strong>{$days} dia(s)</strong>:</p>
+    <table style='width:100%;border-collapse:collapse;font-size:13px'>
+      <thead><tr style='background:#f9fafb'>
+        <th style='{$th}'>Endpoint</th>
+        <th style='{$th}'>IP</th>
+        <th style='{$th}'>Sistema</th>
+        <th style='{$th}'>Silêncio</th>
+        <th style='{$th}'>Visto por último</th>
+      </tr></thead><tbody>{$rows}</tbody></table>{$more}
+    " . self::ticketCallout('#f0a030', '#fff8ec', '#8a5a00', '📡 <strong>Verifique serviço do agente, conectividade ou desinstalação indevida.</strong>');
+
+        $summary = "<span style='margin-right:20px'>Endpoints: <strong style='color:#1a1a2e'>" . count($stale) . "</strong></span>
+    <span>Limite configurado: <strong style='color:#1a1a2e'>{$days} dia(s)</strong></span>";
+
+        return self::brandedTicketHtml(
+            '📡 ' . count($stale) . ' endpoint(s) sem comunicação com o Tanium',
+            'Saúde do agente — ' . date('d/m/Y H:i'),
+            $summary,
+            $body
+        );
+    }
+
+    /**
+     * HTML body for a Threat Response alert ticket.
+     *
+     * @param array{title:string,severity:string,detected_at:string} $row
+     */
+    public static function buildThreatTicketHtml(string $alertId, array $row, string $endpointLabel): string {
+        $sev      = strtolower((string)($row['severity'] ?? 'unknown'));
+        $sevColor = match ($sev) {
+            'critical' => '#d6336c',
+            'high'     => '#e8590c',
+            'medium'   => '#c2860a',
+            default    => '#1a9c53',
+        };
+
+        $fields = [
+            ['Alerta',     htmlspecialchars((string)($row['title'] ?? ''))],
+            ['Severidade', "<span style='color:{$sevColor};font-weight:bold'>" . ucfirst($sev) . '</span>'],
+            ['Endpoint',   htmlspecialchars($endpointLabel)],
+            ['Detectado',  htmlspecialchars((string)($row['detected_at'] ?? ''))],
+            ['ID Tanium',  "<span style='font-family:monospace'>" . htmlspecialchars($alertId) . '</span>'],
+        ];
+        $rows = '';
+        foreach ($fields as [$label, $value]) {
+            $rows .= "<tr>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#9ca3af;white-space:nowrap'>{$label}</td>
+                <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#1a1a2e'>{$value}</td>
+            </tr>";
+        }
+
+        $body = "<table style='width:100%;border-collapse:collapse;font-size:13px'><tbody>{$rows}</tbody></table>
+    " . self::ticketCallout('#e8212a', '#fff5f5', '#7a0d1f', '🛡️ <strong>Investigue no console Tanium (Threat Response → Alerts).</strong>');
+
+        return self::brandedTicketHtml(
+            '🛡️ Alerta do Tanium Threat Response',
+            'Severidade ' . ucfirst($sev) . ' — ' . date('d/m/Y H:i'),
+            '',
+            $body
+        );
+    }
+
+    /**
+     * HTML body for the consolidated "install the Tanium agent" ticket.
+     *
+     * @param array<int|string,string> $names Computer names without agent coverage
+     */
+    public static function buildAgentInstallTicketHtml(array $names): string {
+        $items = '';
+        foreach ($names as $n) {
+            $items .= "<li style='margin:2px 0;color:#1a1a2e'>" . htmlspecialchars((string)$n) . '</li>';
+        }
+
+        $body = "<p style='color:#1a1a2e;font-size:13px'>Instalar o agente Tanium em <strong>" . count($names) . " computador(es)</strong> sem cobertura:</p>
+    <ul style='margin:0;padding-left:20px;font-size:13px'>{$items}</ul>
+    " . self::ticketCallout('#f0a030', '#fff8ec', '#8a5a00', '🧩 <strong>Após a instalação, os endpoints aparecerão na próxima sincronização.</strong>');
+
+        return self::brandedTicketHtml(
+            '🧩 Instalar agente Tanium em ' . count($names) . ' computador(es)',
+            'Cobertura do agente — ' . date('d/m/Y H:i'),
+            '',
+            $body
+        );
     }
 
     /**
