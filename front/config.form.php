@@ -10,10 +10,22 @@ if (!\GlpiPlugin\Tanium\Profile::hasConfigUpdateRight() && !Session::haveRight('
 
 $config = new TaniumConfig();
 
+if (isset($_POST['regen_kiosk_token'])) {
+    TaniumConfig::saveConfig(['kiosk_token' => bin2hex(random_bytes(16))]);
+    Session::addMessageAfterRedirect(__('New kiosk link generated — the previous link no longer works.', 'tanium'), true, INFO);
+    Html::redirect('config.form.php');
+}
+
 if (isset($_POST['save'])) {
 
+    // Kiosk: generate the access token the first time the mode is enabled
+    $kioskToken = [];
+    if (isset($_POST['kiosk_enabled']) && empty(TaniumConfig::getConfig()['kiosk_token'])) {
+        $kioskToken['kiosk_token'] = bin2hex(random_bytes(16));
+    }
 
-    TaniumConfig::saveConfig([
+    TaniumConfig::saveConfig($kioskToken + [
+        'kiosk_enabled'        => isset($_POST['kiosk_enabled']) ? 1 : 0,
         'api_url'              => trim($_POST['api_url']   ?? ''),
         'api_token'            => trim($_POST['api_token'] ?? ''),
         'sync_computers'       => isset($_POST['sync_computers'])       ? 1 : 0,

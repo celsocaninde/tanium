@@ -13,7 +13,7 @@ use GlpiPlugin\Tanium\CentralWidget as TaniumCentralWidget;
 use GlpiPlugin\Tanium\PatchDeploy as TaniumPatchDeploy;
 use GlpiPlugin\Tanium\Vulnerability;
 
-define('PLUGIN_TANIUM_VERSION', '2.9.0');
+define('PLUGIN_TANIUM_VERSION', '2.10.0');
 define('PLUGIN_TANIUM_MIN_GLPI', '11.0.0');
 define('PLUGIN_TANIUM_MAX_GLPI', '11.99.99');
 
@@ -31,6 +31,15 @@ function plugin_init_tanium(): void {
 
     // Config page link (shown on plugin list)
     $PLUGIN_HOOKS['config_page']['tanium'] = 'front/config.form.php';
+
+    // Kiosk page: opened by wall TVs with a token instead of a session —
+    // exempt it from the session firewall; the script enforces its own
+    // token/right check.
+    \Glpi\Http\Firewall::addPluginStrategyForLegacyScripts(
+        'tanium',
+        '#^/front/kiosk\.php$#',
+        \Glpi\Http\Firewall::STRATEGY_NO_CHECK
+    );
 
     // CSS
     $PLUGIN_HOOKS[Hooks::ADD_CSS]['tanium'] = ['css/tanium.css'];

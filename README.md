@@ -39,6 +39,7 @@ Plugin que conecta a plataforma **Tanium** ao **GLPI 11**, trazendo visibilidade
 | 📬 **Digest de Correções** | E-mail automático (com PDF) ao fim de cada sync que registrar CVEs remediados / patches instalados |
 | 🔁 **Auto-close de findings** | CVEs/patches que somem do feed do Tanium são marcados como remediados (alimenta MTTR e relatórios) |
 | ♻️ **Auto-resolução de chamados** | Chamados automáticos (CVEs críticos, agentes silenciosos, Threat Response) são solucionados sozinhos quando a condição desaparece |
+| 📺 **Modo TV/Kiosk** | Painel de segurança em tela cheia com auto-refresh e acesso por link com token (sem login) para TVs de NOC/SOC |
 | ⚙️ **Sincronização** | Agendamento via Cron com suporte a sync incremental |
 | 💻 **Aba no Computador** | Dados Tanium diretamente na ficha do ativo no GLPI |
 | 🎯 **Widget Central** | Resumo de risco no painel inicial do GLPI |
@@ -157,6 +158,7 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | 📬 **Fix Digest** | Automatic email (with PDF) after every sync that records remediated CVEs / installed patches |
 | 🔁 **Findings auto-close** | CVEs/patches that vanish from the Tanium feed are marked as remediated (feeds MTTR and reports) |
 | ♻️ **Ticket auto-resolution** | Auto-opened tickets (critical CVEs, silent agents, Threat Response) are solved automatically once the condition clears |
+| 📺 **TV/Kiosk mode** | Full-screen auto-refreshing security panel with token-link access (no login) for NOC/SOC wall TVs |
 | ⚙️ **Synchronization** | Cron scheduling with incremental sync support |
 | 💻 **Computer Tab** | Tanium data directly on the asset record in GLPI |
 | 🎯 **Central Widget** | Risk summary on the GLPI home panel |

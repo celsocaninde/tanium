@@ -43,6 +43,8 @@ function plugin_tanium_install(): bool {
                 `patch_limiting_group_id` int unsigned NOT NULL DEFAULT 0,
                 `ticket_entity_id`      int unsigned NOT NULL DEFAULT 0,
                 `ticket_requester_id`   int unsigned NOT NULL DEFAULT 0,
+                `kiosk_enabled`         tinyint(1) NOT NULL DEFAULT 0,
+                `kiosk_token`           varchar(64) NOT NULL DEFAULT '',
                 `date_mod`              timestamp NULL DEFAULT NULL,
                 PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
@@ -113,6 +115,8 @@ function plugin_tanium_install(): bool {
             'notify_remediation'      => "tinyint(1) NOT NULL DEFAULT 0",
             'monthly_report_day'      => "tinyint NOT NULL DEFAULT 1",
             'last_monthly_report'     => "timestamp NULL DEFAULT NULL",
+            'kiosk_enabled'           => "tinyint(1) NOT NULL DEFAULT 0",
+            'kiosk_token'             => "varchar(64) NOT NULL DEFAULT ''",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_configs` LIKE '{$col}'");

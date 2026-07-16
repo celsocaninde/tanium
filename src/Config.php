@@ -79,6 +79,8 @@ class Config extends CommonDBTM {
             'notify_remediation'      => 0,
             'monthly_report_day'      => 1,
             'last_monthly_report'     => null,
+            'kiosk_enabled'           => 0,
+            'kiosk_token'             => '',
         ];
     }
 
@@ -503,6 +505,31 @@ class Config extends CommonDBTM {
             "<input type='text' name='notify_email' class='tanium-input' value='" . htmlspecialchars($config['notify_email'] ?? '') . "' placeholder='security@company.com, admin@company.com'/>",
             __('Comma-separated list of extra emails (e.g. distribution lists not registered as GLPI users). Leave both fields blank to disable email alerts.', 'tanium')
         );
+
+        // ── TV / Kiosk mode ───────────────────────────────────────────────
+        echo "<div class='tanium-section-title'>" . __('TV / Kiosk mode', 'tanium') . "</div>";
+
+        $this->renderCheckbox(
+            'kiosk_enabled',
+            __('Enable the kiosk dashboard (full-screen, auto-refresh — for NOC/SOC wall TVs, no GLPI login needed)', 'tanium'),
+            (int)($config['kiosk_enabled'] ?? 0)
+        );
+
+        if (!empty($config['kiosk_enabled']) && !empty($config['kiosk_token'])) {
+            $kioskUrl = Plugin::getWebDir('tanium', true, true) . '/front/kiosk.php?token=' . $config['kiosk_token'];
+            $this->renderField(
+                __('Kiosk URL', 'tanium'),
+                "<input type='text' class='tanium-input' value='" . htmlspecialchars($kioskUrl) . "' readonly onclick='this.select()'/>",
+                __('Open this link in the TV browser — no login needed. Anyone with the link sees the KPIs: treat it like a password.', 'tanium')
+                . " <a href='" . htmlspecialchars($kioskUrl) . "' target='_blank' class='tanium-link'>" . __('Open kiosk ↗', 'tanium') . "</a>"
+                . " &nbsp;<button type='submit' name='regen_kiosk_token' class='tanium-btn tanium-btn-secondary' style='padding:4px 10px;font-size:.8rem'>&#128260; " . __('Generate new link', 'tanium') . "</button>"
+            );
+        } elseif (!empty($config['kiosk_enabled'])) {
+            $this->renderField(
+                __('Kiosk URL', 'tanium'),
+                "<em style='color:var(--t-muted)'>" . __('Save the configuration to generate the kiosk link.', 'tanium') . "</em>"
+            );
+        }
 
         // ── Weekly report schedule ────────────────────────────────────────
         $dayNames = [
