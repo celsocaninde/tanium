@@ -520,7 +520,7 @@ class Config extends CommonDBTM {
             $this->renderField(
                 __('Kiosk URL', 'tanium'),
                 "<input type='text' class='tanium-input' value='" . htmlspecialchars($kioskUrl) . "' readonly onclick='this.select()'/>",
-                __('Open this link in the TV browser — no login needed. Anyone with the link sees the KPIs: treat it like a password. The panel rotates through 4 screens; optional URL params: &amp;interval=20 (seconds per screen) and &amp;slide=2 (pin one screen).', 'tanium')
+                __('Open this link in the TV browser — no login needed. Anyone with the link sees the KPIs: treat it like a password. The panel rotates through 7 screens; optional URL params: &amp;interval=20 (seconds per screen) and &amp;slide=2 (pin one screen).', 'tanium')
                 . " <a href='" . htmlspecialchars($kioskUrl) . "' target='_blank' class='tanium-link'>" . __('Open kiosk ↗', 'tanium') . "</a>"
                 . " &nbsp;<button type='submit' name='regen_kiosk_token' class='tanium-btn tanium-btn-secondary' style='padding:4px 10px;font-size:.8rem'>&#128260; " . __('Generate new link', 'tanium') . "</button>"
             );
