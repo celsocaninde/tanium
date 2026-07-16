@@ -2029,3 +2029,126 @@ msgstr "Relatório semanal enviado agora para %d destinatário(s)."
 
 msgid "Weekly report was NOT sent — no valid recipient configured (or every send failed; check tanium.log)."
 msgstr "O relatório semanal NÃO foi enviado — nenhum destinatário válido configurado (ou todos os envios falharam; verifique o tanium.log)."
+
+msgid "Remediation"
+msgstr "Remediação"
+
+msgid "Tanium — Remediation"
+msgstr "Tanium — Remediação"
+
+msgid "What got fixed: remediated CVEs and installed patches, per endpoint"
+msgstr "O que foi corrigido: CVEs remediados e patches instalados, por endpoint"
+
+msgid "CVEs remediated"
+msgstr "CVEs remediados"
+
+msgid "Patches installed"
+msgstr "Patches instalados"
+
+msgid "Endpoints fixed"
+msgstr "Endpoints corrigidos"
+
+msgid "MTTR (days)"
+msgstr "MTTR (dias)"
+
+msgid "CSV per endpoint"
+msgstr "CSV por endpoint"
+
+msgid "CSV events"
+msgstr "CSV de eventos"
+
+msgid "7 days"
+msgstr "7 dias"
+
+msgid "30 days"
+msgstr "30 dias"
+
+msgid "90 days"
+msgstr "90 dias"
+
+msgid "1 year"
+msgstr "1 ano"
+
+msgid "Remediations per week"
+msgstr "Remediações por semana"
+
+#, php-format
+msgid "Last %d weeks"
+msgstr "Últimas %d semanas"
+
+msgid "Remediation by endpoint"
+msgstr "Remediação por endpoint"
+
+#, php-format
+msgid "Last %d days"
+msgstr "Últimos %d dias"
+
+msgid "Avg. days to fix"
+msgstr "Dias médios p/ corrigir"
+
+msgid "Last fix"
+msgstr "Última correção"
+
+msgid "Still open"
+msgstr "Ainda abertos"
+
+msgid "No remediation recorded in this window yet. Fixes appear here after a sync detects them."
+msgstr "Nenhuma remediação registrada neste período ainda. As correções aparecem aqui depois que uma sincronização as detecta."
+
+msgid "Recent remediation events"
+msgstr "Eventos recentes de remediação"
+
+msgid "Nothing yet."
+msgstr "Nada ainda."
+
+msgid "Type"
+msgstr "Tipo"
+
+msgid "CVE / Patch"
+msgstr "CVE / Patch"
+
+msgid "Days open"
+msgstr "Dias em aberto"
+
+msgid "Fixed at"
+msgstr "Corrigido em"
+
+msgid "The \"mark vanished findings as remediated\" option is OFF (Configuration). Without it, fixes are only recorded when Tanium explicitly reports them — this page may stay empty."
+msgstr "A opção \"marcar como remediado o que sumir do feed\" está DESLIGADA (Configuração). Sem ela, as correções só são registradas quando o Tanium as reporta explicitamente — esta página pode ficar vazia."
+
+msgid "Mark as remediated the CVEs/patches that stop being reported by Tanium (feeds MTTR and the remediation reports — recommended)"
+msgstr "Marcar como remediados os CVEs/patches que deixarem de ser reportados pelo Tanium (alimenta o MTTR e os relatórios de remediação — recomendado)"
+
+msgid "Email a remediation digest when a sync records fixes (remediated CVEs / installed patches, PDF attached)"
+msgstr "Enviar resumo de remediação por e-mail quando uma sincronização registrar correções (CVEs remediados / patches instalados, PDF em anexo)"
+
+msgid "Monthly report schedule"
+msgstr "Agendamento do relatório mensal"
+
+#, php-format
+msgid "day %d"
+msgstr "dia %d"
+
+#, php-format
+msgid "The monthly report is sent on the selected day of the month, from the weekly-report hour on. Last sent: %s."
+msgstr "O relatório mensal é enviado no dia do mês selecionado, a partir da hora configurada para o relatório semanal. Último envio: %s."
+
+msgid "Send monthly report now"
+msgstr "Enviar relatório mensal agora"
+
+#, php-format
+msgid "Monthly report sent now to %d recipient(s)."
+msgstr "Relatório mensal enviado agora para %d destinatário(s)."
+
+msgid "Monthly report was NOT sent — no valid recipient configured (or every send failed; check tanium.log)."
+msgstr "O relatório mensal NÃO foi enviado — nenhum destinatário válido configurado (ou todos os envios falharam; verifique o tanium.log)."
+
+#, php-format
+msgid "Tanium sync: %1$d new CVE finding(s), %2$d status change(s), %3$d remediated"
+msgstr "Sincronização Tanium: %1$d novo(s) finding(s) de CVE, %2$d mudança(s) de status, %3$d remediado(s)"
+
+msgid "PDF per endpoint"
+msgstr "PDF por endpoint"
+
+msgid "PDF export unavailable (TCPDF not found) — check tanium.log."
+msgstr "Exportação em PDF indisponível (TCPDF não encontrado) — verifique o tanium.log."

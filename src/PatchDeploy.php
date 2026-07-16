@@ -368,15 +368,32 @@ class PatchDeploy extends CommonGLPI {
 
         $patches = json_decode($dep['patch_ids'], true) ?: [];
 
-        // Mark every deployed patch as remediated
+        // Mark every deployed patch as remediated, recording the transition in
+        // patch_history so the remediation trend/reports count deploys too.
         foreach ($patches as $patchId) {
-            $DB->doQuery(sprintf(
-                "UPDATE `glpi_plugin_tanium_patches`
-                 SET status = 'remediated'
-                 WHERE tanium_eid = '%s' AND patch_id = '%s'",
-                $DB->escape($dep['tanium_eid']),
-                $DB->escape($patchId)
-            ));
+            $row = $DB->request([
+                'FROM'  => 'glpi_plugin_tanium_patches',
+                'WHERE' => ['tanium_eid' => $dep['tanium_eid'], 'patch_id' => $patchId],
+                'LIMIT' => 1,
+            ])->current();
+            if (!$row || $row['status'] === 'remediated') {
+                continue;
+            }
+
+            $DB->update('glpi_plugin_tanium_patches', [
+                'status'   => 'remediated',
+                'date_mod' => date('Y-m-d H:i:s'),
+            ], ['id' => $row['id']]);
+            $DB->insert('glpi_plugin_tanium_patch_history', [
+                'tanium_eid'   => $dep['tanium_eid'],
+                'patch_id'     => $row['patch_id'],
+                'patch_title'  => (string)$row['patch_title'],
+                'severity'     => strtolower((string)($row['severity'] ?? 'unknown')),
+                'computers_id' => $row['computers_id'] ?? null,
+                'old_status'   => $row['status'],
+                'new_status'   => 'remediated',
+                'changed_at'   => date('Y-m-d H:i:s'),
+            ]);
         }
 
         // Auto-resolve open CVE assignments for this endpoint

@@ -91,7 +91,8 @@ class WeeklyReport {
 
     // ── Stat gathering ────────────────────────────────────────────────────
 
-    private static function gatherStats(): array {
+    /** Also consumed by MonthlyReport as the "current posture" baseline. */
+    public static function gatherStats(): array {
         global $DB;
 
         $stats = [
@@ -177,6 +178,13 @@ class WeeklyReport {
         // MTTR (90-day window) for the executive summary line
         $stats['mttr_overall'] = Sla::getMttr(90)['overall'];
 
+        // Remediation over the report week (cve_history + patch_history)
+        $rem = Remediation::getStats(7);
+        $stats['remediated_cves_7d']   = $rem['cves_remediated'];
+        $stats['patches_installed_7d'] = $rem['patches_installed'];
+        $stats['endpoints_fixed_7d']   = $rem['endpoints_touched'];
+        $stats['top_remediators']      = array_slice(Remediation::getByEndpoint(7, 5), 0, 5);
+
         // Open (active) exceptions — expired ones no longer suppress risk
         $eRow = $DB->doQuery("
             SELECT COUNT(*) AS cpt FROM glpi_plugin_tanium_cve_exceptions
@@ -228,6 +236,55 @@ class WeeklyReport {
                 <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:#6b7280'>{$ep['ip_address']}</td>
                 <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:{$c};font-weight:700'>{$rs}</td>
             </tr>";
+        }
+
+        $remCves     = (int)($s['remediated_cves_7d'] ?? 0);
+        $remPatches  = (int)($s['patches_installed_7d'] ?? 0);
+        $remSection  = '';
+        if ($remCves + $remPatches > 0) {
+            $remRows = '';
+            foreach (($s['top_remediators'] ?? []) as $ep) {
+                $remRows .= "<tr>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;font-family:Consolas,monospace;font-size:12px;color:#1c2330'>" . htmlspecialchars((string)$ep['name']) . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:#1a9c53;font-weight:700'>" . (int)$ep['cves_fixed'] . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:#1a6dff;font-weight:700'>" . (int)$ep['patches_fixed'] . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eeeeee;color:#6b7280'>" . ($ep['avg_days'] !== null ? number_format((float)$ep['avg_days'], 1) . ' d' : '—') . "</td>
+                </tr>";
+            }
+            $remTable = $remRows !== ''
+                ? "<table style='width:100%;border-collapse:collapse;font-size:13px'>
+                    <thead><tr style='color:#6b7280'>
+                        <th style='padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase'>Endpoint</th>
+                        <th style='padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase'>CVEs</th>
+                        <th style='padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase'>Patches</th>
+                        <th style='padding:4px 12px;text-align:left;font-size:11px;text-transform:uppercase'>Tempo médio</th>
+                    </tr></thead><tbody>{$remRows}</tbody></table>"
+                : '';
+            $remSection = "
+  <!-- Remediation of the week -->
+  <div style=\"background:#f0faf4;padding:20px 28px;border-top:1px solid #d3ecdc\">
+    <div style=\"font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#1a9c53;border-left:3px solid #1a9c53;padding-left:8px;margin-bottom:12px\">Remediação nos últimos 7 dias</div>
+    <div style=\"display:flex;gap:0;margin-bottom:12px\">
+      <div style=\"flex:1;text-align:center;padding:0 12px;border-right:1px solid #d3ecdc\">
+        <div style=\"font-size:22px;font-weight:800;color:#1a9c53\">{$remCves}</div>
+        <div style=\"font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em\">CVEs Remediados</div>
+      </div>
+      <div style=\"flex:1;text-align:center;padding:0 12px;border-right:1px solid #d3ecdc\">
+        <div style=\"font-size:22px;font-weight:800;color:#1a6dff\">{$remPatches}</div>
+        <div style=\"font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em\">Patches Instalados</div>
+      </div>
+      <div style=\"flex:1;text-align:center;padding:0 12px\">
+        <div style=\"font-size:22px;font-weight:800;color:#1c2330\">" . (int)($s['endpoints_fixed_7d'] ?? 0) . "</div>
+        <div style=\"font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em\">Endpoints Corrigidos</div>
+      </div>
+    </div>
+    {$remTable}
+  </div>";
+        } else {
+            $remSection = "
+  <div style=\"background:#f9fafb;padding:14px 28px;border-top:1px solid #eeeeee;font-size:12px;color:#6b7280\">
+    Nenhuma remediação registrada nos últimos 7 dias.
+  </div>";
         }
 
         $topCveRows = '';
@@ -330,6 +387,8 @@ class WeeklyReport {
       <tbody>{$topCveRows}</tbody>
     </table>
   </div>
+
+  {$remSection}
 
   <!-- Summary line -->
   <div style="background:#ffffff;padding:16px 28px;border-top:1px solid #eeeeee;font-size:12px;color:#6b7280;display:flex;justify-content:space-between">

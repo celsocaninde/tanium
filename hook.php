@@ -109,6 +109,10 @@ function plugin_tanium_install(): bool {
             'report_day'              => "tinyint NOT NULL DEFAULT 1",
             'report_hour'             => "tinyint NOT NULL DEFAULT 8",
             'last_weekly_report'      => "timestamp NULL DEFAULT NULL",
+            'auto_close_cves'         => "tinyint(1) NOT NULL DEFAULT 1",
+            'notify_remediation'      => "tinyint(1) NOT NULL DEFAULT 0",
+            'monthly_report_day'      => "tinyint NOT NULL DEFAULT 1",
+            'last_monthly_report'     => "timestamp NULL DEFAULT NULL",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_configs` LIKE '{$col}'");
@@ -349,6 +353,30 @@ function plugin_tanium_install(): bool {
         }
     }
 
+    // ── Patch status history (v2.6.0) ─────────────────────────────────────
+    // Mirrors cve_history for patches: every status transition (missing →
+    // installed/remediated) is recorded here, feeding the remediation trend
+    // page and the weekly/monthly reports. Purged by the retention cron.
+    if (!$DB->tableExists('glpi_plugin_tanium_patch_history')) {
+        $DB->doQuery(
+            "CREATE TABLE `glpi_plugin_tanium_patch_history` (
+                `id`           int {$sign} NOT NULL AUTO_INCREMENT,
+                `tanium_eid`   varchar(100) NOT NULL DEFAULT '',
+                `patch_id`     text NOT NULL,
+                `patch_title`  varchar(500) NOT NULL DEFAULT '',
+                `severity`     varchar(20) NOT NULL DEFAULT 'unknown',
+                `computers_id` int {$sign} DEFAULT NULL,
+                `old_status`   varchar(30)  DEFAULT NULL,
+                `new_status`   varchar(30)  NOT NULL DEFAULT 'missing',
+                `changed_at`   timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `tanium_eid` (`tanium_eid`),
+                KEY `changed_at` (`changed_at`),
+                KEY `new_status` (`new_status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
+        );
+    }
+
     // ── CVE exceptions table (accepted risk) ─────────────────────────────
     if (!$DB->tableExists('glpi_plugin_tanium_cve_exceptions')) {
         $DB->doQuery(
@@ -488,6 +516,7 @@ function plugin_tanium_uninstall(): bool {
         'glpi_plugin_tanium_vulnerabilities',
         'glpi_plugin_tanium_endpoint_cves',
         'glpi_plugin_tanium_patches',
+        'glpi_plugin_tanium_patch_history',
         'glpi_plugin_tanium_cve_exceptions',
         'glpi_plugin_tanium_cve_assignments',
         'glpi_plugin_tanium_saved_filters',

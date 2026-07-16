@@ -8,11 +8,12 @@ use GlpiPlugin\Tanium\DashboardCards as TaniumDashboardCards;
 use GlpiPlugin\Tanium\Profile as TaniumProfile;
 use GlpiPlugin\Tanium\Sync as TaniumSync;
 use GlpiPlugin\Tanium\WeeklyReport as TaniumWeeklyReport;
+use GlpiPlugin\Tanium\MonthlyReport as TaniumMonthlyReport;
 use GlpiPlugin\Tanium\CentralWidget as TaniumCentralWidget;
 use GlpiPlugin\Tanium\PatchDeploy as TaniumPatchDeploy;
 use GlpiPlugin\Tanium\Vulnerability;
 
-define('PLUGIN_TANIUM_VERSION', '2.5.0');
+define('PLUGIN_TANIUM_VERSION', '2.6.0');
 define('PLUGIN_TANIUM_MIN_GLPI', '11.0.0');
 define('PLUGIN_TANIUM_MAX_GLPI', '11.99.99');
 
@@ -59,6 +60,7 @@ function plugin_init_tanium(): void {
     Plugin::registerClass(TaniumSync::class);
     Plugin::registerClass(TaniumCron::class);
     Plugin::registerClass(TaniumWeeklyReport::class);
+    Plugin::registerClass(TaniumMonthlyReport::class);
     Plugin::registerClass(TaniumPatchDeploy::class);
 
     // Approval workflow hook — a pending patch deployment is sent to Tanium only
@@ -98,6 +100,18 @@ function plugin_init_tanium(): void {
         HOUR_TIMESTAMP,
         [
             'comment' => 'Tanium — weekly security report by email (sends on the configured day/hour)',
+            'mode'    => CronTask::MODE_EXTERNAL,
+        ]
+    );
+
+    // Cron task registration — monthly report. Runs hourly; the task itself
+    // decides when to send based on the configured day-of-month and hour.
+    CronTask::register(
+        TaniumMonthlyReport::class,
+        'monthlyreport',
+        HOUR_TIMESTAMP,
+        [
+            'comment' => 'Tanium — monthly security report by email (sends on the configured day/hour)',
             'mode'    => CronTask::MODE_EXTERNAL,
         ]
     );

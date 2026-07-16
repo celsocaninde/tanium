@@ -281,6 +281,21 @@ class Dashboard {
             </div>
         </div>
 
+        <!-- Quick navigation: the GLPI sidebar only shows the plugin root, so
+             every plugin page must be reachable from here. Reuses the menu
+             registration (Sync::getMenuContent) — never goes stale. -->
+        <?php
+        $navOptions = Sync::getMenuContent()['options'] ?? [];
+        unset($navOptions['dashboard'], $navOptions['sync'], $navOptions['config']);
+        ?>
+        <div class="tanium-quick-nav">
+            <?php foreach ($navOptions as $opt): ?>
+                <a href="<?= $opt['page'] ?>" class="tanium-quick-nav-btn">
+                    <span class="<?= htmlspecialchars($opt['icon']) ?>"></span> <?= $opt['title'] ?>
+                </a>
+            <?php endforeach; ?>
+        </div>
+
         <!-- Sync progress widget (always visible) -->
         <?php
         $syncStatus  = $stats['sync_status'];   // 'never' | 'running' | 'success' | 'error'

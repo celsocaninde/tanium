@@ -413,6 +413,110 @@ class Notification {
     </table>{$more}";
     }
 
+    /**
+     * Digest email sent right after a sync run that recorded fixes: which CVE
+     * findings were remediated and which patches were installed, per endpoint.
+     *
+     * @param array<int,array{cve_id:string,endpoint:string,severity:string,cvss:mixed,detected_at:?string,days_open:?int}> $remediatedCves
+     * @param array<int,array{patch_id:string,title:string,endpoint:string,severity:string}> $installedPatches
+     */
+    public static function buildRemediationEmailBody(array $remediatedCves, array $installedPatches, string $glpiUrl): string {
+        $sevColor = static fn(string $s): string => match ($s) {
+            'critical' => '#d6336c',
+            'high'     => '#e8590c',
+            'medium'   => '#c2860a',
+            default    => '#1a9c53',
+        };
+
+        $daysOpen = array_values(array_filter(array_column($remediatedCves, 'days_open'), static fn($d) => $d !== null));
+        $avgDays  = $daysOpen !== [] ? number_format(array_sum($daysOpen) / count($daysOpen), 1) : '—';
+        $endpoints = count(array_unique(array_merge(
+            array_column($remediatedCves, 'endpoint'),
+            array_column($installedPatches, 'endpoint')
+        )));
+
+        $cveSection = '';
+        if ($remediatedCves !== []) {
+            $rows = '';
+            foreach (array_slice($remediatedCves, 0, 30) as $ev) {
+                $sev  = strtolower((string)($ev['severity'] ?? 'unknown'));
+                $days = $ev['days_open'] !== null ? $ev['days_open'] . ' dia(s)' : '—';
+                $rows .= "<tr>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;font-family:monospace'><a href='https://nvd.nist.gov/vuln/detail/" . rawurlencode((string)$ev['cve_id']) . "' style='color:#1a9c53;text-decoration:none;font-weight:bold'>" . htmlspecialchars((string)$ev['cve_id']) . "</a></td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee'>" . htmlspecialchars((string)$ev['endpoint']) . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;color:" . $sevColor($sev) . ";font-weight:bold'>" . ucfirst($sev) . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#4a5568'>" . htmlspecialchars((string)($ev['cvss'] ?? '—')) . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#4a5568'>{$days}</td>
+                </tr>";
+            }
+            $more = count($remediatedCves) > 30
+                ? "<p style='margin:4px 0 0;font-size:11px;color:#9ca3af'>… e mais " . (count($remediatedCves) - 30) . " CVE(s) remediado(s).</p>"
+                : '';
+            $cveSection = "<h3 style='margin:20px 0 8px;font-size:14px;color:#1a1a2e'>🛡️ CVEs remediados <span style='font-weight:normal;color:#9ca3af;font-size:12px'>(" . count($remediatedCves) . ")</span></h3>
+    <table style='width:100%;border-collapse:collapse;font-size:13px'>
+      <thead><tr style='background:#f9fafb'>
+        <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #1a9c53'>CVE ID</th>
+        <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #1a9c53'>Endpoint</th>
+        <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #1a9c53'>Severidade</th>
+        <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #1a9c53'>CVSS</th>
+        <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #1a9c53'>Tempo aberto</th>
+      </tr></thead><tbody>{$rows}</tbody></table>{$more}";
+        }
+
+        $patchSection = '';
+        if ($installedPatches !== []) {
+            $rows = '';
+            foreach (array_slice($installedPatches, 0, 30) as $p) {
+                $sev = strtolower((string)($p['severity'] ?? 'unknown'));
+                $rows .= "<tr>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#1a1a2e'>" . htmlspecialchars(self::short((string)($p['title'] !== '' ? $p['title'] : $p['patch_id']), 90)) . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee'>" . htmlspecialchars((string)$p['endpoint']) . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;color:" . $sevColor($sev) . ";font-weight:bold'>" . ucfirst($sev) . "</td>
+                </tr>";
+            }
+            $more = count($installedPatches) > 30
+                ? "<p style='margin:4px 0 0;font-size:11px;color:#9ca3af'>… e mais " . (count($installedPatches) - 30) . " patch(es) instalado(s).</p>"
+                : '';
+            $patchSection = "<h3 style='margin:20px 0 8px;font-size:14px;color:#1a1a2e'>🔧 Patches instalados <span style='font-weight:normal;color:#9ca3af;font-size:12px'>(" . count($installedPatches) . ")</span></h3>
+    <table style='width:100%;border-collapse:collapse;font-size:13px'>
+      <thead><tr style='background:#f9fafb'>
+        <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #1a9c53'>Patch</th>
+        <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #1a9c53'>Endpoint</th>
+        <th style='padding:8px 12px;text-align:left;border-bottom:2px solid #1a9c53'>Severidade</th>
+      </tr></thead><tbody>{$rows}</tbody></table>{$more}";
+        }
+
+        $total = count($remediatedCves) + count($installedPatches);
+
+        return "<!DOCTYPE html><html><body style='font-family:Segoe UI,Arial,sans-serif;color:#1a1a2e;background:#f5f5f5'>
+<div style='max-width:680px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)'>
+  <div style='background:linear-gradient(120deg,#7a0d1f 0%,#e8212a 100%);padding:20px 24px;color:#fff'>
+    <table style='border-collapse:collapse;margin-bottom:10px'><tr>
+      <td style='width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-weight:900;font-size:17px;text-align:center;vertical-align:middle'>T</td>
+      <td style='padding-left:10px;font-size:18px;font-weight:800;letter-spacing:2px;vertical-align:middle'>TANIUM</td>
+    </tr></table>
+    <h1 style='margin:0;font-size:18px'>✅ {$total} correção(ões) registrada(s) nesta sincronização</h1>
+    <p style='margin:8px 0 0;opacity:.85;font-size:13px'>Relatório de remediação — " . date('d/m/Y H:i') . "</p>
+  </div>
+  <div style='background:#f0faf4;padding:12px 24px;border-bottom:1px solid #d3ecdc;display:flex;gap:24px;font-size:12px;color:#256b43'>
+    <span>CVEs remediados: <strong>" . count($remediatedCves) . "</strong></span>
+    <span>Patches instalados: <strong>" . count($installedPatches) . "</strong></span>
+    <span>Endpoints corrigidos: <strong>{$endpoints}</strong></span>
+    <span>Tempo médio de correção: <strong>{$avgDays} dia(s)</strong></span>
+  </div>
+  <div style='padding:20px 24px'>
+    {$cveSection}
+    {$patchSection}
+    <a href='{$glpiUrl}/plugins/tanium/front/remediation.php' style='display:inline-block;background:#1a9c53;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;margin-top:16px'>
+      Ver tendência de remediação
+    </a>
+  </div>
+  <div style='background:#f9fafb;padding:14px 24px;font-size:11px;color:#9ca3af;border-top:1px solid #eee'>
+    Gerado automaticamente pelo plugin Tanium para GLPI ao final da sincronização. Relatório completo em anexo (PDF).
+  </div>
+</div></body></html>";
+    }
+
     private static function short(string $value, int $length): string {
         if ($value === '') {
             return '';

@@ -34,6 +34,12 @@ class Sync extends CommonGLPI {
     /** @var array<int,array{cve_id:string,endpoint:string,cvss:mixed}> */
     private static array $newCriticalCveDetails = [];
 
+    /** @var array<int,array{cve_id:string,endpoint:string,eid:string,severity:string,cvss:mixed,detected_at:?string,days_open:?int}> CVE findings closed during this run */
+    private static array $remediatedCves = [];
+
+    /** @var array<int,array{patch_id:string,title:string,endpoint:string,eid:string,severity:string}> patches that left the "missing" state during this run */
+    private static array $installedPatches = [];
+
     public static function getTypeName($nb = 0): string {
         return __('Tanium Sync', 'tanium');
     }
@@ -87,6 +93,11 @@ class Sync extends CommonGLPI {
                     'title' => __('Trend', 'tanium'),
                     'page'  => Plugin::getWebDir('tanium') . '/front/trend.php',
                     'icon'  => 'ti ti-trending-up',
+                ],
+                'remediation'     => [
+                    'title' => __('Remediation', 'tanium'),
+                    'page'  => Plugin::getWebDir('tanium') . '/front/remediation.php',
+                    'icon'  => 'ti ti-shield-check',
                 ],
                 'exceptions'      => [
                     'title' => __('CVE Exceptions', 'tanium'),
@@ -161,6 +172,8 @@ class Sync extends CommonGLPI {
 
         self::$newCriticalCves = 0;
         self::$newCriticalCveDetails = [];
+        self::$remediatedCves = [];
+        self::$installedPatches = [];
         $logId = self::startLog();
 
         // If a fatal (OOM/timeout) kills the request mid-sync, don't leave a
@@ -370,8 +383,43 @@ class Sync extends CommonGLPI {
             self::openCriticalCveTicket($critDetails, $config);
         }
 
+        // Remediation digest — one email per sync run that recorded fixes
+        // (never one per finding), with the PDF report attached.
+        $remediationEvents = count(self::$remediatedCves) + count(self::$installedPatches);
+        if (!empty($config['notify_remediation']) && $remediationEvents > 0) {
+            $recipients = Config::resolveNotifyRecipients($config);
+            if ($recipients !== []) {
+                global $CFG_GLPI;
+                $glpiUrl = $CFG_GLPI['url_base'] ?? '';
+
+                $subject = sprintf(
+                    '[Tanium] %d correção(ões) registrada(s) — %d CVE(s) remediado(s), %d patch(es) instalado(s)',
+                    $remediationEvents,
+                    count(self::$remediatedCves),
+                    count(self::$installedPatches)
+                );
+                $body = Notification::buildRemediationEmailBody(self::$remediatedCves, self::$installedPatches, $glpiUrl);
+
+                $attachments = [];
+                $pdf = PdfReport::remediation(self::$remediatedCves, self::$installedPatches, $glpiUrl);
+                if ($pdf !== null) {
+                    $attachments[] = [
+                        'filename' => 'tanium-remediacao-' . date('Y-m-d-Hi') . '.pdf',
+                        'content'  => $pdf,
+                        'mime'     => 'application/pdf',
+                    ];
+                }
+
+                foreach ($recipients as $to) {
+                    Notification::sendEmail($to, $subject, $body, $attachments);
+                }
+            }
+        }
+
         self::$newCriticalCves = 0;
         self::$newCriticalCveDetails = [];
+        self::$remediatedCves = [];
+        self::$installedPatches = [];
         return self::result($total, $created, $updated, $errors);
     }
 
@@ -585,12 +633,17 @@ class Sync extends CommonGLPI {
             self::syncSoftware($computerId, $software);
         }
 
-        if (!empty($config['sync_vulnerabilities']) && !empty($cves)) {
-            self::syncEndpointCVEs($eid, $computerId, $cves, $computerName);
+        // Data-present flags let the reconciliation run even on an EMPTY list —
+        // a fully-remediated machine legitimately reports zero findings, and
+        // that's exactly when its open findings must be closed.
+        if (!empty($config['sync_vulnerabilities'])
+            && (!empty($cves) || !empty($endpoint['cveDataPresent']))) {
+            self::syncEndpointCVEs($eid, $computerId, $cves, $computerName, !empty($endpoint['cveDataPresent']), $config);
         }
 
-        if (!empty($config['sync_patches']) && !empty($patches)) {
-            self::syncEndpointPatches($eid, $computerId, $patches);
+        if (!empty($config['sync_patches'])
+            && (!empty($patches) || !empty($endpoint['patchDataPresent']))) {
+            self::syncEndpointPatches($eid, $computerId, $patches, !empty($endpoint['patchDataPresent']), $computerName, $config);
         }
 
         // Recalculate risk score after CVE/patch data is saved
@@ -958,7 +1011,14 @@ class Sync extends CommonGLPI {
         }
     }
 
-    private static function syncEndpointCVEs(string $eid, int $computerId, array $cves, string $computerName = ''): void {
+    private static function syncEndpointCVEs(
+        string $eid,
+        int $computerId,
+        array $cves,
+        string $computerName = '',
+        bool $dataPresent = false,
+        array $config = []
+    ): void {
         global $DB;
 
         $newFindings    = 0;
@@ -999,6 +1059,10 @@ class Sync extends CommonGLPI {
                         'new_status'   => $record['status'],
                         'changed_at'   => $now,
                     ]);
+                    // Explicit remediation reported by Tanium itself
+                    if ($record['status'] === 'remediated') {
+                        self::$remediatedCves[] = self::remediationEvent($existing, $computerName, $eid);
+                    }
                 }
                 $DB->update('glpi_plugin_tanium_endpoint_cves', $record, [
                     'tanium_eid' => $eid,
@@ -1031,29 +1095,123 @@ class Sync extends CommonGLPI {
             }
         }
 
+        // Auto-close: findings that vanished from the feed were fixed. Only
+        // runs when the CVE module actually answered for this endpoint (never
+        // on a sensor hiccup) and the toggle is on.
+        $autoClosed = 0;
+        if ($dataPresent && !empty($config['auto_close_cves'])) {
+            $autoClosed = self::autoCloseVanishedCves($eid, $computerId, $cves, $computerName, $config);
+        }
+
         // One line in the Computer's native history tab per sync that changed
         // something — auditors see Tanium touched the asset without opening the
         // plugin. Silent runs (no delta) write nothing to avoid log spam.
-        if ($computerId > 0 && ($newFindings > 0 || $statusChanges > 0)) {
+        if ($computerId > 0 && ($newFindings > 0 || $statusChanges > 0 || $autoClosed > 0)) {
             \Log::history($computerId, 'Computer', [0, '', sprintf(
-                __('Tanium sync: %1$d new CVE finding(s), %2$d status change(s)', 'tanium'),
+                __('Tanium sync: %1$d new CVE finding(s), %2$d status change(s), %3$d remediated', 'tanium'),
                 $newFindings,
-                $statusChanges
+                $statusChanges,
+                $autoClosed
             )], 0, \Log::HISTORY_LOG_SIMPLE_MESSAGE);
         }
     }
 
+    /** Normalized remediation-event entry from an endpoint_cves row. */
+    private static function remediationEvent(array $row, string $computerName, string $eid): array {
+        $detectedAt = !empty($row['detected_at']) ? (string)$row['detected_at'] : null;
+        return [
+            'cve_id'      => (string)$row['cve_id'],
+            'endpoint'    => $computerName !== '' ? $computerName : $eid,
+            'eid'         => $eid,
+            'severity'    => strtolower((string)($row['severity'] ?? 'unknown')),
+            'cvss'        => $row['cvss_score'] ?? null,
+            'detected_at' => $detectedAt,
+            'days_open'   => $detectedAt !== null ? max(0, (int)floor((time() - strtotime($detectedAt)) / 86400)) : null,
+        ];
+    }
+
+    /**
+     * Marks as "remediated" every open finding of this endpoint that is absent
+     * from the current sync payload, writing the transition to cve_history so
+     * MTTR and the remediation reports see it. Findings below the configured
+     * severity floor never enter the payload, so their absence proves nothing —
+     * they are left untouched.
+     *
+     * @return int findings closed
+     */
+    private static function autoCloseVanishedCves(
+        string $eid,
+        int $computerId,
+        array $payloadCves,
+        string $computerName,
+        array $config
+    ): int {
+        global $DB;
+
+        $present = [];
+        foreach ($payloadCves as $finding) {
+            $cveId = strtoupper((string)($finding['cveId'] ?? $finding['cve'] ?? $finding['id'] ?? ''));
+            if ($cveId !== '') {
+                $present[$cveId] = true;
+            }
+        }
+
+        $rank   = ['unknown' => 0, 'low' => 1, 'medium' => 2, 'high' => 3, 'critical' => 4];
+        $minSev = strtolower((string)($config['cve_min_severity'] ?? 'all'));
+        $min    = $rank[$minSev] ?? 0; // 'all' (or unknown) keeps every severity eligible
+
+        $closed = 0;
+        $now    = date('Y-m-d H:i:s');
+        foreach ($DB->request([
+            'FROM'  => 'glpi_plugin_tanium_endpoint_cves',
+            'WHERE' => ['tanium_eid' => $eid, 'status' => ['!=', 'remediated']],
+        ]) as $row) {
+            if (isset($present[strtoupper((string)$row['cve_id'])])) {
+                continue;
+            }
+            if ($min > 0 && ($rank[strtolower((string)($row['severity'] ?? 'unknown'))] ?? 0) < $min) {
+                continue;
+            }
+
+            $DB->update('glpi_plugin_tanium_endpoint_cves', [
+                'status'   => 'remediated',
+                'date_mod' => $now,
+            ], ['id' => $row['id']]);
+            $DB->insert('glpi_plugin_tanium_cve_history', [
+                'tanium_eid'   => $eid,
+                'cve_id'       => $row['cve_id'],
+                'computers_id' => $computerId,
+                'old_status'   => $row['status'],
+                'new_status'   => 'remediated',
+                'changed_at'   => $now,
+            ]);
+            self::$remediatedCves[] = self::remediationEvent($row, $computerName, $eid);
+            $closed++;
+        }
+
+        return $closed;
+    }
+
     // ── Patch sync ────────────────────────────────────────────────────────
 
-    private static function syncEndpointPatches(string $eid, int $computerId, array $patches): void {
+    private static function syncEndpointPatches(
+        string $eid,
+        int $computerId,
+        array $patches,
+        bool $dataPresent = false,
+        string $computerName = '',
+        array $config = []
+    ): void {
         global $DB;
 
         $now = date('Y-m-d H:i:s');
+        $seenIds = [];
         foreach ($patches as $patch) {
             $patchId = $patch['patchId'] ?? $patch['id'] ?? $patch['kb'] ?? '';
             if (!$patchId) {
                 continue;
             }
+            $seenIds[(string)$patchId] = true;
 
             $existing = $DB->request([
                 'FROM'  => 'glpi_plugin_tanium_patches',
@@ -1077,6 +1235,20 @@ class Sync extends CommonGLPI {
             ];
 
             if ($existing) {
+                // Status transition (e.g. a deployed patch resurfacing as
+                // missing) → patch_history, mirroring the CVE history.
+                if ($existing['status'] !== $record['status']) {
+                    $DB->insert('glpi_plugin_tanium_patch_history', [
+                        'tanium_eid'   => $eid,
+                        'patch_id'     => $patchId,
+                        'patch_title'  => $record['patch_title'],
+                        'severity'     => $record['severity'],
+                        'computers_id' => $computerId,
+                        'old_status'   => $existing['status'],
+                        'new_status'   => $record['status'],
+                        'changed_at'   => $now,
+                    ]);
+                }
                 $DB->update('glpi_plugin_tanium_patches', $record, [
                     'tanium_eid' => $eid,
                     'patch_id'   => $patchId,
@@ -1086,7 +1258,56 @@ class Sync extends CommonGLPI {
                     'tanium_eid' => $eid,
                     'patch_id'   => $patchId,
                 ]));
+                $DB->insert('glpi_plugin_tanium_patch_history', [
+                    'tanium_eid'   => $eid,
+                    'patch_id'     => $patchId,
+                    'patch_title'  => $record['patch_title'],
+                    'severity'     => $record['severity'],
+                    'computers_id' => $computerId,
+                    'old_status'   => null,
+                    'new_status'   => $record['status'],
+                    'changed_at'   => $now,
+                ]);
             }
+        }
+
+        // Reconciliation: the Applicable Patches sensor lists what is still
+        // MISSING, so a previously-missing patch absent from the list (with the
+        // sensor having answered) was installed. Same toggle as the CVE
+        // auto-close; deploy-remediated rows are already out of "missing".
+        if (!$dataPresent || empty($config['auto_close_cves'])) {
+            return;
+        }
+
+        foreach ($DB->request([
+            'FROM'  => 'glpi_plugin_tanium_patches',
+            'WHERE' => ['tanium_eid' => $eid, 'status' => 'missing'],
+        ]) as $row) {
+            if (isset($seenIds[(string)$row['patch_id']])) {
+                continue;
+            }
+
+            $DB->update('glpi_plugin_tanium_patches', [
+                'status'   => 'installed',
+                'date_mod' => $now,
+            ], ['id' => $row['id']]);
+            $DB->insert('glpi_plugin_tanium_patch_history', [
+                'tanium_eid'   => $eid,
+                'patch_id'     => $row['patch_id'],
+                'patch_title'  => (string)$row['patch_title'],
+                'severity'     => strtolower((string)($row['severity'] ?? 'unknown')),
+                'computers_id' => $computerId,
+                'old_status'   => 'missing',
+                'new_status'   => 'installed',
+                'changed_at'   => $now,
+            ]);
+            self::$installedPatches[] = [
+                'patch_id' => (string)$row['patch_id'],
+                'title'    => (string)$row['patch_title'],
+                'endpoint' => $computerName !== '' ? $computerName : $eid,
+                'eid'      => $eid,
+                'severity' => strtolower((string)($row['severity'] ?? 'unknown')),
+            ];
         }
     }
 

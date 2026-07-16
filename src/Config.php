@@ -75,6 +75,10 @@ class Config extends CommonDBTM {
             'report_day'              => 1,
             'report_hour'             => 8,
             'last_weekly_report'      => null,
+            'auto_close_cves'         => 1,
+            'notify_remediation'      => 0,
+            'monthly_report_day'      => 1,
+            'last_monthly_report'     => null,
         ];
     }
 
@@ -326,6 +330,12 @@ class Config extends CommonDBTM {
 
         $this->renderCheckbox('sync_incremental', __('Incremental sync (only changed endpoints per run)', 'tanium'), $config['sync_incremental'] ?? 1);
 
+        $this->renderCheckbox(
+            'auto_close_cves',
+            __('Mark as remediated the CVEs/patches that stop being reported by Tanium (feeds MTTR and the remediation reports — recommended)', 'tanium'),
+            (int)($config['auto_close_cves'] ?? 1)
+        );
+
         $this->renderField(
             __('Cron frequency (hours)', 'tanium'),
             "<input type='number' name='cron_frequency' class='tanium-input tanium-input-sm' value='" . intval($config['cron_frequency']) . "' min='1' max='168'/>",
@@ -456,6 +466,7 @@ class Config extends CommonDBTM {
 
         $this->renderCheckbox('notify_critical', __('Notify when new Critical CVEs are detected', 'tanium'), (int)($config['notify_critical'] ?? 1));
         $this->renderCheckbox('auto_ticket_critical', __('Open a consolidated GLPI ticket when new Critical CVEs are detected', 'tanium'), (int)($config['auto_ticket_critical'] ?? 0));
+        $this->renderCheckbox('notify_remediation', __('Email a remediation digest when a sync records fixes (remediated CVEs / installed patches, PDF attached)', 'tanium'), (int)($config['notify_remediation'] ?? 0));
 
         $notifyUserIds = array_filter(array_map('intval', explode(',', (string)($config['notify_users'] ?? ''))));
         ob_start();
@@ -530,6 +541,25 @@ class Config extends CommonDBTM {
             sprintf(__('The weekly report is sent on the selected day, from the selected hour on. Last sent: %s.', 'tanium'), "<strong>{$lastReport}</strong>")
         );
 
+        // ── Monthly report schedule ───────────────────────────────────────
+        $curMonthDay = max(1, min(28, (int)($config['monthly_report_day'] ?? 1)));
+        $monthDaySelect = "<select name='monthly_report_day' class='tanium-input tanium-select' style='width:auto'>";
+        for ($d = 1; $d <= 28; $d++) {
+            $sel = $d === $curMonthDay ? ' selected' : '';
+            $monthDaySelect .= "<option value='{$d}'{$sel}>" . sprintf(__('day %d', 'tanium'), $d) . "</option>";
+        }
+        $monthDaySelect .= '</select>';
+
+        $lastMonthly = !empty($config['last_monthly_report'])
+            ? date('d/m/Y H:i', strtotime($config['last_monthly_report']))
+            : __('never', 'tanium');
+
+        $this->renderField(
+            __('Monthly report schedule', 'tanium'),
+            "<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap'>{$monthDaySelect}</div>",
+            sprintf(__('The monthly report is sent on the selected day of the month, from the weekly-report hour on. Last sent: %s.', 'tanium'), "<strong>{$lastMonthly}</strong>")
+        );
+
         // ── SLA Remediation ───────────────────────────────────────────────
         echo "<div class='tanium-section-title'>" . __('SLA — Remediation Deadlines', 'tanium') . "</div>";
         echo "<p style='font-size:.82rem;color:var(--t-muted);margin:0 0 12px'>" . __('Maximum days allowed before a CVE is flagged as overdue. Overdue CVEs are highlighted in red throughout the plugin.', 'tanium') . "</p>";
@@ -593,6 +623,7 @@ class Config extends CommonDBTM {
         echo "<button type='submit' name='test_webhook' class='tanium-btn tanium-btn-secondary'>&#128279; " . __('Test webhook', 'tanium') . "</button> ";
         echo "<button type='submit' name='test_email' class='tanium-btn tanium-btn-secondary'>&#9993;&#65039; " . __('Test email', 'tanium') . "</button> ";
         echo "<button type='submit' name='send_report' class='tanium-btn tanium-btn-secondary'>&#128200; " . __('Send report now', 'tanium') . "</button> ";
+        echo "<button type='submit' name='send_monthly_report' class='tanium-btn tanium-btn-secondary'>&#128197; " . __('Send monthly report now', 'tanium') . "</button> ";
         echo "<a href='" . Plugin::getWebDir('tanium') . "/front/sync.form.php' class='tanium-btn tanium-btn-success'>&#9654; " . __('Sync now', 'tanium') . "</a>";
         echo "</div>";
         echo "</form>";

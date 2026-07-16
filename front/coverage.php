@@ -89,14 +89,22 @@ if ($tab === 'without_tanium') {
     $rowRes  = $DB->doQuery("SELECT COUNT(*) AS cnt FROM glpi_computers c INNER JOIN glpi_plugin_tanium_assets a ON c.id = a.computers_id WHERE c.is_deleted=0 {$srchSql}");
     if ($rowRes) $rowTotal = (int)$rowRes->fetch_assoc()['cnt'];
 
+    // patch_compliance is computed live from the patch table (% of tracked
+    // patches no longer missing); NULL when the endpoint has no patch data.
     foreach ($DB->doQuery("
         SELECT c.id AS computers_id, c.name AS glpi_name, c.serial, c.date_mod,
                a.tanium_eid, a.tanium_name, a.ip_address, a.os_name,
-               a.last_seen, a.risk_score, a.patch_compliance,
+               a.last_seen, a.risk_score, pc.patch_compliance,
                e.completename AS entity_name
         FROM glpi_computers c
         INNER JOIN glpi_plugin_tanium_assets a ON c.id = a.computers_id
         LEFT JOIN glpi_entities e              ON c.entities_id = e.id
+        LEFT JOIN (
+            SELECT tanium_eid,
+                   ROUND(100 * SUM(CASE WHEN status != 'missing' THEN 1 ELSE 0 END) / COUNT(*)) AS patch_compliance
+            FROM glpi_plugin_tanium_patches
+            GROUP BY tanium_eid
+        ) pc ON pc.tanium_eid = a.tanium_eid
         WHERE c.is_deleted=0 {$srchSql}
         ORDER BY a.risk_score DESC
         LIMIT {$limit} OFFSET {$offset}
@@ -280,7 +288,7 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
         <tbody>
         <?php foreach ($rows as $r):
             $rc       = $riskColor((float)($r['risk_score']??0));
-            $cmpPct   = $r['patch_compliance'];
+            $cmpPct   = $r['patch_compliance'] !== null ? (int)$r['patch_compliance'] : null;
             $cmpClr   = $cmpPct === null ? '#718096' : ($cmpPct >= 90 ? '#68d391' : ($cmpPct >= 70 ? '#ecc94b' : '#e53e3e'));
         ?>
         <tr>

@@ -23,3 +23,21 @@ msgstr "Tanium Cron"
 
 msgid "API & Sync Configuration"
 msgstr "API & Sync Configuration"
+
+msgid "Remediation"
+msgstr "Remediation"
+
+msgid "Tanium — Remediation"
+msgstr "Tanium — Remediation"
+
+msgid "CVEs remediated"
+msgstr "CVEs remediated"
+
+msgid "Patches installed"
+msgstr "Patches installed"
+
+msgid "Monthly report schedule"
+msgstr "Monthly report schedule"
+
+msgid "Send monthly report now"
+msgstr "Send monthly report now"

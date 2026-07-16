@@ -58,6 +58,9 @@ if (isset($_POST['save'])) {
         'auto_deploy_kev'         => isset($_POST['auto_deploy_kev']) ? 1 : 0,
         'report_day'              => max(0, min(6, (int)($_POST['report_day'] ?? 1))),
         'report_hour'             => max(0, min(23, (int)($_POST['report_hour'] ?? 8))),
+        'auto_close_cves'         => isset($_POST['auto_close_cves']) ? 1 : 0,
+        'notify_remediation'      => isset($_POST['notify_remediation']) ? 1 : 0,
+        'monthly_report_day'      => max(1, min(28, (int)($_POST['monthly_report_day'] ?? 1))),
     ]);
 
     Session::addMessageAfterRedirect(__('Tanium configuration saved.', 'tanium'), true, INFO);
@@ -148,6 +151,24 @@ if (isset($_POST['send_report'])) {
     } else {
         Session::addMessageAfterRedirect(
             __('Weekly report was NOT sent — no valid recipient configured (or every send failed; check tanium.log).', 'tanium'),
+            true, ERROR
+        );
+    }
+
+    Html::redirect('config.form.php');
+}
+
+if (isset($_POST['send_monthly_report'])) {
+
+    $sent = \GlpiPlugin\Tanium\MonthlyReport::send();
+    if ($sent > 0) {
+        Session::addMessageAfterRedirect(
+            sprintf(__('Monthly report sent now to %d recipient(s).', 'tanium'), $sent),
+            true, INFO
+        );
+    } else {
+        Session::addMessageAfterRedirect(
+            __('Monthly report was NOT sent — no valid recipient configured (or every send failed; check tanium.log).', 'tanium'),
             true, ERROR
         );
     }

@@ -33,7 +33,11 @@ Plugin que conecta a plataforma **Tanium** ao **GLPI 11**, trazendo visibilidade
 | 🔍 **Vulnerabilidades CVE** | Importa CVEs com severidade, score CVSS e status de remediação |
 | 🩹 **Patch Remediation** | Rastreia patches ausentes e histórico de implantação |
 | 📊 **Dashboard** | Painel com KPIs de risco, compliance e cobertura — todos os cards com drill-down para a lista filtrada |
-| 🗓️ **Relatório Semanal** | Envio automático de relatório de segurança por e-mail |
+| 🗓️ **Relatório Semanal** | Envio automático de relatório de segurança por e-mail, com seção de remediação da semana |
+| 📆 **Relatório Mensal** | Relatório mensal com remediação de 30 dias, MTTR e evolução da postura vs mês anterior |
+| ✅ **Tendência de Remediação** | Página dedicada: CVEs remediados e patches instalados por endpoint, gráfico semanal, MTTR e exportação CSV |
+| 📬 **Digest de Correções** | E-mail automático (com PDF) ao fim de cada sync que registrar CVEs remediados / patches instalados |
+| 🔁 **Auto-close de findings** | CVEs/patches que somem do feed do Tanium são marcados como remediados (alimenta MTTR e relatórios) |
 | ⚙️ **Sincronização** | Agendamento via Cron com suporte a sync incremental |
 | 💻 **Aba no Computador** | Dados Tanium diretamente na ficha do ativo no GLPI |
 | 🎯 **Widget Central** | Resumo de risco no painel inicial do GLPI |
@@ -146,7 +150,11 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | 🔍 **CVE Vulnerabilities** | Imports CVEs with severity, CVSS score and remediation status |
 | 🩹 **Patch Remediation** | Tracks missing patches and deployment history |
 | 📊 **Dashboard** | KPI panel with risk, compliance and coverage metrics — every card drills down to the filtered list |
-| 🗓️ **Weekly Report** | Automated security report delivery by e-mail |
+| 🗓️ **Weekly Report** | Automated security report delivery by e-mail, with a weekly remediation section |
+| 📆 **Monthly Report** | Monthly report with 30-day remediation, MTTR and posture evolution vs the previous month |
+| ✅ **Remediation Trend** | Dedicated page: remediated CVEs and installed patches per endpoint, weekly chart, MTTR and CSV export |
+| 📬 **Fix Digest** | Automatic email (with PDF) after every sync that records remediated CVEs / installed patches |
+| 🔁 **Findings auto-close** | CVEs/patches that vanish from the Tanium feed are marked as remediated (feeds MTTR and reports) |
 | ⚙️ **Synchronization** | Cron scheduling with incremental sync support |
 | 💻 **Computer Tab** | Tanium data directly on the asset record in GLPI |
 | 🎯 **Central Widget** | Risk summary on the GLPI home panel |

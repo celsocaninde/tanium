@@ -292,6 +292,13 @@ GQL;
             'cves'           => self::mapCveFindings($n['compliance']['cveFindings'] ?? []),
             'software'       => self::mapInstalledApplications($n['installedApplications'] ?? []),
             'patches'        => self::mapApplicablePatches($n['sensorReadings'] ?? []),
+            // Data-presence flags: distinguish "endpoint is clean" (module
+            // answered with an empty/no-pending list) from "module did not
+            // answer" (sensor error, Comply absent). Auto-close of findings
+            // that vanished from the feed only runs when these are true —
+            // otherwise a sensor hiccup would mass-close open findings.
+            'cveDataPresent'   => isset($n['compliance']['cveFindings']) && is_array($n['compliance']['cveFindings']),
+            'patchDataPresent' => self::hasPatchSensorData($n['sensorReadings'] ?? []),
             'computerGroups' => self::mapGroupMemberships($n['computerGroupMemberships'] ?? []),
             // Hygiene / attack-surface / stability extras (null when the
             // tenant does not expose them or extras were disabled).
@@ -350,6 +357,22 @@ GQL;
             ['ref' => ['id' => $actionId]]
         );
         return isset($data['action']['status']) ? (string)$data['action']['status'] : null;
+    }
+
+    /**
+     * True when the "Applicable Patches" sensor actually answered for this
+     * endpoint — a Title column exists, even if every row is the
+     * "No Patches Required" marker (fully-patched machine). False means the
+     * sensor did not report (error/timeout), so its data must not be trusted
+     * for reconciliation.
+     */
+    private static function hasPatchSensorData(array $sensorReadings): bool {
+        foreach ($sensorReadings['columns'] ?? [] as $col) {
+            if (($col['name'] ?? '') === 'Title' && !empty($col['values'])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
