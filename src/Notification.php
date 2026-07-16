@@ -358,6 +358,57 @@ class Notification {
     }
 
     /**
+     * HTML body for the consolidated critical-CVE ticket (also flows into the
+     * GLPI new-ticket notification email). Self-contained styled block — no
+     * doctype/body — so it renders both in the ticket timeline and in email.
+     *
+     * @param array<int,array{cve_id:string,endpoint:string,cvss:mixed,ip?:string,os_name?:string,title?:string,affected_count?:int,is_virtual?:bool}> $details
+     */
+    public static function buildCriticalTicketHtml(int $newCritical, array $details): string {
+        $workstations = array_values(array_filter($details, static fn(array $d): bool => empty($d['is_virtual'])));
+        $servers      = array_values(array_filter($details, static fn(array $d): bool => !empty($d['is_virtual'])));
+
+        $cvssMax = null;
+        foreach ($details as $d) {
+            $cvss = $d['cvss'] ?? null;
+            if ($cvss !== null && $cvss !== '' && ($cvssMax === null || (float)$cvss > $cvssMax)) {
+                $cvssMax = (float)$cvss;
+            }
+        }
+        $cvssMaxLabel = $cvssMax !== null ? number_format($cvssMax, 1) : '—';
+        $endpoints    = count(array_unique(array_column($details, 'endpoint')));
+
+        $sections = self::criticalCveTableSection('💻 Estações de Trabalho (Notebooks/Desktops)', $workstations)
+                  . self::criticalCveTableSection('🖥️ Servidores (VM)', $servers);
+
+        return "<div style='max-width:680px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-family:Segoe UI,Arial,sans-serif'>
+  <div style='background:linear-gradient(120deg,#7a0d1f 0%,#e8212a 100%);padding:16px 20px;color:#ffffff'>
+    <table style='border-collapse:collapse;margin-bottom:8px'><tr>
+      <td style='width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.18);color:#ffffff;font-weight:900;font-size:15px;text-align:center;vertical-align:middle'>T</td>
+      <td style='padding-left:8px;font-size:16px;font-weight:800;letter-spacing:2px;vertical-align:middle;color:#ffffff'>TANIUM</td>
+    </tr></table>
+    <div style='font-size:16px;font-weight:700;color:#ffffff'>🚨 {$newCritical} novo(s) CVE(s) crítico(s) detectado(s)</div>
+    <div style='margin-top:6px;font-size:12px;color:#ffd6d9'>Sincronização Tanium → GLPI — " . date('d/m/Y H:i') . "</div>
+  </div>
+  <div style='background:#f9fafb;padding:10px 20px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#4a5568'>
+    <span style='margin-right:20px'>CVEs: <strong style='color:#1a1a2e'>{$newCritical}</strong></span>
+    <span style='margin-right:20px'>Endpoints afetados: <strong style='color:#1a1a2e'>{$endpoints}</strong></span>
+    <span>CVSS máximo: <strong style='color:#e8212a'>{$cvssMaxLabel}</strong></span>
+  </div>
+  <div style='padding:4px 20px 16px'>
+    <p style='color:#1a1a2e;font-size:13px'>A sincronização com o Tanium detectou <strong>{$newCritical} novo(s) CVE(s) crítico(s)</strong>. Detalhes por tipo de máquina abaixo.</p>
+    {$sections}
+    <div style='border-left:4px solid #e8212a;background:#fff5f5;padding:12px 16px;border-radius:8px;margin-top:16px;color:#7a0d1f;font-size:13px'>
+      ⏱️ <strong>Priorize a remediação conforme o SLA configurado no plugin Tanium.</strong>
+    </div>
+  </div>
+  <div style='background:#f9fafb;padding:10px 20px;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb'>
+    Chamado aberto automaticamente pelo plugin Tanium para GLPI.
+  </div>
+</div>";
+    }
+
+    /**
      * Renders one heading + table for a machine-type group (workstations or
      * servers/VMs). Returns '' when the group has no findings, so an empty
      * section never appears in the email.

@@ -447,31 +447,9 @@ class Sync extends CommonGLPI {
             return 0;
         }
 
-        $lines   = [];
-        $lines[] = sprintf(
-            'A sincronização com o Tanium detectou %d novo(s) CVE(s) crítico(s):',
-            self::$newCriticalCves
-        );
-        $lines[] = '';
-        foreach (array_slice($details, 0, 30) as $d) {
-            $lines[] = sprintf(
-                '- %s (CVSS %s) em %s%s — https://nvd.nist.gov/vuln/detail/%s',
-                $d['cve_id'],
-                $d['cvss'] !== null && $d['cvss'] !== '' ? $d['cvss'] : '?',
-                $d['endpoint'],
-                !empty($d['title']) ? ' · ' . $d['title'] : '',
-                rawurlencode((string)$d['cve_id'])
-            );
-        }
-        if (count($details) > 30) {
-            $lines[] = sprintf('… e mais %d finding(s).', count($details) - 30);
-        }
-        $lines[] = '';
-        $lines[] = 'Priorize a remediação conforme o SLA configurado no plugin Tanium.';
-
         $ticketData = [
             'name'        => $title,
-            'content'     => implode("\n", $lines),
+            'content'     => Notification::buildCriticalTicketHtml(self::$newCriticalCves, $details),
             'entities_id' => (int)($config['ticket_entity_id'] ?? 0),
             'type'        => Ticket::INCIDENT_TYPE,
             'priority'    => 5,
