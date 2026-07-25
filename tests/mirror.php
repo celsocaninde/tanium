@@ -112,13 +112,15 @@ function extractBody(string $code, string $name): ?string {
 }
 
 /**
- * Whitespace, comments and the `self::` prefix are noise for this comparison:
- * the copy lives at file scope, so it cannot keep `self::`.
+ * Whitespace, comments and any `Scope::` prefix are noise for this comparison:
+ * the copy lives at file scope, so it cannot keep `self::` — nor `Risk::` when
+ * one plugin class calls another. Both sides are stripped the same way, so a
+ * real difference in the logic still shows up.
  */
 function normalize(string $body): string {
     $body = preg_replace('!/\*.*?\*/!s', '', $body);          // block comments
     $body = preg_replace('!//[^\n]*!', '', $body);            // line comments
-    $body = str_replace('self::', '', $body);                 // scope prefix
+    $body = preg_replace('/\b[A-Za-z_]\w*::/', '', $body);    // self:: / Risk:: / …
     $body = preg_replace('/\bself_/', '', $body);             // stand-in helpers
     return preg_replace('/\s+/', ' ', trim($body));
 }

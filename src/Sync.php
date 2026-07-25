@@ -65,6 +65,11 @@ class Sync extends CommonGLPI {
                     'page'  => Plugin::getWebDir('tanium') . '/front/dashboard.php',
                     'icon'  => 'ti ti-layout-dashboard',
                 ],
+                'actionplan'      => [
+                    'title' => __('Action Plan', 'tanium'),
+                    'page'  => Plugin::getWebDir('tanium') . '/front/actionplan.php',
+                    'icon'  => 'ti ti-list-check',
+                ],
                 'endpoints'       => [
                     'title' => __('Endpoints', 'tanium'),
                     'page'  => Plugin::getWebDir('tanium') . '/front/endpoints.php',
@@ -1689,40 +1694,141 @@ class Sync extends CommonGLPI {
 
     // ── Risk score ────────────────────────────────────────────────────────
 
+    /**
+     * Recompute an endpoint's 0-100 risk score and record it when it moved.
+     *
+     * The weighted-sum-then-clamp model this replaced saturated: a real
+     * endpoint summed ~4.400 against a ceiling of 100, so remediating every
+     * critical and every high CVE left the badge reading "100 Crítico". See
+     * Risk for the model that replaced it.
+     */
     public static function updateRiskScore(string $eid): void {
         global $DB;
 
-        $score = 0.0;
+        $cves = ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];
+        $kev  = 0;
 
-        // CVE contribution: Critical=10, High=5, Medium=2, Low=0.5.
-        // A CVE in the CISA KEV catalog (confirmed active exploitation) weighs
-        // double — being exploited in the wild trumps theoretical severity.
-        $cveWeights = ['critical' => 10, 'high' => 5, 'medium' => 2, 'low' => 0.5];
-        $kevSet     = Enrichment::kevSet();
+        $kevSet = Enrichment::kevSet();
         foreach ($DB->request([
             'FROM'  => 'glpi_plugin_tanium_endpoint_cves',
             'WHERE' => ['tanium_eid' => $eid, 'status' => ['!=', 'remediated']],
         ]) as $cve) {
-            $sev    = strtolower($cve['severity'] ?? 'low');
-            $weight = (float) ($cveWeights[$sev] ?? 0.5);
-            if (isset($kevSet[strtoupper($cve['cve_id'] ?? '')])) {
-                $weight *= 2;
+            $sev = strtolower((string) ($cve['severity'] ?? 'low'));
+            if (!isset($cves[$sev])) {
+                $sev = 'low';   // unknown severity is not a free pass
             }
-            $score += $weight;
+            $cves[$sev]++;
+            if (isset($kevSet[strtoupper((string) ($cve['cve_id'] ?? ''))])) {
+                $kev++;
+            }
         }
 
-        // Missing patch contribution: Critical=5, Important=3, Moderate=1, Low=0.3
-        $patchWeights = ['critical' => 5, 'important' => 3, 'moderate' => 1, 'low' => 0.3];
+        $patches = ['critical' => 0, 'important' => 0, 'moderate' => 0, 'low' => 0];
         foreach ($DB->request([
             'FROM'  => 'glpi_plugin_tanium_patches',
             'WHERE' => ['tanium_eid' => $eid, 'status' => 'missing'],
         ]) as $patch) {
-            $sev    = strtolower($patch['severity'] ?? 'low');
-            $score += (float) ($patchWeights[$sev] ?? 0.3);
+            if (self::isSensorNoise((string) ($patch['patch_title'] ?? ''), (string) ($patch['patch_id'] ?? ''))) {
+                continue;
+            }
+            $sev = strtolower((string) ($patch['severity'] ?? 'low'));
+            if (!isset($patches[$sev])) {
+                $sev = 'low';
+            }
+            $patches[$sev]++;
         }
 
-        $capped = min(100, (int) round($score));
-        $DB->update('glpi_plugin_tanium_assets', ['risk_score' => $capped], ['tanium_eid' => $eid]);
+        $previous = $DB->request([
+            'SELECT' => ['risk_score', 'computers_id', 'os_name', 'os_version'],
+            'FROM'   => 'glpi_plugin_tanium_assets',
+            'WHERE'  => ['tanium_eid' => $eid],
+        ])->current();
+
+        $result = Risk::score(Risk::tierCounts($cves, $kev, $patches));
+        // An end-of-support OS cannot be patched out of its risk, so it must
+        // not be able to read as low just because the finding list is short.
+        $result = Risk::applyLifecycleFloor(
+            $result,
+            Lifecycle::status($previous['os_name'] ?? null, $previous['os_version'] ?? null)['state']
+        );
+        $score = $result['score'];
+        $previousScore = $previous !== null && $previous['risk_score'] !== null
+            ? (int) $previous['risk_score']
+            : null;
+
+        $DB->update('glpi_plugin_tanium_assets', ['risk_score' => $score], ['tanium_eid' => $eid]);
+
+        self::recordEndpointRisk(
+            $eid,
+            (int) ($previous['computers_id'] ?? 0) ?: null,
+            $score,
+            $previousScore,
+            $cves,
+            $kev,
+            array_sum($patches)
+        );
+    }
+
+    /**
+     * Is this "patch" actually the patch sensor reporting that it failed?
+     *
+     * Tanium answers a machine it could not scan with a literal row such as
+     * "No Scan Results Found" instead of an empty result, and the importer
+     * stored it as a missing patch. On the reference fleet 37 endpoints each
+     * carried one, inflating their missing-patch count and their risk score
+     * with the *absence* of data. An unscanned machine is a visibility gap,
+     * not a vulnerability — it must not score as one.
+     */
+    public static function isSensorNoise(string $title, string $patchId = ''): bool {
+        $haystack = strtolower(trim($title . ' ' . $patchId));
+        if ($haystack === '') {
+            return true;
+        }
+        foreach (['no scan results', 'no results found', 'tse-error', 'error:', 'not applicable'] as $marker) {
+            if (str_contains($haystack, $marker)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Append to the per-endpoint risk history — but only on a transition.
+     *
+     * An hourly sync over a steady fleet would otherwise write one row per
+     * endpoint per run and bury the actual movements. The first observation of
+     * an endpoint is always recorded so the history has a starting point.
+     *
+     * @param array<string,int> $cves keyed critical/high/medium/low
+     */
+    private static function recordEndpointRisk(
+        string $eid,
+        ?int $computerId,
+        int $score,
+        ?int $previousScore,
+        array $cves,
+        int $kev,
+        int $patchesMissing
+    ): void {
+        global $DB;
+
+        if ($previousScore !== null && $previousScore === $score) {
+            return;
+        }
+
+        $DB->insert('glpi_plugin_tanium_endpoint_risk_history', [
+            'tanium_eid'      => $eid,
+            'computers_id'    => $computerId,
+            'risk_score'      => $score,
+            'previous_score'  => $previousScore,
+            'cves_critical'   => (int) ($cves['critical'] ?? 0),
+            'cves_high'       => (int) ($cves['high'] ?? 0),
+            'cves_medium'     => (int) ($cves['medium'] ?? 0),
+            'cves_low'        => (int) ($cves['low'] ?? 0),
+            'cves_kev'        => $kev,
+            'patches_missing' => $patchesMissing,
+            'recorded_at'     => date('Y-m-d H:i:s'),
+        ]);
     }
 
     // ── GLPI helpers ──────────────────────────────────────────────────────

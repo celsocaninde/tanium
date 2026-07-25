@@ -257,6 +257,34 @@ function plugin_tanium_install(): bool {
         );
     }
 
+    // ── Per-endpoint risk history ─────────────────────────────────────────
+    // One row per *change* of an endpoint's risk score, not one per sync: the
+    // fleet is hourly-synced and mostly steady, so writing unconditionally
+    // would add ~10k rows/day of "nothing moved". What the before/after UI
+    // needs is exactly the transitions.
+    if (!$DB->tableExists('glpi_plugin_tanium_endpoint_risk_history')) {
+        $DB->doQuery(
+            "CREATE TABLE `glpi_plugin_tanium_endpoint_risk_history` (
+                `id`               int {$sign} NOT NULL AUTO_INCREMENT,
+                `tanium_eid`       varchar(100) NOT NULL DEFAULT '',
+                `computers_id`     int {$sign} DEFAULT NULL,
+                `risk_score`       int NOT NULL DEFAULT 0,
+                `previous_score`   int DEFAULT NULL,
+                `cves_critical`    int NOT NULL DEFAULT 0,
+                `cves_high`        int NOT NULL DEFAULT 0,
+                `cves_medium`      int NOT NULL DEFAULT 0,
+                `cves_low`         int NOT NULL DEFAULT 0,
+                `cves_kev`         int NOT NULL DEFAULT 0,
+                `patches_missing`  int NOT NULL DEFAULT 0,
+                `recorded_at`      timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `tanium_eid`  (`tanium_eid`),
+                KEY `recorded_at` (`recorded_at`),
+                KEY `eid_recorded` (`tanium_eid`, `recorded_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
+        );
+    }
+
     // ── CVE status history table ──────────────────────────────────────────
     if (!$DB->tableExists('glpi_plugin_tanium_cve_history')) {
         $DB->doQuery(

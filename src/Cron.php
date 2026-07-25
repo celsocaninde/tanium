@@ -113,10 +113,11 @@ class Cron extends CommonDBTM {
         $purged = 0;
 
         foreach ([
-            'glpi_plugin_tanium_risk_history'  => 'recorded_at',
-            'glpi_plugin_tanium_cve_history'   => 'changed_at',
-            'glpi_plugin_tanium_patch_history' => 'changed_at',
-            'glpi_plugin_tanium_sync_logs'     => 'started_at',
+            'glpi_plugin_tanium_risk_history'          => 'recorded_at',
+            'glpi_plugin_tanium_endpoint_risk_history' => 'recorded_at',
+            'glpi_plugin_tanium_cve_history'           => 'changed_at',
+            'glpi_plugin_tanium_patch_history'         => 'changed_at',
+            'glpi_plugin_tanium_sync_logs'             => 'started_at',
         ] as $table => $col) {
             if (!$DB->tableExists($table)) {
                 continue;

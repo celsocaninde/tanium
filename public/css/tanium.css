@@ -830,6 +830,40 @@
 .tanium-risk-medium   { border-color: #f59e0b; color: #f59e0b; }
 .tanium-risk-low      { border-color: #22c55e; color: #22c55e; }
 
+/* ── Risk trend (before → after next to the gauge) ───────────────────────── */
+
+.tanium-risk-trend {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-width: 170px;
+    max-width: 230px;
+}
+.tanium-risk-trend-head {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    font-size: 1.15rem;
+    font-weight: 800;
+    line-height: 1.1;
+}
+.tanium-risk-trend-head .tanium-small { font-weight: 500; }
+.tanium-trend-good { color: #1eb464; }
+.tanium-trend-bad  { color: #e8212a; }
+.tanium-sparkline {
+    margin-top: 4px;
+    opacity: .9;
+}
+.tanium-sparkline svg { display: block; width: 100%; height: 34px; }
+
+/* Toggle used by the "where does this number come from?" panel. */
+.tanium-hidden { display: none !important; }
+
+@media print {
+    .tanium-hidden { display: block !important; }
+}
+
 /* ── Risk mini bar (endpoints list) ──────────────────────────────────────── */
 
 .tanium-riskmini {

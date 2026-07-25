@@ -2288,3 +2288,211 @@ msgstr "Nenhum endpoint retirado além do período de carência."
 #, php-format
 msgid "Purged %1$d endpoint(s) retired for more than %2$d days."
 msgstr "Expurgado(s) %1$d endpoint(s) retirado(s) há mais de %2$d dias."
+
+# ── v2.15.0 — modelo de risco transparente ─────────────────────────────────
+
+msgid "How this score was calculated"
+msgstr "Como esta nota foi calculada"
+
+msgid "Where does this number come from?"
+msgstr "De onde vem esse número?"
+
+msgid "The worst severity present sets the floor. How many findings sit in that severity moves the score inside its band, on a logarithmic scale. Everything below it adds a capped amount on top. Only open findings count — remediated ones leave the calculation entirely."
+msgstr "A pior severidade presente define o piso. Quantos achados existem nessa severidade movem a nota dentro da faixa, em escala logarítmica. Tudo abaixo dela soma uma parcela limitada por cima. Só achados abertos contam — os remediados saem inteiramente do cálculo."
+
+msgid "Component"
+msgstr "Componente"
+
+msgid "Basis"
+msgstr "Base de cálculo"
+
+msgid "Points"
+msgstr "Pontos"
+
+msgid "Severity floor"
+msgstr "Piso da severidade"
+
+msgid "Volume in that severity"
+msgstr "Volume dentro da severidade"
+
+msgid "Breadth of lower severities"
+msgstr "Amplitude das severidades menores"
+
+msgid "Risk score"
+msgstr "Nota de risco"
+
+msgid "No open findings — score is zero."
+msgstr "Nenhum achado aberto — a nota é zero."
+
+msgid "Counted as open:"
+msgstr "Contados como abertos:"
+
+msgid "Bands:"
+msgstr "Faixas:"
+
+msgid "0–14 Low · 15–39 Medium · 40–69 High · 70–100 Critical."
+msgstr "0–14 Baixo · 15–39 Médio · 40–69 Alto · 70–100 Crítico."
+
+msgid "An endpoint with no critical finding cannot reach the critical band."
+msgstr "Um endpoint sem nenhum achado crítico não alcança a faixa crítica."
+
+#, php-format
+msgid "worst severity present: %s"
+msgstr "pior severidade presente: %s"
+
+#, php-format
+msgid "%1$d finding(s) at %2$s — %3$d%% of the headroom"
+msgstr "%1$d achado(s) em %2$s — %3$d%% da margem"
+
+#, php-format
+msgid "%d finding(s) below the leading severity"
+msgstr "%d achado(s) abaixo da severidade dominante"
+
+#, php-format
+msgid "%1$d critical, %2$d high, %3$d medium, %4$d low CVE(s)"
+msgstr "%1$d CVE(s) crítico(s), %2$d alto(s), %3$d médio(s), %4$d baixo(s)"
+
+#, php-format
+msgid "%d in the KEV catalogue, which also count at the critical level"
+msgstr "%d no catálogo KEV, que também contam no nível crítico"
+
+#, php-format
+msgid "%d missing patch(es), counted one severity level below their own"
+msgstr "%d patch(es) ausente(s), contados um nível de severidade abaixo do próprio"
+
+msgid "critical"
+msgstr "crítica"
+
+msgid "high"
+msgstr "alta"
+
+msgid "medium"
+msgstr "média"
+
+msgid "low"
+msgstr "baixa"
+
+#, php-format
+msgid "in %d days"
+msgstr "em %d dias"
+
+#, php-format
+msgid "was %1$d (%2$s) on %3$s"
+msgstr "era %1$d (%2$s) em %3$s"
+
+#, php-format
+msgid "unchanged for %d days"
+msgstr "sem mudança há %d dias"
+
+msgid "no history yet — recorded from the next change"
+msgstr "ainda sem histórico — passa a registrar na próxima mudança"
+
+#, php-format
+msgid "%1$d CVE(s) and %2$d patch(es) fixed in the period"
+msgstr "%1$d CVE(s) e %2$d patch(es) corrigidos no período"
+
+#, php-format
+msgid "Risk score movement over the last %d days"
+msgstr "Variação da nota de risco nos últimos %d dias"
+
+msgid "no movement in the period"
+msgstr "sem variação no período"
+
+#, php-format
+msgid "risk was %d"
+msgstr "o risco era %d"
+
+# ── v2.15.0 — plano de ação e fim de suporte ───────────────────────────────
+
+msgid "Tanium — Action Plan"
+msgstr "Tanium — Plano de Ação"
+
+msgid "Action Plan"
+msgstr "Plano de Ação"
+
+msgid "Ranked by how much fleet risk each action actually removes — not by severity alone"
+msgstr "Ordenado pelo risco que cada ação realmente remove da frota — não só pela severidade"
+
+msgid "Action"
+msgstr "Ação"
+
+msgid "Actions listed"
+msgstr "Ações listadas"
+
+msgid "All action types"
+msgstr "Todos os tipos de ação"
+
+msgid "Findings closed"
+msgstr "Achados fechados"
+
+msgid "Fleet average"
+msgstr "Média da frota"
+
+msgid "Risk removed"
+msgstr "Risco removido"
+
+msgid "Risk points this plan removes"
+msgstr "Pontos de risco que este plano remove"
+
+msgid "Total risk points removed across the fleet"
+msgstr "Total de pontos de risco removidos na frota"
+
+msgid "of the fleet total"
+msgstr "do total da frota"
+
+msgid "Migration"
+msgstr "Migração"
+
+msgid "Migration actions"
+msgstr "Ações de migração"
+
+msgid "Patch"
+msgstr "Patch"
+
+msgid "Nothing to do — no open findings. Run a sync first if that seems wrong."
+msgstr "Nada a fazer — nenhum achado aberto. Rode uma sincronização se isso parecer errado."
+
+msgid "How the ranking works:"
+msgstr "Como o ranking funciona:"
+
+msgid "every candidate action is simulated against the real risk model — the score of each affected endpoint is recomputed as if the action had been completed, and the points freed are summed across the fleet. That is why one cumulative update missing on 99 machines can outrank a single critical CVE, and why a tool like the Malicious Software Removal Tool ranks low despite being missing almost everywhere: closing it barely moves any score."
+msgstr "cada ação candidata é simulada contra o modelo de risco real — o score de cada endpoint afetado é recalculado como se a ação já tivesse sido concluída, e os pontos liberados são somados na frota inteira. É por isso que uma atualização cumulativa faltando em 99 máquinas pode superar um único CVE crítico, e por que uma ferramenta como o Malicious Software Removal Tool fica mal colocada apesar de faltar em quase todo lugar: fechá-la quase não move score nenhum."
+
+#, php-format
+msgid "carry the whole current risk of the affected endpoints, because on an end-of-support system the patch and CVE actions above simply do not exist — no fix is coming. End-of-support dates reviewed on %s."
+msgstr "carregam todo o risco atual dos endpoints afetados, porque num sistema fora de suporte as ações de patch e CVE acima simplesmente não existem — nenhuma correção virá. Datas de fim de suporte revisadas em %s."
+
+#, php-format
+msgid "top %d"
+msgstr "top %d"
+
+#, php-format
+msgid "unsupported since %1$s — %2$d days without security fixes"
+msgstr "sem suporte desde %1$s — %2$d dias sem correções de segurança"
+
+#, php-format
+msgid "%s is past end of support"
+msgstr "%s está fora do suporte do fabricante"
+
+#, php-format
+msgid "End of support since %s"
+msgstr "Fim de suporte desde %s"
+
+#, php-format
+msgid "End of support in %d days"
+msgstr "Fim de suporte em %d dias"
+
+#, php-format
+msgid "%1$s reached end of support on %2$s — no security fix will be issued for new vulnerabilities. This risk is resolved by migration, not by patching."
+msgstr "%1$s chegou ao fim do suporte em %2$s — nenhuma correção de segurança será publicada para novas vulnerabilidades. Esse risco se resolve por migração, não por patch."
+
+#, php-format
+msgid "%s stops receiving security fixes soon"
+msgstr "%s para de receber correções de segurança em breve"
+
+msgid "Operating system past end of support"
+msgstr "Sistema operacional fora do suporte"
+
+#, php-format
+msgid "%s receives no security fixes — risk floored, since patching cannot resolve it"
+msgstr "%s não recebe correções de segurança — risco com piso, já que patch não resolve"

@@ -43,6 +43,11 @@ Plugin que conecta a plataforma **Tanium** ao **GLPI 11**, trazendo visibilidade
 | ♻️ **Auto-resolução de chamados** | Chamados automáticos (CVEs críticos, agentes silenciosos, Threat Response) são solucionados sozinhos quando a condição desaparece |
 | 📺 **Modo TV/Kiosk** | Painel de segurança em tela cheia com auto-refresh e acesso por link com token (sem login) para TVs de NOC/SOC |
 | ⚙️ **Sincronização** | Agendamento via Cron com suporte a sync incremental |
+| 🎯 **Plano de ação** | Fila do que fazer primeiro, ordenada pelo risco que cada ação realmente remove da frota — um patch em 99 máquinas fica acima de um CVE isolado |
+| ⏳ **Fim de suporte (EOL)** | Detecta SO sem suporte do fabricante, marca o endpoint e aplica piso de risco: o conserto ali é migração, não patch |
+| 📉 **Nota que reage à correção** | Modelo de risco sem saturação: cada lote de CVEs corrigido move o número e a faixa, em vez de deixar o endpoint travado em "100 Crítico" |
+| 🔎 **Cálculo aberto** | O endpoint mostra a conta que gerou a nota — piso da severidade, volume e amplitude, com os achados que entraram |
+| 📈 **Antes → depois** | Histórico de risco por endpoint com variação do período, gráfico e quantos CVEs/patches foram corrigidos |
 | 🛟 **Sync resiliente** | O cursor incremental só avança quando o ciclo termina sem erro — endpoints que falharam voltam na execução seguinte em vez de serem pulados |
 | 🗑️ **Endpoints retirados** | Máquinas que somem da frota do Tanium são marcadas com data de retirada e, opcionalmente, expurgadas após carência configurável |
 | 💻 **Aba no Computador** | Dados Tanium diretamente na ficha do ativo no GLPI |
@@ -58,7 +63,7 @@ Plugin que conecta a plataforma **Tanium** ao **GLPI 11**, trazendo visibilidade
 | 🧩 **Dashboard cards nativos** | 7 cards no dashboard nativo do GLPI (grupo "Tanium") |
 | 🔗 **Correlação cross-plugin** | Badges quando o CVE também é visto pelo Nessus/SentinelOne |
 | 📄 **Exportações** | PDF do comparativo de endpoints e busca nativa GLPI com CSV |
-| 🌐 **i18n completa** | 670 strings traduzidas para pt_BR (.mo compilado, sem dependência de `msgfmt`) |
+| 🌐 **i18n completa** | 736 strings traduzidas para pt_BR (.mo compilado, sem dependência de `msgfmt`) |
 
 ### 🚀 Requisitos
 
@@ -101,13 +106,74 @@ glpi/plugins/
 ### 🧪 Testes
 
 ```
-php tests/run.php      # lógica pura (43 casos)
+php tests/run.php      # lógica pura (106 casos)
 php tests/mirror.php   # garante que as cópias dos testes conferem com src/
 php tools/lint.php     # php -l em todo o plugin
 php tools/i18n_audit.php pt_BR
 ```
 
 As classes do plugin estendem base do GLPI e usam `$DB`, então não são carregáveis fora do container. Cada caso de teste **re-declara** a função testada como função livre, e o `mirror.php` compara essa cópia com o corpo do método real em `src/` (ignorando espaços, comentários e `self::`) — sem ele, a suíte ficaria verde testando código morto.
+
+### 🎯 Plano de ação
+
+A tela de vulnerabilidades responde *"quão ruim está"*. Esta responde *"o que eu faço primeiro"*.
+
+Cada ação candidata é **simulada contra o modelo de risco real**: o score de cada endpoint afetado é recalculado como se a ação já tivesse sido concluída, e os pontos liberados são somados na frota inteira. Três tipos entram na mesma fila e ficam comparáveis:
+
+| Tipo | O que é | Como pontua |
+|---|---|---|
+| **Patch** | implantar um patch em todas as máquinas onde falta | soma da queda de risco em cada uma |
+| **CVE** | remediar um CVE em todas as máquinas onde está aberto | idem, com o KEV descontando nos dois níveis |
+| **Migração** | trocar um SO fora de suporte | **todo** o risco atual daqueles endpoints |
+
+Migração carrega o risco inteiro porque nesses hosts as outras duas ações **não existem** — nenhuma correção vai chegar. Deixar isso fora da fila é o que faz um time trabalhar a lista de patches enquanto um servidor sem suporte acumula CVEs críticos.
+
+Duas consequências que aparecem na prática:
+- Uma atualização cumulativa faltando em **99 máquinas** rende mais que um CVE crítico isolado, e sobe na fila.
+- O *Malicious Software Removal Tool*, faltando em **160 máquinas**, fica lá embaixo: fechá-lo quase não move score nenhum. Abrangência sozinha não é prioridade.
+
+O empate no risco é desempatado pela abrangência — duas ações que liberam os mesmos pontos não são iguais se uma é uma implantação e a outra são 15 investigações separadas.
+
+### ⏳ Fim de suporte
+
+O plugin reportava "patch ausente" para sempre em máquinas cujo fabricante parou de publicar patches. **O achado não é remediável**, então ele nunca fechava, o score nunca melhorava, e o time gastava esforço numa fila que não anda. Na frota de referência isso era **15% dos endpoints**.
+
+`src/Lifecycle.php` traz um catálogo estático de datas de fim de suporte (Windows cliente e Server, Ubuntu LTS, CentOS, RHEL, AlmaLinux/Rocky, Debian, Oracle Linux, SLES) casado contra `os_name` + `os_version`. Três estados: `supported`, `ending_soon` (dentro de 180 dias) e `eol`.
+
+O catálogo é uma tabela estática de propósito — precisa funcionar em GLPI sem internet, e corrigir uma data é mudar uma linha. Ele **nunca chuta**: SO não reconhecido vira `unknown`, nunca `supported`, porque presumir suporte esconderia justamente o host exótico e abandonado. A constante `REVIEWED_ON` registra a última revisão humana das datas e aparece na interface.
+
+### 📉 Como a nota é calculada
+
+O plugin tem **duas notas**, e elas são a mesma coisa vista de dois ângulos:
+
+| | Onde aparece | Escala | Conta |
+|---|---|---|---|
+| **Nota de risco** | ficha do endpoint | 0–100, **maior pior** | CVEs abertos + patches ausentes |
+| **Nota de saúde** | boletim da frota | 0–10, **maior melhor** | a nota de risco (7 pontos) + higiene (3 pontos) |
+
+**Nota de risco.** A pior severidade presente define o **piso**; o **volume** dentro dessa severidade move a nota dentro da faixa, em escala logarítmica; os achados de severidade menor somam uma **amplitude** limitada a 10 pontos.
+
+| Severidade dominante | Faixa possível |
+|---|---|
+| Crítica | 60 – 100 |
+| Alta | 35 – 69 |
+| Média | 15 – 39 |
+| Baixa | 5 – 10 |
+
+Faixas exibidas: **0–14 Baixo · 15–39 Médio · 40–69 Alto · 70–100 Crítico**. Disso saem dois invariantes úteis: um endpoint **sem nenhum CVE crítico nunca chega à faixa crítica**, por mais volume que acumule; e **limpar uma severidade inteira sempre derruba a nota para uma faixa abaixo**, porque o piso desce.
+
+Composição das contagens:
+- CVEs no **catálogo KEV** somam também no nível crítico — exploração confirmada pesa mais que a severidade teórica.
+- **Patches ausentes** entram **um nível abaixo** da própria severidade (patch crítico conta como alto), porque um patch é exposição ainda não confirmada como explorável naquele host — sozinho, não pode tornar um endpoint crítico.
+- Só **achados abertos** contam. O que foi remediado sai inteiramente da conta.
+
+**Nota de saúde.** `10 − 7 × (risco/100) − higiene`, com higiene valendo agente em silêncio (1,0), SO fora de suporte (0,8), disco sem criptografia (0,6) e Defender com problema (0,6) — 3,0 no total. Dado desconhecido (`NULL`) nunca penaliza. Defender só é avaliado em Windows. Nota **0,0 só existe** com risco 100 **e** as quatro falhas de higiene juntas.
+
+**Piso de fim de suporte.** Endpoint cujo SO não recebe mais correções tem o risco elevado a **no mínimo 40 (Alto)**, mesmo com zero achados abertos: máquina sem suporte não é máquina segura, é máquina onde ninguém mais procura vulnerabilidade e para a qual nenhuma correção virá. O piso entra como linha própria no detalhamento, para ficar claro que veio do sistema operacional e não de um achado.
+
+A ficha do endpoint traz o botão **"De onde vem esse número?"**, que abre a conta linha a linha — piso, volume, amplitude e os achados que entraram — somando exatamente o valor exibido ao lado.
+
+> **Por que o modelo mudou (v2.15.0):** antes era soma de peso fixo por achado, com corte em `min(100, …)`. Um endpoint real somava ~4.400 contra um teto de 100, então corrigir *todos* os críticos **e** *todos* os altos deixava o badge parado em "100 Crítico"; no boletim, dezenas de máquinas muito diferentes entre si empatavam em 0,0. A escala saturava exatamente onde a triagem acontece. Na frota de referência, a troca levou os endpoints cravados em 100 de **63 para 4** e as notas zeradas do boletim de **30 para 0**.
 
 ### ✅ Ciclo de vida de uma correção
 
@@ -154,6 +220,10 @@ O que acontece quando alguém atualiza a máquina (`apt upgrade`, Windows Update
 src/
 ├── Api.php            — Comunicação com a API REST/GraphQL Tanium
 ├── Sync.php           — Sincronização de endpoints (incremental server-side)
+├── Risk.php           — Modelo de risco 0–100 e nota 0–10 (aritmética pura)
+├── Lifecycle.php      — Fim de suporte do SO (catálogo estático)
+├── ActionPlan.php     — Ranking de ações por risco removido
+├── RiskHistory.php    — Histórico de risco por endpoint (antes → depois)
 ├── Dashboard.php      — Dashboard e KPIs de risco
 ├── DashboardCards.php — Cards no dashboard nativo do GLPI
 ├── Vulnerability.php  — Gestão de CVEs e remediação
@@ -215,6 +285,11 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | ♻️ **Ticket auto-resolution** | Auto-opened tickets (critical CVEs, silent agents, Threat Response) are solved automatically once the condition clears |
 | 📺 **TV/Kiosk mode** | Full-screen auto-refreshing security panel with token-link access (no login) for NOC/SOC wall TVs |
 | ⚙️ **Synchronization** | Cron scheduling with incremental sync support |
+| 🎯 **Action plan** | A queue of what to do first, ranked by the risk each action actually removes from the fleet — one patch on 99 machines outranks a lone CVE |
+| ⏳ **End of support (EOL)** | Detects operating systems the vendor no longer fixes, flags the endpoint and applies a risk floor: the fix there is migration, not patching |
+| 📉 **A score that reacts to remediation** | Non-saturating risk model: every batch of fixed CVEs moves the number and the band, instead of leaving the endpoint frozen at "100 Critical" |
+| 🔎 **Open arithmetic** | The endpoint page shows the calculation behind its score — severity floor, volume and breadth, with the findings that went in |
+| 📈 **Before → after** | Per-endpoint risk history with the period's movement, a chart, and how many CVEs/patches were fixed |
 | 🛟 **Resilient sync** | The incremental cursor only advances when the cycle ends without errors — failed endpoints come back on the next run instead of being skipped |
 | 🗑️ **Retired endpoints** | Machines that disappear from the Tanium fleet are stamped with a retirement date and, optionally, purged after a configurable grace period |
 | 💻 **Computer Tab** | Tanium data directly on the asset record in GLPI |
@@ -230,7 +305,7 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | 🧩 **Native dashboard cards** | 7 cards in the native GLPI dashboard ("Tanium" group) |
 | 🔗 **Cross-plugin correlation** | Badges when a CVE is also seen by Nessus/SentinelOne |
 | 📄 **Exports** | Endpoint comparison PDF and native GLPI search with CSV |
-| 🌐 **Full i18n** | 670 strings translated to pt_BR (compiled .mo, no `msgfmt` dependency) |
+| 🌐 **Full i18n** | 736 strings translated to pt_BR (compiled .mo, no `msgfmt` dependency) |
 
 ### 🚀 Requirements
 
@@ -262,13 +337,74 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 ### 🧪 Tests
 
 ```
-php tests/run.php      # pure logic (43 cases)
+php tests/run.php      # pure logic (106 cases)
 php tests/mirror.php   # asserts the test copies still match src/
 php tools/lint.php     # php -l across the whole plugin
 php tools/i18n_audit.php pt_BR
 ```
 
 The plugin classes extend GLPI base classes and rely on `$DB`, so they cannot be loaded outside the container. Each test case **re-declares** the function under test as a free function, and `mirror.php` compares that copy against the real method body in `src/` (ignoring whitespace, comments and `self::`) — without it the suite would stay green while testing dead code.
+
+### 🎯 Action plan
+
+The vulnerability screen answers *"how bad is it"*. This one answers *"what do I do first"*.
+
+Every candidate action is **simulated against the real risk model**: the score of each affected endpoint is recomputed as if the action were already done, and the points freed are summed across the fleet. Three kinds share one queue and become comparable:
+
+| Kind | What it is | How it scores |
+|---|---|---|
+| **Patch** | deploy one patch everywhere it is missing | sum of the risk drop on each machine |
+| **CVE** | remediate one CVE everywhere it is open | same, with KEV discounting at both levels |
+| **Migration** | replace an operating system past end of support | the **whole** current risk of those endpoints |
+
+Migration carries the full risk because on those hosts the other two actions **do not exist** — no fix is coming. Leaving it out of the queue is what has a team working the patch list while an unsupported server piles up critical CVEs.
+
+Two consequences that show up in practice:
+- One cumulative update missing on **99 machines** outranks a lone critical CVE and rises in the queue.
+- The *Malicious Software Removal Tool*, missing on **160 machines**, sits near the bottom: closing it barely moves any score. Reach alone is not priority.
+
+Ties on risk are broken by reach — two actions freeing the same points are not equal when one is a single deployment and the other is 15 separate investigations.
+
+### ⏳ End of support
+
+The plugin reported "missing patch" forever on machines whose vendor had stopped shipping patches. **The finding is not remediable**, so it never closed, the score never improved, and the team spent effort on a line that cannot move. On the reference fleet that was **15% of the endpoints**.
+
+`src/Lifecycle.php` carries a static catalogue of end-of-support dates (Windows client and Server, Ubuntu LTS, CentOS, RHEL, AlmaLinux/Rocky, Debian, Oracle Linux, SLES) matched against `os_name` + `os_version`. Three states: `supported`, `ending_soon` (within 180 days) and `eol`.
+
+The catalogue is deliberately a static table — it has to work on a GLPI with no internet, and fixing a date is a one-line change. It **never guesses**: an unrecognised OS becomes `unknown`, never `supported`, because assuming support would hide exactly the exotic, abandoned host. The `REVIEWED_ON` constant records the last human review of the dates and is surfaced in the UI.
+
+### 📉 How the score is calculated
+
+The plugin has **two scores**, and they are the same thing from two angles:
+
+| | Where | Scale | Built from |
+|---|---|---|---|
+| **Risk score** | endpoint page | 0–100, **higher is worse** | open CVEs + missing patches |
+| **Health grade** | fleet report | 0–10, **higher is better** | the risk score (7 points) + hygiene (3 points) |
+
+**Risk score.** The worst severity present sets a **floor**; the **volume** inside that severity moves the score within its band, logarithmically; lower-severity findings add a **breadth** term capped at 10 points.
+
+| Dominant severity | Possible range |
+|---|---|
+| Critical | 60 – 100 |
+| High | 35 – 69 |
+| Medium | 15 – 39 |
+| Low | 5 – 10 |
+
+Displayed bands: **0–14 Low · 15–39 Medium · 40–69 High · 70–100 Critical**. Two useful invariants follow: an endpoint with **no critical finding can never reach the critical band**, however much volume it piles up; and **clearing a whole severity always drops the score one band**, because the floor moves down.
+
+How the counts are composed:
+- CVEs in the **KEV catalogue** also count at the critical level — confirmed exploitation outweighs the theoretical severity band.
+- **Missing patches** enter **one level below** their own severity (a critical patch counts as high), because a patch is exposure not yet confirmed exploitable on that host — on its own it must not make an endpoint critical.
+- Only **open findings** count. Anything remediated leaves the calculation entirely.
+
+**Health grade.** `10 − 7 × (risk/100) − hygiene`, where hygiene is agent silent (1.0), OS past end of support (0.8), disk not encrypted (0.6) and Defender unhealthy (0.6) — 3.0 in total. Unknown data (`NULL`) never penalises. Defender is only judged on Windows. A **0.0 is only reachable** with risk 100 **and** all four hygiene checks failing.
+
+**End-of-support floor.** An endpoint whose OS no longer receives fixes is raised to **at least 40 (High)** even with zero open findings: an unsupported machine is not a safe machine, it is one nobody is looking for vulnerabilities in any more and for which no fix will ever arrive. The floor appears as its own line in the breakdown, so it is clear the lift came from the operating system and not from a finding.
+
+The endpoint page carries a **"Where does this number come from?"** button that opens the arithmetic line by line — floor, volume, breadth and the findings that went in — adding up to exactly the number displayed beside it.
+
+> **Why the model changed (v2.15.0):** it used to sum a fixed weight per finding and clamp with `min(100, …)`. A real endpoint summed ~4,400 against a ceiling of 100, so remediating *every* critical **and** *every* high CVE left the badge reading "100 Critical"; in the fleet report, dozens of very different machines tied at 0.0. The scale saturated exactly where triage happens. On the reference fleet the change took endpoints pinned at 100 from **63 to 4**, and zeroed health grades from **30 to 0**.
 
 ### ✅ Life cycle of a fix
 
@@ -315,6 +451,10 @@ What happens when someone patches a machine (`apt upgrade`, Windows Update, a Ta
 src/
 ├── Api.php            — Tanium REST/GraphQL API communication
 ├── Sync.php           — Endpoint synchronization (server-side incremental)
+├── Risk.php           — 0–100 risk model and 0–10 grade (pure arithmetic)
+├── Lifecycle.php      — OS end-of-support detection (static catalogue)
+├── ActionPlan.php     — Ranking of actions by risk removed
+├── RiskHistory.php    — Per-endpoint risk history (before → after)
 ├── Dashboard.php      — Dashboard & risk KPIs
 ├── DashboardCards.php — Cards for the native GLPI dashboard
 ├── Vulnerability.php  — CVE management & remediation

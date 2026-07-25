@@ -122,12 +122,62 @@ foreach ($DB->request(['SELECT' => ['id', 'name'], 'FROM' => 'glpi_users', 'WHER
 
 $webDir    = \Plugin::getWebDir('tanium');
 $riskScore = (int) ($asset['risk_score'] ?? 0);
-$riskLabel = match (true) {
-    $riskScore >= 70 => ['Crítico', 'tanium-risk-critical'],
-    $riskScore >= 40 => ['Alto',    'tanium-risk-high'],
-    $riskScore >= 15 => ['Médio',   'tanium-risk-medium'],
-    default          => ['Baixo',   'tanium-risk-low'],
-};
+$bandNames = [
+    'critical' => __('Critical', 'tanium'),
+    'high'     => __('High', 'tanium'),
+    'medium'   => __('Medium', 'tanium'),
+    'low'      => __('Low', 'tanium'),
+];
+$riskLabel = [
+    $bandNames[\GlpiPlugin\Tanium\Risk::band($riskScore)] ?? '',
+    \GlpiPlugin\Tanium\Risk::bandClass($riskScore),
+];
+
+// ── Score transparency ────────────────────────────────────────────────────
+// $sevCount above counts every row including the already-remediated ones (the
+// CVE table on this page shows history too). The score only ever counted open
+// findings, so the breakdown has to recount — otherwise the arithmetic shown
+// to the user would not add up to the badge next to it.
+$openSev  = ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];
+$openKev  = 0;
+$kevSet   = \GlpiPlugin\Tanium\Enrichment::kevSet();
+foreach ($cves as $cve) {
+    if (strtolower((string)($cve['status'] ?? 'open')) === 'remediated') {
+        continue;
+    }
+    $sev = strtolower((string)($cve['severity'] ?? 'low'));
+    if (!isset($openSev[$sev])) {
+        $sev = 'low';
+    }
+    $openSev[$sev]++;
+    if (isset($kevSet[strtoupper((string)($cve['cve_id'] ?? ''))])) {
+        $openKev++;
+    }
+}
+
+$openPatchSev = ['critical' => 0, 'important' => 0, 'moderate' => 0, 'low' => 0];
+foreach ($DB->request([
+    'SELECT' => ['severity'],
+    'FROM'   => 'glpi_plugin_tanium_patches',
+    'WHERE'  => ['tanium_eid' => $eid, 'status' => 'missing'],
+]) as $p) {
+    $sev = strtolower((string)($p['severity'] ?? 'low'));
+    if (!isset($openPatchSev[$sev])) {
+        $sev = 'low';
+    }
+    $openPatchSev[$sev]++;
+}
+
+$riskTiers    = \GlpiPlugin\Tanium\Risk::tierCounts($openSev, $openKev, $openPatchSev);
+$riskBreakdown = \GlpiPlugin\Tanium\Risk::score($riskTiers);
+
+// Vendor support state — an EOL host cannot be patched out of its risk.
+$lifecycle     = \GlpiPlugin\Tanium\Lifecycle::status($asset['os_name'] ?? null, $asset['os_version'] ?? null);
+$riskBreakdown = \GlpiPlugin\Tanium\Risk::applyLifecycleFloor($riskBreakdown, $lifecycle['state']);
+
+// ── Before / after ────────────────────────────────────────────────────────
+$riskDelta = \GlpiPlugin\Tanium\RiskHistory::delta($eid, $riskScore);
+$riskFixed = \GlpiPlugin\Tanium\RiskHistory::fixedSince($eid);
 
 $lastSeen    = $asset['last_seen'] ? strtotime($asset['last_seen']) : 0;
 $isOnline    = $lastSeen && (time() - $lastSeen) < 3600;
@@ -176,6 +226,23 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                 <?php if ($asset['is_virtual']): ?>
                 <span class="tanium-badge tanium-badge-muted">Virtual</span>
                 <?php endif; ?>
+                <?php if ($lifecycle['state'] === 'eol'): ?>
+                <span class="tanium-badge tanium-badge-critical"
+                      title="<?= sprintf(
+                          __('%1$s reached end of support on %2$s — no security fix will be issued for new vulnerabilities. This risk is resolved by migration, not by patching.', 'tanium'),
+                          (string) $lifecycle['product'],
+                          Html::convDate((string) $lifecycle['eol_date'])
+                      ) ?>">
+                    <span class="ti ti-refresh-alert"></span>
+                    <?= sprintf(__('End of support since %s', 'tanium'), Html::convDate((string) $lifecycle['eol_date'])) ?>
+                </span>
+                <?php elseif ($lifecycle['state'] === 'ending_soon'): ?>
+                <span class="tanium-badge tanium-badge-warning"
+                      title="<?= sprintf(__('%s stops receiving security fixes soon', 'tanium'), (string) $lifecycle['product']) ?>">
+                    <span class="ti ti-clock-exclamation"></span>
+                    <?= sprintf(__('End of support in %d days', 'tanium'), (int) $lifecycle['days']) ?>
+                </span>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -185,6 +252,53 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
             <div class="tanium-risk-score"><?= $riskScore ?></div>
             <div class="tanium-risk-label"><?= $riskLabel[0] ?></div>
             <div class="tanium-risk-sub">Risk Score</div>
+        </div>
+
+        <!-- Before → after: what the remediation work actually moved -->
+        <div class="tanium-risk-trend">
+            <?php if ($riskDelta !== null && $riskDelta['delta'] !== 0):
+                $improved = $riskDelta['delta'] < 0; ?>
+                <div class="tanium-risk-trend-head <?= $improved ? 'tanium-trend-good' : 'tanium-trend-bad' ?>">
+                    <span class="ti ti-<?= $improved ? 'trending-down' : 'trending-up' ?>"></span>
+                    <strong><?= $improved ? '−' : '+' ?><?= abs($riskDelta['delta']) ?></strong>
+                    <span class="tanium-small"><?= sprintf(__('in %d days', 'tanium'), \GlpiPlugin\Tanium\RiskHistory::WINDOW_DAYS) ?></span>
+                </div>
+                <div class="tanium-small tanium-muted">
+                    <?= sprintf(
+                        __('was %1$d (%2$s) on %3$s', 'tanium'),
+                        $riskDelta['from'],
+                        $bandNames[\GlpiPlugin\Tanium\Risk::band($riskDelta['from'])] ?? '',
+                        Html::convDate($riskDelta['since'])
+                    ) ?>
+                </div>
+                <div class="tanium-sparkline"><?= \GlpiPlugin\Tanium\RiskHistory::sparkline($riskDelta['points']) ?></div>
+            <?php elseif ($riskDelta !== null): ?>
+                <div class="tanium-small tanium-muted">
+                    <span class="ti ti-minus"></span>
+                    <?= sprintf(__('unchanged for %d days', 'tanium'), \GlpiPlugin\Tanium\RiskHistory::WINDOW_DAYS) ?>
+                </div>
+            <?php else: ?>
+                <div class="tanium-small tanium-muted">
+                    <span class="ti ti-history-off"></span>
+                    <?= __('no history yet — recorded from the next change', 'tanium') ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($riskFixed['cves'] > 0 || $riskFixed['patches'] > 0): ?>
+            <div class="tanium-small tanium-trend-good" style="margin-top:4px">
+                <span class="ti ti-check"></span>
+                <?= sprintf(
+                    __('%1$d CVE(s) and %2$d patch(es) fixed in the period', 'tanium'),
+                    $riskFixed['cves'],
+                    $riskFixed['patches']
+                ) ?>
+            </div>
+            <?php endif; ?>
+
+            <button type="button" class="tanium-link tanium-small" style="background:none;border:0;padding:0;cursor:pointer;margin-top:6px"
+                    onclick="document.getElementById('tanium-score-math').classList.toggle('tanium-hidden')">
+                <span class="ti ti-math-function"></span> <?= __('Where does this number come from?', 'tanium') ?>
+            </button>
         </div>
         <!-- Quick actions -->
         <div class="tanium-ep-actions">
@@ -209,6 +323,105 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                 <span class="ti ti-shield-lock"></span> <?= __('Quarantine', 'tanium') ?>
             </button>
             <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<!-- ── Score breakdown (collapsed by default) ────────────────── -->
+<div id="tanium-score-math" class="tanium-card tanium-hidden" style="margin-bottom:14px">
+    <div class="tanium-card-header">
+        <span class="ti ti-math-function"></span> <?= __('How this score was calculated', 'tanium') ?>
+    </div>
+    <div class="tanium-card-body">
+        <?php
+        $tierNames = [
+            'critical' => __('critical', 'tanium'),
+            'high'     => __('high', 'tanium'),
+            'medium'   => __('medium', 'tanium'),
+            'low'      => __('low', 'tanium'),
+        ];
+        ?>
+        <p class="tanium-small tanium-muted" style="margin-top:0">
+            <?= __('The worst severity present sets the floor. How many findings sit in that severity moves the score inside its band, on a logarithmic scale. Everything below it adds a capped amount on top. Only open findings count — remediated ones leave the calculation entirely.', 'tanium') ?>
+        </p>
+
+        <table class="tanium-table" style="margin-bottom:10px">
+            <thead>
+                <tr>
+                    <th><?= __('Component', 'tanium') ?></th>
+                    <th><?= __('Basis', 'tanium') ?></th>
+                    <th class="tanium-center"><?= __('Points', 'tanium') ?></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if ($riskBreakdown['steps'] === []): ?>
+                <tr>
+                    <td colspan="3" class="tanium-muted"><?= __('No open findings — score is zero.', 'tanium') ?></td>
+                </tr>
+            <?php endif; ?>
+            <?php foreach ($riskBreakdown['steps'] as $step):
+                $tierName = $step['tier'] !== null ? ($tierNames[$step['tier']] ?? $step['tier']) : '';
+                [$label, $basis] = match ($step['kind']) {
+                    'base' => [
+                        __('Severity floor', 'tanium'),
+                        sprintf(__('worst severity present: %s', 'tanium'), $tierName),
+                    ],
+                    'volume' => [
+                        __('Volume in that severity', 'tanium'),
+                        sprintf(
+                            __('%1$d finding(s) at %2$s — %3$d%% of the headroom', 'tanium'),
+                            (int)$step['count'],
+                            $tierName,
+                            (int) round(\GlpiPlugin\Tanium\Risk::volumeRatio((int)$step['count']) * 100)
+                        ),
+                    ],
+                    'breadth' => [
+                        __('Breadth of lower severities', 'tanium'),
+                        sprintf(__('%d finding(s) below the leading severity', 'tanium'), (int)$step['count']),
+                    ],
+                    'eol_floor' => [
+                        __('Operating system past end of support', 'tanium'),
+                        sprintf(
+                            __('%s receives no security fixes — risk floored, since patching cannot resolve it', 'tanium'),
+                            (string) ($lifecycle['product'] ?? '')
+                        ),
+                    ],
+                    default => [$step['kind'], ''],
+                };
+            ?>
+                <tr>
+                    <td><?= htmlspecialchars($label) ?></td>
+                    <td class="tanium-small tanium-muted"><?= htmlspecialchars($basis) ?></td>
+                    <td class="tanium-center tanium-mono">+<?= number_format((float)$step['points'], 1) ?></td>
+                </tr>
+            <?php endforeach; ?>
+                <tr style="font-weight:700;border-top:2px solid rgba(255,255,255,.15)">
+                    <td colspan="2"><?= __('Risk score', 'tanium') ?></td>
+                    <td class="tanium-center tanium-mono"><?= $riskBreakdown['score'] ?> / 100</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="tanium-small tanium-muted">
+            <strong><?= __('Counted as open:', 'tanium') ?></strong>
+            <?= sprintf(
+                __('%1$d critical, %2$d high, %3$d medium, %4$d low CVE(s)', 'tanium'),
+                $openSev['critical'], $openSev['high'], $openSev['medium'], $openSev['low']
+            ) ?>
+            <?php if ($openKev > 0): ?>
+                · <?= sprintf(__('%d in the KEV catalogue, which also count at the critical level', 'tanium'), $openKev) ?>
+            <?php endif; ?>
+            <?php if (array_sum($openPatchSev) > 0): ?>
+                · <?= sprintf(
+                    __('%d missing patch(es), counted one severity level below their own', 'tanium'),
+                    array_sum($openPatchSev)
+                ) ?>
+            <?php endif; ?>
+        </div>
+        <div class="tanium-small tanium-muted" style="margin-top:6px">
+            <strong><?= __('Bands:', 'tanium') ?></strong>
+            <?= __('0–14 Low · 15–39 Medium · 40–69 High · 70–100 Critical.', 'tanium') ?>
+            <?= __('An endpoint with no critical finding cannot reach the critical band.', 'tanium') ?>
         </div>
     </div>
 </div>

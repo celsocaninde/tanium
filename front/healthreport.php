@@ -128,6 +128,9 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                     <th><?= __('Endpoint', 'tanium') ?></th>
                     <th class="tanium-center"><?= __('Grade', 'tanium') ?></th>
                     <th class="tanium-center"><?= __('Verdict', 'tanium') ?></th>
+                    <th class="tanium-center" title="<?= sprintf(__('Risk score movement over the last %d days', 'tanium'), \GlpiPlugin\Tanium\RiskHistory::WINDOW_DAYS) ?>">
+                        <?= __('Trend', 'tanium') ?>
+                    </th>
                     <th><?= __('Diagnosis', 'tanium') ?></th>
                     <th class="tanium-center" title="<?= __('Open CVEs: critical / high / medium', 'tanium') ?>">CVEs</th>
                     <th class="tanium-center"><?= __('Patches', 'tanium') ?></th>
@@ -154,6 +157,20 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
                         <span class="tanium-badge" style="background:<?= $r['verdict_color'] ?>22;color:<?= $r['verdict_color'] ?>;border:1px solid <?= $r['verdict_color'] ?>55">
                             <?= $r['issues'] === [] ? '✓ ' : '' ?><?= htmlspecialchars($r['verdict']) ?>
                         </span>
+                    </td>
+                    <td class="tanium-center tanium-small">
+                        <?php if (($r['risk_delta'] ?? null) === null): ?>
+                            <span class="tanium-muted">—</span>
+                        <?php elseif ((int)$r['risk_delta'] === 0): ?>
+                            <span class="tanium-muted" title="<?= __('no movement in the period', 'tanium') ?>">=</span>
+                        <?php else:
+                            $improved = (int)$r['risk_delta'] < 0; ?>
+                            <span class="<?= $improved ? 'tanium-trend-good' : 'tanium-trend-bad' ?>"
+                                  style="font-weight:700"
+                                  title="<?= sprintf(__('risk was %d', 'tanium'), (int)$r['risk_from']) ?>">
+                                <?= $improved ? '▼' : '▲' ?> <?= abs((int)$r['risk_delta']) ?>
+                            </span>
+                        <?php endif; ?>
                     </td>
                     <td class="tanium-small" style="max-width:420px">
                         <?= htmlspecialchars($r['message']) ?>
