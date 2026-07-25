@@ -2122,6 +2122,15 @@ msgstr "Marcar como remediados os CVEs/patches que deixarem de ser reportados pe
 msgid "Email a remediation digest when a sync records fixes (remediated CVEs / installed patches, PDF attached)"
 msgstr "Enviar resumo de remediação por e-mail quando uma sincronização registrar correções (CVEs remediados / patches instalados, PDF em anexo)"
 
+msgid "Open a GLPI ticket per endpoint that completed remediations, already solved, with the full change history"
+msgstr "Abrir um chamado GLPI por endpoint que concluir remediações, já solucionado, com o histórico completo de mudanças"
+
+msgid "This endpoint is waiting for a reboot. Patches already installed keep being reported as missing until it restarts — they clear on the first sync after the reboot."
+msgstr "Este endpoint está aguardando reinicialização. Patches já instalados continuam sendo reportados como ausentes até que ele reinicie — eles são baixados na primeira sincronização após o reboot."
+
+msgid "Waiting for a reboot — patches already installed keep showing as missing until this endpoint restarts."
+msgstr "Aguardando reinicialização — patches já instalados continuam aparecendo como ausentes até que este endpoint reinicie."
+
 msgid "Monthly report schedule"
 msgstr "Agendamento do relatório mensal"
 
@@ -2152,3 +2161,130 @@ msgstr "PDF por endpoint"
 
 msgid "PDF export unavailable (TCPDF not found) — check tanium.log."
 msgstr "Exportação em PDF indisponível (TCPDF não encontrado) — verifique o tanium.log."
+
+# ── Trend tab ────────────────────────────────────────────────────────────────
+
+msgid "Trend"
+msgstr "Tendência"
+
+msgid "Tanium — Trend"
+msgstr "Tanium — Tendência"
+
+msgid "How your CVE posture moved since the last scan"
+msgstr "Como sua postura de CVEs evoluiu desde a última varredura"
+
+msgid "Total CVEs"
+msgstr "Total de CVEs"
+
+msgid "Average risk score"
+msgstr "Score de risco médio"
+
+msgid "Avg. risk"
+msgstr "Risco médio"
+
+msgid "CVE count over time"
+msgstr "Evolução da quantidade de CVEs"
+
+msgid "Scan-by-scan history"
+msgstr "Histórico varredura a varredura"
+
+msgid "vs last scan"
+msgstr "vs. última varredura"
+
+msgid "new"
+msgstr "novo"
+
+msgid "no change"
+msgstr "sem variação"
+
+msgid "No sync history yet. Run a sync to start tracking trends."
+msgstr "Ainda não há histórico de sincronização. Execute uma sincronização para começar a acompanhar a tendência."
+
+msgid "Only one scan recorded so far. Run a second sync to see a trend."
+msgstr "Apenas uma varredura registrada até agora. Execute uma segunda sincronização para visualizar a tendência."
+
+# ── TV / Kiosk mode ──────────────────────────────────────────────────────────
+
+msgid "TV / Kiosk mode"
+msgstr "Modo TV / Kiosk"
+
+msgid "Enable the kiosk dashboard (full-screen, auto-refresh — for NOC/SOC wall TVs, no GLPI login needed)"
+msgstr "Ativar o painel kiosk (tela cheia, atualização automática — para TVs de NOC/SOC, sem necessidade de login no GLPI)"
+
+msgid "Kiosk URL"
+msgstr "URL do kiosk"
+
+msgid "Open kiosk ↗"
+msgstr "Abrir kiosk ↗"
+
+msgid "Generate new link"
+msgstr "Gerar novo link"
+
+msgid "Save the configuration to generate the kiosk link."
+msgstr "Salve a configuração para gerar o link do kiosk."
+
+msgid "New kiosk link generated — the previous link no longer works."
+msgstr "Novo link de kiosk gerado — o link anterior não funciona mais."
+
+msgid "Open this link in the TV browser — no login needed. Anyone with the link sees the KPIs: treat it like a password. The panel rotates through 7 screens; optional URL params: &amp;interval=20 (seconds per screen) and &amp;slide=2 (pin one screen)."
+msgstr "Abra este link no navegador da TV — não é necessário login. Qualquer pessoa com o link vê os KPIs: trate-o como uma senha. O painel alterna entre 7 telas; parâmetros opcionais na URL: &amp;interval=20 (segundos por tela) e &amp;slide=2 (fixar uma tela)."
+
+# ── Ticket requester / entity ────────────────────────────────────────────────
+
+msgid "Default ticket requester"
+msgstr "Requerente padrão dos chamados"
+
+msgid "GLPI user set as requester on every ticket the plugin opens — including automatic (cron) tickets for critical CVEs, silent agents, threats and KEV remediation, which otherwise have no requester. Leave empty to keep the default behaviour (the logged-in user for manual tickets, none for automatic ones)."
+msgstr "Usuário GLPI definido como requerente em todos os chamados abertos pelo plugin — inclusive os automáticos (cron) de CVEs críticos, agentes silenciosos, ameaças e remediação KEV, que de outra forma ficam sem requerente. Deixe vazio para manter o comportamento padrão (o usuário logado nos chamados manuais, nenhum nos automáticos)."
+
+msgid "Root entity"
+msgstr "Entidade raiz"
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+
+msgid "ID"
+msgstr "ID"
+
+msgid "Last update"
+msgstr "Última atualização"
+
+#, php-format
+msgid "Solved agent-health ticket #%d — all agents reporting again."
+msgstr "Chamado de saúde de agentes #%d solucionado — todos os agentes voltaram a reportar."
+
+# ── AJAX responses ───────────────────────────────────────────────────────────
+
+#, php-format
+msgid "Ticket #%d created. Send an approval request in GLPI — once approved, the Tanium deployment is triggered automatically."
+msgstr "Chamado #%d criado com sucesso. Envie uma solicitação de aprovação no GLPI — quando aprovado, o deploy no Tanium é acionado automaticamente."
+
+#, php-format
+msgid "Ticket #%d created. Send the approval request — once approved, the action fires automatically in Tanium."
+msgstr "Chamado #%d criado. Envie a solicitação de aprovação — quando aprovada, a ação é disparada automaticamente no Tanium."
+
+# ── Retired endpoints / reboot sensor ────────────────────────────────────────
+
+msgid "Reboot-pending sensor"
+msgstr "Sensor de reboot pendente"
+
+msgid "Tanium sensor that reports whether the endpoint is waiting for a restart. The name varies per tenant (\"Reboot Required\", \"Pending Restart\"). It is collected automatically — you do not need to add it to the custom sensors list. Leave empty to disable the reboot warning on the patch screens."
+msgstr "Sensor do Tanium que informa se o endpoint está aguardando reinicialização. O nome varia por tenant (\"Reboot Required\", \"Pending Restart\"). Ele é coletado automaticamente — não é preciso adicioná-lo à lista de sensores customizados. Deixe vazio para desativar o aviso de reboot nas telas de patches."
+
+msgid "Remove retired endpoints after (days)"
+msgstr "Remover endpoints retirados após (dias)"
+
+msgid "An endpoint Tanium stops returning in a full sync is flagged as retired. After this many days the purgeretired cron deletes its Tanium data (findings, patches, history) so it stops skewing the fleet risk average and the coverage KPI. The GLPI computer itself is never deleted. 0 = never remove, only flag."
+msgstr "Um endpoint que o Tanium deixa de retornar em uma sincronização completa é marcado como retirado. Após esta quantidade de dias, o cron purgeretired apaga os dados Tanium dele (findings, patches, histórico) para que pare de distorcer o risco médio da frota e o KPI de cobertura. O computador do GLPI nunca é apagado. 0 = nunca remover, apenas marcar."
+
+msgid "Tanium — remove endpoints Tanium stopped reporting, after the configured grace period."
+msgstr "Tanium — remove endpoints que o Tanium parou de reportar, após o período de carência configurado."
+
+msgid "Retired-endpoint purge disabled (grace period set to 0). Skipping."
+msgstr "Expurgo de endpoints retirados desativado (carência definida como 0). Ignorando."
+
+msgid "No retired endpoint past the grace period."
+msgstr "Nenhum endpoint retirado além do período de carência."
+
+#, php-format
+msgid "Purged %1$d endpoint(s) retired for more than %2$d days."
+msgstr "Expurgado(s) %1$d endpoint(s) retirado(s) há mais de %2$d dias."

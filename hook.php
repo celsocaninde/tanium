@@ -113,6 +113,9 @@ function plugin_tanium_install(): bool {
             'last_weekly_report'      => "timestamp NULL DEFAULT NULL",
             'auto_close_cves'         => "tinyint(1) NOT NULL DEFAULT 1",
             'notify_remediation'      => "tinyint(1) NOT NULL DEFAULT 0",
+            'remediation_ticket'      => "tinyint(1) NOT NULL DEFAULT 0",
+            'retire_after_days'       => "int NOT NULL DEFAULT 0",
+            'reboot_sensor'           => "varchar(255) NOT NULL DEFAULT ''",
             'monthly_report_day'      => "tinyint NOT NULL DEFAULT 1",
             'last_monthly_report'     => "timestamp NULL DEFAULT NULL",
             'kiosk_enabled'           => "tinyint(1) NOT NULL DEFAULT 0",
@@ -156,11 +159,13 @@ function plugin_tanium_install(): bool {
                 `last_seen`       timestamp NULL DEFAULT NULL,
                 `sync_status`     varchar(50) NOT NULL DEFAULT 'ok',
                 `sync_message`    text DEFAULT NULL,
+                `retired_at`      timestamp NULL DEFAULT NULL,
                 `date_mod`        timestamp NULL DEFAULT NULL,
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `tanium_eid` (`tanium_eid`),
                 KEY `computers_id` (`computers_id`),
-                KEY `risk_score` (`risk_score`)
+                KEY `risk_score` (`risk_score`),
+                KEY `retired_at` (`retired_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
         );
     } else {
@@ -186,6 +191,11 @@ function plugin_tanium_install(): bool {
             'event_crashes'    => "int DEFAULT NULL",
             'event_total'      => "int DEFAULT NULL",
             'sensor_data'      => "text DEFAULT NULL",
+            // Endpoint stopped being returned by a full sync (decommissioned,
+            // reinstalled, out of scope). Kept as a marker rather than deleted
+            // so nothing disappears without the admin opting in — the
+            // purgeretired cron does the actual removal.
+            'retired_at'       => "timestamp NULL DEFAULT NULL",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_assets` LIKE '{$col}'");

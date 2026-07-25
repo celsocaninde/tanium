@@ -403,19 +403,28 @@ class Notification {
      * Self-contained styled block (no doctype/body) so it renders both in the
      * ticket timeline and in the notification email GLPI derives from it.
      */
-    public static function brandedTicketHtml(string $headline, string $subtitle, string $summaryHtml, string $bodyHtml, string $footer = 'Chamado aberto automaticamente pelo plugin Tanium para GLPI.'): string {
+    public static function brandedTicketHtml(
+        string $headline,
+        string $subtitle,
+        string $summaryHtml,
+        string $bodyHtml,
+        string $footer = 'Chamado aberto automaticamente pelo plugin Tanium para GLPI.',
+        string $gradientFrom = '#7a0d1f',
+        string $gradientTo = '#e8212a',
+        string $subtitleColor = '#ffd6d9'
+    ): string {
         $summary = $summaryHtml !== ''
             ? "<div style='background:#f9fafb;padding:10px 20px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#4a5568'>{$summaryHtml}</div>"
             : '';
 
         return "<div style='max-width:680px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-family:Segoe UI,Arial,sans-serif'>
-  <div style='background:linear-gradient(120deg,#7a0d1f 0%,#e8212a 100%);padding:16px 20px;color:#ffffff'>
+  <div style='background:linear-gradient(120deg,{$gradientFrom} 0%,{$gradientTo} 100%);padding:16px 20px;color:#ffffff'>
     <table style='border-collapse:collapse;margin-bottom:8px'><tr>
       <td style='width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.18);color:#ffffff;font-weight:900;font-size:15px;text-align:center;vertical-align:middle'>T</td>
       <td style='padding-left:8px;font-size:16px;font-weight:800;letter-spacing:2px;vertical-align:middle;color:#ffffff'>TANIUM</td>
     </tr></table>
     <div style='font-size:16px;font-weight:700;color:#ffffff'>{$headline}</div>
-    <div style='margin-top:6px;font-size:12px;color:#ffd6d9'>{$subtitle}</div>
+    <div style='margin-top:6px;font-size:12px;color:{$subtitleColor}'>{$subtitle}</div>
   </div>
   {$summary}
   <div style='padding:16px 20px'>{$bodyHtml}</div>
@@ -700,6 +709,150 @@ class Notification {
     Gerado automaticamente pelo plugin Tanium para GLPI ao final da sincronização. Relatório completo em anexo (PDF).
   </div>
 </div></body></html>";
+    }
+
+    /**
+     * Body of the per-endpoint "remediation completed" ticket: what this sync
+     * confirmed as fixed on the machine, plus the recorded change history that
+     * led there. Opened already solved — it is an audit record, not a task —
+     * so the whole story has to be inside the ticket itself.
+     *
+     * @param array<int,array{cve_id:string,severity:string,cvss:mixed,detected_at:?string,days_open:?int}> $remediatedCves
+     * @param array<int,array{patch_id:string,title:string,severity:string}>                               $installedPatches
+     * @param array<int,array{kind:string,ref:string,title:?string,old_status:?string,new_status:string,changed_at:string}> $timeline
+     */
+    public static function buildRemediationTicketHtml(
+        string $endpointLabel,
+        string $eid,
+        array $remediatedCves,
+        array $installedPatches,
+        array $timeline,
+        string $glpiUrl = ''
+    ): string {
+        $sevColor = static fn(string $s): string => match ($s) {
+            'critical'            => '#d6336c',
+            'important', 'high'   => '#e8590c',
+            'moderate', 'medium'  => '#c2860a',
+            default               => '#1a9c53',
+        };
+        $th = 'padding:8px 12px;text-align:left;border-bottom:2px solid #1a9c53';
+
+        $cveSection = '';
+        if ($remediatedCves !== []) {
+            $rows = '';
+            foreach (array_slice($remediatedCves, 0, 50) as $ev) {
+                $sev  = strtolower((string)($ev['severity'] ?? 'unknown'));
+                $days = ($ev['days_open'] ?? null) !== null ? $ev['days_open'] . ' dia(s)' : '—';
+                $rows .= "<tr>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;font-family:monospace'><a href='https://nvd.nist.gov/vuln/detail/" . rawurlencode((string)$ev['cve_id']) . "' style='color:#1a9c53;text-decoration:none;font-weight:bold'>" . htmlspecialchars((string)$ev['cve_id']) . "</a></td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;color:" . $sevColor($sev) . ";font-weight:bold'>" . ucfirst($sev) . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#4a5568'>" . htmlspecialchars((string)($ev['cvss'] ?? '—')) . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#4a5568'>" . htmlspecialchars((string)($ev['detected_at'] ?? '—')) . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#4a5568'>{$days}</td>
+                </tr>";
+            }
+            $more = count($remediatedCves) > 50
+                ? "<p style='margin:4px 0 0;font-size:11px;color:#9ca3af'>… e mais " . (count($remediatedCves) - 50) . " CVE(s).</p>"
+                : '';
+            $cveSection = "<h3 style='margin:20px 0 8px;font-size:14px;color:#1a1a2e'>🛡️ CVEs remediados <span style='font-weight:normal;color:#9ca3af;font-size:12px'>(" . count($remediatedCves) . ")</span></h3>
+    <table style='width:100%;border-collapse:collapse;font-size:13px'>
+      <thead><tr style='background:#f9fafb'>
+        <th style='{$th}'>CVE ID</th><th style='{$th}'>Severidade</th><th style='{$th}'>CVSS</th>
+        <th style='{$th}'>Detectado em</th><th style='{$th}'>Tempo aberto</th>
+      </tr></thead><tbody>{$rows}</tbody></table>{$more}";
+        }
+
+        $patchSection = '';
+        if ($installedPatches !== []) {
+            $rows = '';
+            foreach (array_slice($installedPatches, 0, 50) as $p) {
+                $sev   = strtolower((string)($p['severity'] ?? 'unknown'));
+                $title = (string)($p['title'] !== '' ? $p['title'] : $p['patch_id']);
+                $rows .= "<tr>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;font-family:monospace;font-size:12px'>" . htmlspecialchars(self::short((string)$p['patch_id'], 40)) . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;color:#1a1a2e'>" . htmlspecialchars(self::short($title, 90)) . "</td>
+                    <td style='padding:8px 12px;border-bottom:1px solid #eee;color:" . $sevColor($sev) . ";font-weight:bold'>" . ucfirst($sev) . "</td>
+                </tr>";
+            }
+            $more = count($installedPatches) > 50
+                ? "<p style='margin:4px 0 0;font-size:11px;color:#9ca3af'>… e mais " . (count($installedPatches) - 50) . " patch(es).</p>"
+                : '';
+            $patchSection = "<h3 style='margin:20px 0 8px;font-size:14px;color:#1a1a2e'>🔧 Patches instalados <span style='font-weight:normal;color:#9ca3af;font-size:12px'>(" . count($installedPatches) . ")</span></h3>
+    <table style='width:100%;border-collapse:collapse;font-size:13px'>
+      <thead><tr style='background:#f9fafb'>
+        <th style='{$th}'>Patch ID</th><th style='{$th}'>Título</th><th style='{$th}'>Severidade</th>
+      </tr></thead><tbody>{$rows}</tbody></table>{$more}";
+        }
+
+        $historySection = '';
+        if ($timeline !== []) {
+            $rows = '';
+            foreach ($timeline as $t) {
+                $new    = strtolower((string)$t['new_status']);
+                $old    = $t['old_status'] !== null ? strtolower((string)$t['old_status']) : null;
+                // The marker is the point of the timeline: at a glance, which
+                // lines are fixes and which are (re)detections.
+                [$icon, $color] = match (true) {
+                    in_array($new, ['remediated', 'installed', 'resolved'], true) => ['✅', '#1a9c53'],
+                    $old === null                                                 => ['🆕', '#9ca3af'],
+                    in_array($new, ['missing', 'open'], true)                     => ['⚠️', '#e8590c'],
+                    default                                                       => ['🔄', '#4a5568'],
+                };
+                $label = (string)$t['ref'];
+                if ($t['kind'] === 'patch' && !empty($t['title'])) {
+                    $label = self::short((string)$t['title'], 70);
+                }
+                $transition = $old !== null
+                    ? htmlspecialchars($old) . ' → <strong>' . htmlspecialchars($new) . '</strong>'
+                    : '<strong>' . htmlspecialchars($new) . '</strong>';
+
+                $rows .= "<tr>
+                    <td style='padding:6px 12px;border-bottom:1px solid #eee;white-space:nowrap;color:#4a5568;font-size:12px'>" . htmlspecialchars((string)$t['changed_at']) . "</td>
+                    <td style='padding:6px 12px;border-bottom:1px solid #eee;text-align:center'>{$icon}</td>
+                    <td style='padding:6px 12px;border-bottom:1px solid #eee;color:#9ca3af;font-size:11px;text-transform:uppercase'>" . htmlspecialchars((string)$t['kind']) . "</td>
+                    <td style='padding:6px 12px;border-bottom:1px solid #eee;color:#1a1a2e;font-size:12px'>" . htmlspecialchars($label) . "</td>
+                    <td style='padding:6px 12px;border-bottom:1px solid #eee;color:{$color};font-size:12px'>{$transition}</td>
+                </tr>";
+            }
+            $historySection = "<h3 style='margin:24px 0 8px;font-size:14px;color:#1a1a2e'>🕘 Histórico de mudanças registrado neste endpoint</h3>
+    <table style='width:100%;border-collapse:collapse;font-size:13px'>
+      <thead><tr style='background:#f9fafb'>
+        <th style='{$th}'>Quando</th><th style='{$th}'></th><th style='{$th}'>Tipo</th>
+        <th style='{$th}'>Item</th><th style='{$th}'>Transição</th>
+      </tr></thead><tbody>{$rows}</tbody></table>
+    <p style='margin:6px 0 0;font-size:11px;color:#9ca3af'>✅ correção &nbsp;·&nbsp; 🆕 primeira detecção &nbsp;·&nbsp; ⚠️ voltou a aparecer &nbsp;·&nbsp; 🔄 outra transição</p>";
+        }
+
+        $cveCount   = count($remediatedCves);
+        $patchCount = count($installedPatches);
+        $daysOpen   = array_values(array_filter(array_column($remediatedCves, 'days_open'), static fn($d) => $d !== null));
+        $avgDays    = $daysOpen !== [] ? number_format(array_sum($daysOpen) / count($daysOpen), 1) : '—';
+
+        $summary = "<span style='margin-right:20px'>CVEs remediados: <strong style='color:#1a1a2e'>{$cveCount}</strong></span>
+    <span style='margin-right:20px'>Patches instalados: <strong style='color:#1a1a2e'>{$patchCount}</strong></span>
+    <span>Tempo médio de correção: <strong style='color:#1a9c53'>{$avgDays} dia(s)</strong></span>";
+
+        $link = ($glpiUrl !== '' && $eid !== '')
+            ? "<p style='margin-top:18px'><a href='" . htmlspecialchars($glpiUrl) . "/plugins/tanium/front/endpoint.php?eid=" . rawurlencode($eid) . "' style='display:inline-block;background:#1a9c53;color:#fff;padding:9px 18px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:13px'>Ver endpoint no plugin</a></p>"
+            : '';
+
+        $body = "<p style='color:#1a1a2e;font-size:13px'>A sincronização com o Tanium confirmou que o endpoint <strong>" . htmlspecialchars($endpointLabel) . "</strong> teve <strong>" . ($cveCount + $patchCount) . " correção(ões)</strong> concluída(s). O Tanium deixou de reportar os itens abaixo, o que significa que a atualização foi efetivamente aplicada na máquina.</p>
+    {$cveSection}
+    {$patchSection}
+    {$historySection}
+    " . self::ticketCallout('#1a9c53', '#f0faf4', '#256b43', '✅ <strong>Nenhuma ação é necessária.</strong> Este chamado é o registro de auditoria da remediação e já nasce solucionado.')
+    . $link;
+
+        return self::brandedTicketHtml(
+            '✅ Remediação concluída — ' . htmlspecialchars($endpointLabel),
+            'Confirmado pela sincronização Tanium → GLPI em ' . date('d/m/Y H:i'),
+            $summary,
+            $body,
+            'Registro gerado automaticamente pelo plugin Tanium para GLPI.',
+            '#14532d',
+            '#1a9c53',
+            '#c9f0d8'
+        );
     }
 
     private static function short(string $value, int $length): string {

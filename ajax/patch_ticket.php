@@ -64,7 +64,7 @@ foreach ($DB->doQuery(
     "SELECT ec.cve_id, v.title, v.severity, v.cvss_score
      FROM glpi_plugin_tanium_endpoint_cves ec
      LEFT JOIN glpi_plugin_tanium_vulnerabilities v ON ec.cve_id = v.cve_id
-     WHERE ec.tanium_eid = '" . $DB->escape($eid) . "' AND ec.status != 'resolved'
+     WHERE ec.tanium_eid = '" . $DB->escape($eid) . "' AND ec.status NOT IN ('resolved', 'remediated')
      ORDER BY v.cvss_score DESC LIMIT 100"
 ) as $r) {
     $cves[] = $r;
@@ -139,7 +139,10 @@ $title        = sprintf('[Tanium] Remediação de Patches — %s (%d patch%s)', 
         'success'    => true,
         'ticket_id'  => $ticketId,
         'ticket_url' => $ticketUrl,
-        'message'    => sprintf('Chamado #%d criado com sucesso. Envie uma solicitação de aprovação no GLPI — quando aprovado, o deploy no Tanium é acionado automaticamente.', $ticketId),
+        'message'    => sprintf(
+            __('Ticket #%d created. Send an approval request in GLPI — once approved, the Tanium deployment is triggered automatically.', 'tanium'),
+            $ticketId
+        ),
     ]);
 
 } catch (\Throwable $e) {

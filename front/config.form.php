@@ -72,6 +72,9 @@ if (isset($_POST['save'])) {
         'report_hour'             => max(0, min(23, (int)($_POST['report_hour'] ?? 8))),
         'auto_close_cves'         => isset($_POST['auto_close_cves']) ? 1 : 0,
         'notify_remediation'      => isset($_POST['notify_remediation']) ? 1 : 0,
+        'remediation_ticket'      => isset($_POST['remediation_ticket']) ? 1 : 0,
+        'retire_after_days'       => max(0, min(3650, (int)($_POST['retire_after_days'] ?? 0))),
+        'reboot_sensor'           => trim((string)($_POST['reboot_sensor'] ?? '')),
         'monthly_report_day'      => max(1, min(28, (int)($_POST['monthly_report_day'] ?? 1))),
     ]);
 

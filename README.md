@@ -2,7 +2,7 @@
   <img src="public/img/tanium-logo.svg" alt="Tanium" width="200" />
   <br/><br/>
   <img src="https://img.shields.io/badge/GLPI-11.x-0078D7?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyem0xIDE1aC0ydi02aDJ2NnptMC04aC0yVjdoMnYyeiIvPjwvc3ZnPg==" />
-  <img src="https://img.shields.io/badge/PHP-8.1%2B-777BB4?style=flat-square&logo=php&logoColor=white" />
+  <img src="https://img.shields.io/badge/PHP-8.2%2B-777BB4?style=flat-square&logo=php&logoColor=white" />
   <img src="https://img.shields.io/badge/License-GPL--2.0-green?style=flat-square" />
   <img src="https://img.shields.io/badge/Tanium-API%20REST-E8212A?style=flat-square" />
   <br/><br/>
@@ -38,9 +38,13 @@ Plugin que conecta a plataforma **Tanium** ao **GLPI 11**, trazendo visibilidade
 | ✅ **Tendência de Remediação** | Página dedicada: CVEs remediados e patches instalados por endpoint, gráfico semanal, MTTR e exportação CSV |
 | 📬 **Digest de Correções** | E-mail automático (com PDF) ao fim de cada sync que registrar CVEs remediados / patches instalados |
 | 🔁 **Auto-close de findings** | CVEs/patches que somem do feed do Tanium são marcados como remediados (alimenta MTTR e relatórios) |
+| 🎫 **Chamado de remediação** | Chamado por endpoint que concluiu correções, já solucionado, com o histórico completo de transições (registro de auditoria) |
+| ♻️ **Aviso de reboot pendente** | Endpoint aguardando reinício é sinalizado na lista de patches — patch instalado continua reportado como ausente até o reboot |
 | ♻️ **Auto-resolução de chamados** | Chamados automáticos (CVEs críticos, agentes silenciosos, Threat Response) são solucionados sozinhos quando a condição desaparece |
 | 📺 **Modo TV/Kiosk** | Painel de segurança em tela cheia com auto-refresh e acesso por link com token (sem login) para TVs de NOC/SOC |
 | ⚙️ **Sincronização** | Agendamento via Cron com suporte a sync incremental |
+| 🛟 **Sync resiliente** | O cursor incremental só avança quando o ciclo termina sem erro — endpoints que falharam voltam na execução seguinte em vez de serem pulados |
+| 🗑️ **Endpoints retirados** | Máquinas que somem da frota do Tanium são marcadas com data de retirada e, opcionalmente, expurgadas após carência configurável |
 | 💻 **Aba no Computador** | Dados Tanium diretamente na ficha do ativo no GLPI |
 | 🎯 **Widget Central** | Resumo de risco no painel inicial do GLPI |
 | 🔒 **Perfis** | Controle de acesso granular por perfil GLPI |
@@ -54,12 +58,12 @@ Plugin que conecta a plataforma **Tanium** ao **GLPI 11**, trazendo visibilidade
 | 🧩 **Dashboard cards nativos** | 7 cards no dashboard nativo do GLPI (grupo "Tanium") |
 | 🔗 **Correlação cross-plugin** | Badges quando o CVE também é visto pelo Nessus/SentinelOne |
 | 📄 **Exportações** | PDF do comparativo de endpoints e busca nativa GLPI com CSV |
-| 🌐 **i18n completa** | 570 strings traduzidas para pt_BR (.mo compilado) |
+| 🌐 **i18n completa** | 670 strings traduzidas para pt_BR (.mo compilado, sem dependência de `msgfmt`) |
 
 ### 🚀 Requisitos
 
 - **GLPI** ≥ 11.0.0
-- **PHP** ≥ 8.1 com extensões `curl` e `json`
+- **PHP** ≥ 8.2 com extensões `curl` e `json`
 - **Tanium** com API REST habilitada e token de acesso
 
 ### 📦 Instalação
@@ -89,6 +93,44 @@ glpi/plugins/
 | 🔄 **Frequência** | Intervalo de sincronização (horas) |
 | 📥 **Limite** | Máximo de endpoints por execução do cron |
 | 📧 **E-mail** | Destinatário do relatório semanal de segurança |
+| 🔁 **Auto-close de findings** | Marca como remediado o que sumiu do feed do Tanium (ligado por padrão) |
+| 🎫 **Chamado de remediação** | Abre um chamado por endpoint que concluiu correções, já solucionado, com o histórico completo |
+| ♻️ **Sensor de reboot pendente** | Nome do sensor do Tanium que indica reinício pendente (coletado automaticamente; vazio desativa o aviso) |
+| 🗑️ **Remover endpoints retirados** | Dias de carência antes de apagar os dados Tanium de uma máquina que sumiu da frota (0 = só marcar) |
+
+### 🧪 Testes
+
+```
+php tests/run.php      # lógica pura (43 casos)
+php tests/mirror.php   # garante que as cópias dos testes conferem com src/
+php tools/lint.php     # php -l em todo o plugin
+php tools/i18n_audit.php pt_BR
+```
+
+As classes do plugin estendem base do GLPI e usam `$DB`, então não são carregáveis fora do container. Cada caso de teste **re-declara** a função testada como função livre, e o `mirror.php` compara essa cópia com o corpo do método real em `src/` (ignorando espaços, comentários e `self::`) — sem ele, a suíte ficaria verde testando código morto.
+
+### ✅ Ciclo de vida de uma correção
+
+O que acontece quando alguém atualiza a máquina (`apt upgrade`, Windows Update, deploy pelo Tanium) e reinicia:
+
+1. **O plugin não olha o servidor** — ele só espelha o que o Tanium reporta. Nada muda no GLPI até o Tanium reavaliar o endpoint.
+2. **Duas fontes, velocidades diferentes:** patches vêm do sensor *Applicable Patches* (ao vivo, reflete rápido); CVEs vêm do módulo *Comply*, que só muda quando o **scan agendado dele** roda. É normal o patch fechar antes do CVE.
+3. **No Windows, o reboot é o gatilho:** até reiniciar, o KB instalado continua sendo reportado como aplicável — a lista mostra `missing` mesmo já tendo sido aplicado. Se o tenant coletar um sensor de reboot (ver *Sensores customizados*), a tela avisa em vez de parecer falha.
+4. **No próximo `taniumsync`**, o item ausente do payload muda de status — **nenhuma linha é apagada**:
+   - CVE → `remediated`, com a transição gravada em `cve_history`
+   - Patch → `installed`, com a transição gravada em `patch_history`
+5. **Em cascata:** risk score recalculado, chamado de CVE crítico auto-solucionado, digest de correções por e-mail (com PDF) e — se habilitado — o **chamado de remediação** por endpoint.
+
+**Por que às vezes não fecha:**
+
+| Situação | Comportamento |
+|---|---|
+| Sensor deu erro/timeout, ou a máquina estava desligada durante o sync | Nada é fechado (proteção contra fechar tudo em massa por soluço) |
+| `Auto-close de findings` desligado | Só fecha se o próprio Tanium reportar o status `remediated` |
+| Finding abaixo do `Severidade mínima` configurada | Nunca entra no payload, então a ausência não prova nada — fica aberto até o filtro baixar |
+| Windows aguardando reboot | Continua `missing` até reiniciar |
+
+> A tela de patches abre filtrada em `missing` — o que foi corrigido está no filtro **Installed / Remediated**, não foi apagado. As tabelas de estado atual nunca são expurgadas; só as de histórico, pela retenção configurada.
 
 ### 🕐 Tarefas Agendadas (Cron)
 
@@ -103,6 +145,7 @@ glpi/plugins/
 | `threatsync` | 15 minutos | Importa alertas do Threat Response e abre chamados |
 | `slabreach` | 1 dia | Webhook diário enquanto houver violações de SLA |
 | `purgehistory` | 1 dia | Expurga histórico além da retenção configurada |
+| `purgeretired` | 1 dia | Remove endpoints que o Tanium parou de reportar, após a carência configurada (0 = desativado) |
 | `apihealth` | 1 dia | Verifica saúde da API e avisa antes do token expirar |
 
 ### 🗂️ Estrutura do Código
@@ -132,6 +175,16 @@ src/
 ├── ComputerGroup.php  — Grupos de computadores Tanium
 ├── CentralWidget.php  — Widget no painel central do GLPI
 └── Notification.php   — Notificações GLPI
+
+tests/
+├── run.php            — Executor da suíte (43 casos, sem dependências)
+├── mirror.php         — Verifica se as cópias dos testes batem com src/
+└── cases/             — Casos por função (os_type, kb_parts, reboot_pending, …)
+
+tools/
+├── lint.php           — php -l recursivo no plugin
+├── i18n_audit.php     — Strings do código ausentes no .po
+└── compile_po.php     — Compila .po → .mo em PHP puro (sem msgfmt)
 ```
 
 ---
@@ -157,9 +210,13 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | ✅ **Remediation Trend** | Dedicated page: remediated CVEs and installed patches per endpoint, weekly chart, MTTR and CSV export |
 | 📬 **Fix Digest** | Automatic email (with PDF) after every sync that records remediated CVEs / installed patches |
 | 🔁 **Findings auto-close** | CVEs/patches that vanish from the Tanium feed are marked as remediated (feeds MTTR and reports) |
+| 🎫 **Remediation ticket** | One ticket per endpoint that finished remediating, opened already solved, carrying the full transition history (audit trail) |
+| ♻️ **Pending reboot warning** | Endpoints awaiting a restart are flagged on the patch list — an installed patch keeps reporting as missing until the reboot |
 | ♻️ **Ticket auto-resolution** | Auto-opened tickets (critical CVEs, silent agents, Threat Response) are solved automatically once the condition clears |
 | 📺 **TV/Kiosk mode** | Full-screen auto-refreshing security panel with token-link access (no login) for NOC/SOC wall TVs |
 | ⚙️ **Synchronization** | Cron scheduling with incremental sync support |
+| 🛟 **Resilient sync** | The incremental cursor only advances when the cycle ends without errors — failed endpoints come back on the next run instead of being skipped |
+| 🗑️ **Retired endpoints** | Machines that disappear from the Tanium fleet are stamped with a retirement date and, optionally, purged after a configurable grace period |
 | 💻 **Computer Tab** | Tanium data directly on the asset record in GLPI |
 | 🎯 **Central Widget** | Risk summary on the GLPI home panel |
 | 🔒 **Profiles** | Granular access control per GLPI profile |
@@ -173,12 +230,12 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | 🧩 **Native dashboard cards** | 7 cards in the native GLPI dashboard ("Tanium" group) |
 | 🔗 **Cross-plugin correlation** | Badges when a CVE is also seen by Nessus/SentinelOne |
 | 📄 **Exports** | Endpoint comparison PDF and native GLPI search with CSV |
-| 🌐 **Full i18n** | 570 strings translated to pt_BR (compiled .mo) |
+| 🌐 **Full i18n** | 670 strings translated to pt_BR (compiled .mo, no `msgfmt` dependency) |
 
 ### 🚀 Requirements
 
 - **GLPI** ≥ 11.0.0
-- **PHP** ≥ 8.1 with `curl` and `json` extensions
+- **PHP** ≥ 8.2 with `curl` and `json` extensions
 - **Tanium** with REST API enabled and access token
 
 ### 📦 Installation
@@ -197,6 +254,44 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | 🔄 **Frequency** | Sync interval (hours) |
 | 📥 **Limit** | Max endpoints per cron run |
 | 📧 **E-mail** | Weekly security report recipient |
+| 🔁 **Findings auto-close** | Marks whatever vanished from the Tanium feed as remediated (on by default) |
+| 🎫 **Remediation ticket** | Opens one already-solved ticket per endpoint that finished remediating, with the full history |
+| ♻️ **Pending reboot sensor** | Name of the Tanium sensor reporting a pending restart (collected automatically; empty disables the warning) |
+| 🗑️ **Purge retired endpoints** | Grace period, in days, before deleting the Tanium data of a machine that left the fleet (0 = flag only) |
+
+### 🧪 Tests
+
+```
+php tests/run.php      # pure logic (43 cases)
+php tests/mirror.php   # asserts the test copies still match src/
+php tools/lint.php     # php -l across the whole plugin
+php tools/i18n_audit.php pt_BR
+```
+
+The plugin classes extend GLPI base classes and rely on `$DB`, so they cannot be loaded outside the container. Each test case **re-declares** the function under test as a free function, and `mirror.php` compares that copy against the real method body in `src/` (ignoring whitespace, comments and `self::`) — without it the suite would stay green while testing dead code.
+
+### ✅ Life cycle of a fix
+
+What happens when someone patches a machine (`apt upgrade`, Windows Update, a Tanium deployment) and reboots:
+
+1. **The plugin never looks at the server** — it only mirrors what Tanium reports. Nothing changes in GLPI until Tanium re-evaluates the endpoint.
+2. **Two sources, different speeds:** patches come from the *Applicable Patches* sensor (live, reflects quickly); CVEs come from the *Comply* module, which only changes when **its own scheduled scan** runs. A patch closing before its CVE is normal.
+3. **On Windows the reboot is the gate:** until the restart, the installed KB keeps being reported as applicable — the list shows `missing` even though it was already applied. If the tenant collects a reboot sensor (see *Custom sensors*), the screen warns instead of looking broken.
+4. **On the next `taniumsync`**, the item missing from the payload changes status — **no row is ever deleted**:
+   - CVE → `remediated`, transition written to `cve_history`
+   - Patch → `installed`, transition written to `patch_history`
+5. **Cascading:** risk score recomputed, critical-CVE ticket auto-solved, fix digest e-mailed (with PDF) and — if enabled — the per-endpoint **remediation ticket**.
+
+**Why it sometimes does not close:**
+
+| Situation | Behaviour |
+|---|---|
+| Sensor errored/timed out, or the machine was off during the sync | Nothing is closed (guards against mass-closing everything on a hiccup) |
+| `Findings auto-close` disabled | Only closes when Tanium itself reports the `remediated` status |
+| Finding below the configured `Minimum severity` | Never enters the payload, so its absence proves nothing — stays open until the filter is lowered |
+| Windows awaiting reboot | Stays `missing` until the restart |
+
+> The patch screen opens filtered on `missing` — what was fixed lives under the **Installed / Remediated** filter, it was not deleted. Current-state tables are never purged; only history tables are, per the configured retention.
 
 ### 🕐 Scheduled Tasks (Cron)
 
@@ -211,6 +306,7 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | `threatsync` | 15 minutes | Imports Threat Response alerts and opens tickets |
 | `slabreach` | 1 day | Webhook alert while SLA breaches exist |
 | `purgehistory` | 1 day | Purges history rows past the configured retention |
+| `purgeretired` | 1 day | Removes endpoints Tanium stopped reporting, after the configured grace period (0 = disabled) |
 | `apihealth` | 1 day | Checks API health and warns before the token expires |
 
 ### 🗂️ Code Structure
@@ -240,6 +336,16 @@ src/
 ├── ComputerGroup.php  — Tanium computer groups
 ├── CentralWidget.php  — GLPI central panel widget
 └── Notification.php   — GLPI notifications
+
+tests/
+├── run.php            — Suite runner (43 cases, zero dependencies)
+├── mirror.php         — Checks the test copies still match src/
+└── cases/             — One file per function (os_type, kb_parts, reboot_pending, …)
+
+tools/
+├── lint.php           — Recursive php -l over the plugin
+├── i18n_audit.php     — Code strings missing from the .po
+└── compile_po.php     — Compiles .po → .mo in pure PHP (no msgfmt)
 ```
 
 ### 📄 License
@@ -251,5 +357,5 @@ GPL-2.0-or-later — see [LICENSE](LICENSE) file.
 <div align="center">
   <img src="public/img/tanium-logo.svg" alt="Tanium" width="100" />
   <br/><br/>
-  <sub>GLPI 11 · Tanium · PHP 8.1+</sub>
+  <sub>GLPI 11 · Tanium · PHP 8.2+</sub>
 </div>

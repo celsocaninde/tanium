@@ -485,6 +485,18 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
         <span class="ti ti-shield-check"></span> <?= __('Missing Patches', 'tanium') ?>
         <span class="tanium-muted" style="margin-left:auto;font-size:.8rem"><?= count($patches) ?> registros</span>
     </div>
+    <?php
+    // Installed-but-not-rebooted patches keep reporting as applicable; flag it
+    // so the list doesn't read as a failed remediation.
+    if (\GlpiPlugin\Tanium\PatchDeploy::rebootPending($asset['sensor_data'] ?? null, $slaConfig['reboot_sensor'] ?? null) === true):
+    ?>
+    <div class="tanium-card-body" style="padding-bottom:0">
+        <div class="tanium-alert tanium-alert-warn">
+            <span class="ti ti-refresh-alert" style="margin-right:8px"></span>
+            <?= __('Waiting for a reboot — patches already installed keep showing as missing until this endpoint restarts.', 'tanium') ?>
+        </div>
+    </div>
+    <?php endif; ?>
     <div class="tanium-card-body tanium-p0">
         <?php if (empty($patches)): ?>
             <p class="tanium-empty"><?= __('No missing patches recorded. Excellent!', 'tanium') ?></p>

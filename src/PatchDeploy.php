@@ -275,14 +275,111 @@ class PatchDeploy extends CommonGLPI {
         }
     }
 
-    /** Map a GLPI/Tanium OS string to the Tanium Patch `osType` value. */
+    /**
+     * Split a patch's advisory field into renderable parts. Tanium concatenates
+     * every advisory ID of a patch into one string — "KB5034441, KB5034123" for
+     * a Windows cumulative update, "USN-6013-1 USN-6013-2" on Ubuntu — which is
+     * why the column is TEXT. Linking that raw value to support.microsoft.com
+     * produced a dead URL for multi-KB rows and pointed Linux advisories at
+     * Microsoft, so only a genuine KB number gets a link; anything else renders
+     * as plain text.
+     *
+     * @return array<int,array{label:string,url:?string}>
+     */
+    public static function kbParts(?string $kbId): array {
+        // Hyphens are NOT separators: USN/DSA/RHSA ids embed them.
+        $tokens = preg_split('/[\s,;|]+/', trim((string)$kbId), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        $out = [];
+        foreach ($tokens as $token) {
+            $label = trim($token, ".,;:()[]'\"");
+            if ($label === '') {
+                continue;
+            }
+            $out[] = [
+                'label' => $label,
+                'url'   => preg_match('/^KB\d+$/i', $label)
+                    // The canonical article URL takes the bare number — /kb/KB123 404s.
+                    ? 'https://support.microsoft.com/help/' . preg_replace('/^KB/i', '', $label)
+                    : null,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Whether the endpoint is waiting for a reboot to finish applying patches.
+     *
+     * Tanium exposes this through a sensor ("Reboot Required", "Pending
+     * Reboot", … — the name varies per tenant), collected only when the admin
+     * lists it under the plugin's custom sensors. Until the machine reboots,
+     * Windows keeps reporting the KB as still applicable, so the patch shows as
+     * MISSING even though it is installed — this flag is what lets the UI say
+     * so instead of looking like a failed remediation.
+     *
+     * @param  ?string $sensorDataJson the asset's `sensor_data` column
+     * @param  ?string $sensorName     the configured sensor; falls back to a
+     *                                 name match when empty
+     * @return ?bool   null when no reboot sensor is collected (unknown)
+     */
+    public static function rebootPending(?string $sensorDataJson, ?string $sensorName = null): ?bool {
+        $sensors = json_decode((string)$sensorDataJson, true);
+        if (!is_array($sensors)) {
+            return null;
+        }
+
+        // An explicitly configured sensor wins: the guess below would also
+        // match an unrelated sensor that merely has "restart" in its name.
+        $configured = trim((string)$sensorName);
+        if ($configured !== '' && array_key_exists($configured, $sensors)) {
+            return self::rebootValue((string)$sensors[$configured]);
+        }
+
+        foreach ($sensors as $name => $value) {
+            if (!preg_match('/reboot|restart|reinicial/i', (string)$name)) {
+                continue;
+            }
+            $parsed = self::rebootValue((string)$value);
+            if ($parsed !== null) {
+                return $parsed;
+            }
+        }
+        return null;
+    }
+
+    /** Truthiness of a reboot sensor reading; null when it said nothing. */
+    private static function rebootValue(string $value): ?bool {
+        $v = strtolower(trim($value));
+        if ($v === '' || $v === '[no results]') {
+            return null;
+        }
+        return (bool)preg_match('/^(1|true|yes|sim|required|pending|reboot)/i', $v);
+    }
+
+    /**
+     * Map a GLPI/Tanium OS string to the Tanium Patch `osType` value.
+     *
+     * The fallback is 'windows', so every distro that does NOT spell out
+     * "Linux" has to be listed explicitly — "RHEL 9" and "Fedora 40" carry no
+     * 'lin' substring and used to be deployed as Windows, which also picks the
+     * wrong patch UIDs in resolvePatchUids(). Names that do contain "Linux"
+     * (Rocky Linux, AlmaLinux, Oracle Linux, Amazon Linux) match on 'lin'.
+     */
     private static function mapOsType(string $os): string {
         $o = strtolower($os);
-        if (str_contains($o, 'win'))                              return 'windows';
-        if (str_contains($o, 'mac') || str_contains($o, 'darwin')) return 'mac';
-        if (str_contains($o, 'lin') || str_contains($o, 'ubuntu')
-            || str_contains($o, 'debian') || str_contains($o, 'red hat')
-            || str_contains($o, 'centos') || str_contains($o, 'suse')) return 'linux';
+        // macOS is tested FIRST because "darwin" contains "win": checking
+        // Windows first classified every Darwin-reported Mac as Windows.
+        if (str_contains($o, 'mac') || str_contains($o, 'darwin'))  return 'mac';
+        if (str_contains($o, 'win'))                               return 'windows';
+
+        foreach ([
+            'lin', 'ubuntu', 'debian', 'red hat', 'redhat', 'rhel', 'centos',
+            'suse', 'sles', 'fedora', 'rocky', 'alma', 'oracle', 'amzn',
+        ] as $marker) {
+            if (str_contains($o, $marker)) {
+                return 'linux';
+            }
+        }
         return 'windows';
     }
 
@@ -605,9 +702,14 @@ class PatchDeploy extends CommonGLPI {
                 'moderate', 'medium'  => 'MÉDIO',
                 default               => 'BAIXO',
             };
-            $kb  = $p['kb_id']
-                ? '<a href="https://support.microsoft.com/kb/' . htmlspecialchars($p['kb_id']) . '" style="color:#63b3ed;text-decoration:none">' . htmlspecialchars($p['kb_id']) . '</a>'
-                : '—';
+            $kbBits = [];
+            foreach (self::kbParts($p['kb_id'] ?? null) as $part) {
+                $label    = htmlspecialchars($part['label']);
+                $kbBits[] = $part['url'] !== null
+                    ? '<a href="' . htmlspecialchars($part['url']) . '" style="color:#63b3ed;text-decoration:none">' . $label . '</a>'
+                    : $label;
+            }
+            $kb  = $kbBits !== [] ? implode(' ', $kbBits) : '—';
             $rel = $p['release_date'] ? date('d/m/Y', strtotime($p['release_date'])) : '—';
             $patchRows .= '
             <tr>

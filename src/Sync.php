@@ -228,8 +228,15 @@ class Sync extends CommonGLPI {
             // memory at once can exceed 1 GB and take the container down — this
             // keeps peak memory bounded regardless of fleet size.
             $fleetSize  = 0;
+            $seenEids   = [];
             $withGroups = !empty($config['sync_group_membership']);
             $sensors    = array_values(array_filter(array_map('trim', explode(',', (string)($config['custom_sensors'] ?? '')))));
+            // The reboot sensor has its own setting but rides the same custom-sensor
+            // channel, so the admin doesn't have to remember to list it twice.
+            $rebootSensor = trim((string)($config['reboot_sensor'] ?? ''));
+            if ($rebootSensor !== '' && !in_array($rebootSensor, $sensors, true)) {
+                $sensors[] = $rebootSensor;
+            }
             $pageOpts   = ['sensors' => $sensors];
             if ($sinceTs > 0) {
                 // Server-side incremental: unchanged endpoints never leave Tanium.
@@ -238,7 +245,7 @@ class Sync extends CommonGLPI {
             }
             $api->eachEndpointPage($limit, $withCves, $withApps, $withPatches,
                 function (array $page, int $totalRecords) use (
-                    &$created, &$updated, &$errors, &$total, &$fleetSize,
+                    &$created, &$updated, &$errors, &$total, &$fleetSize, &$seenEids,
                     $withCves, $withApps, $withPatches, $minSev, $sinceTs, $config, $logId
                 ): void {
                     if ($fleetSize === 0 && $totalRecords > 0) {
@@ -277,6 +284,7 @@ class Sync extends CommonGLPI {
                             if ($eid === '') {
                                 continue;
                             }
+                            $seenEids[$eid] = true;
                             $total++;
                             $result = self::syncEndpoint(
                                 $endpoint,
@@ -307,9 +315,32 @@ class Sync extends CommonGLPI {
                 self::recomputeCveAffectedCounts();
             }
 
-            // Save cursor for next incremental run
-            $newCursor = date('Y-m-d\TH:i:s\Z');
-            Config::updateLastSync($total, $newCursor);
+            // Endpoints Tanium no longer returns. Only meaningful after a run
+            // that saw the WHOLE fleet: an incremental run returns just what
+            // changed, and a run with errors has an incomplete picture — either
+            // one would retire the entire estate.
+            if ($sinceTs === 0 && $errors === 0 && $seenEids !== []) {
+                self::reconcileRetiredAssets($seenEids);
+            }
+
+            // Save cursor for next incremental run — but only when every
+            // endpoint went through. Advancing past a failed endpoint drops it
+            // from every future incremental run until something changes it in
+            // Tanium, so its data silently rots. Holding the cursor makes the
+            // next run retry them; a permanently-failing endpoint therefore
+            // keeps incremental syncs wide, which is the loud failure mode we
+            // want over the silent one.
+            if ($errors === 0) {
+                Config::updateLastSync($total, date('Y-m-d\TH:i:s\Z'));
+            } else {
+                // Empty cursor = leave last_sync_cursor untouched (see updateLastSync).
+                Config::updateLastSync($total, '');
+                Toolbox::logInFile('tanium', sprintf(
+                    "[Tanium] %d endpoint(s) failed — incremental cursor held at %s so they are retried next run.\n",
+                    $errors,
+                    $cursor ?: 'none (full sync)'
+                ));
+            }
 
         } catch (\Throwable $e) {
             $errors++;
@@ -421,11 +452,212 @@ class Sync extends CommonGLPI {
             }
         }
 
+        // Audit ticket per endpoint that finished remediating (opt-in). Runs
+        // after the digest so a failure here never costs the email.
+        if (!empty($config['remediation_ticket']) && $remediationEvents > 0) {
+            try {
+                self::openRemediationTickets($config);
+            } catch (\Throwable $e) {
+                Toolbox::logInFile('tanium', '[Tanium] Remediation ticket error: ' . $e->getMessage() . "\n");
+            }
+        }
+
         self::$newCriticalCves = 0;
         self::$newCriticalCveDetails = [];
         self::$remediatedCves = [];
         self::$installedPatches = [];
         return self::result($total, $created, $updated, $errors);
+    }
+
+    /**
+     * One "remediation completed" ticket per endpoint whose findings closed in
+     * this run — the user-visible counterpart of the auto-close: someone
+     * patched a machine and rebooted it, Tanium stopped reporting the items,
+     * and the ticket records exactly what was fixed and the history that led
+     * there. Opened already SOLVED, because nothing is left to do; it exists as
+     * the audit trail the digest email cannot provide.
+     *
+     * Capped per run: the first sync after enabling the auto-close can close
+     * months of backlog at once, and that must not flood the helpdesk.
+     *
+     * @return int tickets opened
+     */
+    private static function openRemediationTickets(array $config, int $maxPerRun = 20): int {
+        global $DB, $CFG_GLPI;
+
+        /** @var array<string,array{label:string,cves:array,patches:array}> */
+        $byEndpoint = [];
+        foreach (self::$remediatedCves as $ev) {
+            $eid = (string)($ev['eid'] ?? '');
+            if ($eid === '') {
+                continue;
+            }
+            $byEndpoint[$eid] ??= ['label' => (string)$ev['endpoint'], 'cves' => [], 'patches' => []];
+            $byEndpoint[$eid]['cves'][] = $ev;
+        }
+        foreach (self::$installedPatches as $ev) {
+            $eid = (string)($ev['eid'] ?? '');
+            if ($eid === '') {
+                continue;
+            }
+            $byEndpoint[$eid] ??= ['label' => (string)$ev['endpoint'], 'cves' => [], 'patches' => []];
+            $byEndpoint[$eid]['patches'][] = $ev;
+        }
+
+        if ($byEndpoint === []) {
+            return 0;
+        }
+
+        // Busiest endpoints first, so the cap keeps the most meaningful ones.
+        uasort($byEndpoint, static fn(array $a, array $b): int
+            => (count($b['cves']) + count($b['patches'])) <=> (count($a['cves']) + count($a['patches'])));
+
+        $skipped = max(0, count($byEndpoint) - $maxPerRun);
+        $glpiUrl = $CFG_GLPI['url_base'] ?? '';
+        $opened  = 0;
+
+        foreach (array_slice($byEndpoint, 0, $maxPerRun, true) as $eid => $data) {
+            $asset = $DB->request([
+                'SELECT' => ['computers_id'],
+                'FROM'   => 'glpi_plugin_tanium_assets',
+                'WHERE'  => ['tanium_eid' => $eid],
+                'LIMIT'  => 1,
+            ])->current();
+            $computerId = (int)($asset['computers_id'] ?? 0);
+
+            // The ticket belongs where the asset lives, unless an entity is
+            // pinned in the plugin settings.
+            $entityId = (int)($config['ticket_entity_id'] ?? 0);
+            if ($entityId === 0 && $computerId > 0) {
+                $row = $DB->request([
+                    'SELECT' => ['entities_id'],
+                    'FROM'   => 'glpi_computers',
+                    'WHERE'  => ['id' => $computerId],
+                    'LIMIT'  => 1,
+                ])->current();
+                $entityId = (int)($row['entities_id'] ?? 0);
+            }
+
+            $cveCount   = count($data['cves']);
+            $patchCount = count($data['patches']);
+            $html       = Notification::buildRemediationTicketHtml(
+                $data['label'],
+                (string)$eid,
+                $data['cves'],
+                $data['patches'],
+                self::remediationTimeline((string)$eid),
+                $glpiUrl
+            );
+
+            $ticket   = new Ticket();
+            $ticketData = [
+                'name'        => sprintf(
+                    '[Tanium] Remediação concluída — %s (%d CVE(s), %d patch(es))',
+                    $data['label'],
+                    $cveCount,
+                    $patchCount
+                ),
+                'content'     => $html,
+                'entities_id' => $entityId,
+                'type'        => Ticket::INCIDENT_TYPE,
+                // Informational record: never competes with real incidents.
+                'urgency'     => 2,
+                'impact'      => 2,
+                'priority'    => 2,
+            ];
+            $requester = Config::ticketRequesterId(0, $config);
+            if ($requester > 0) {
+                $ticketData['_users_id_requester'] = $requester;
+            }
+
+            $ticketId = (int)$ticket->add($ticketData);
+            if (!$ticketId) {
+                continue;
+            }
+            $opened++;
+
+            if ($computerId > 0) {
+                (new Item_Ticket())->add([
+                    'tickets_id' => $ticketId,
+                    'itemtype'   => 'Computer',
+                    'items_id'   => $computerId,
+                ]);
+            }
+
+            (new ITILSolution())->add([
+                'itemtype'         => 'Ticket',
+                'items_id'         => $ticketId,
+                'content'          => Notification::autoSolutionHtml(
+                    '✅ Remediação confirmada pelo Tanium',
+                    sprintf(
+                        'O Tanium deixou de reportar <strong>%d CVE(s)</strong> e <strong>%d patch(es)</strong> neste endpoint, '
+                        . 'confirmando que as atualizações foram aplicadas. Este chamado é apenas o registro da correção.',
+                        $cveCount,
+                        $patchCount
+                    )
+                ),
+                'solutiontypes_id' => 0,
+            ]);
+        }
+
+        if ($skipped > 0) {
+            Toolbox::logInFile('tanium', sprintf(
+                "[Tanium] Remediation tickets capped at %d this run — %d endpoint(s) skipped (still recorded in the history tables).\n",
+                $maxPerRun,
+                $skipped
+            ));
+        }
+
+        return $opened;
+    }
+
+    /**
+     * Recorded status transitions for one endpoint, newest first, merged from
+     * the CVE and patch history tables. Both are purged by the retention cron,
+     * so this is "everything still on record", not necessarily all time.
+     *
+     * @return array<int,array{kind:string,ref:string,title:?string,old_status:?string,new_status:string,changed_at:string}>
+     */
+    private static function remediationTimeline(string $eid, int $limit = 40): array {
+        global $DB;
+
+        $timeline = [];
+        foreach ($DB->request([
+            'SELECT' => ['cve_id', 'old_status', 'new_status', 'changed_at'],
+            'FROM'   => 'glpi_plugin_tanium_cve_history',
+            'WHERE'  => ['tanium_eid' => $eid],
+            'ORDER'  => 'changed_at DESC',
+            'LIMIT'  => $limit,
+        ]) as $r) {
+            $timeline[] = [
+                'kind'       => 'cve',
+                'ref'        => (string)$r['cve_id'],
+                'title'      => null,
+                'old_status' => $r['old_status'] !== null ? (string)$r['old_status'] : null,
+                'new_status' => (string)$r['new_status'],
+                'changed_at' => (string)$r['changed_at'],
+            ];
+        }
+        foreach ($DB->request([
+            'SELECT' => ['patch_id', 'patch_title', 'old_status', 'new_status', 'changed_at'],
+            'FROM'   => 'glpi_plugin_tanium_patch_history',
+            'WHERE'  => ['tanium_eid' => $eid],
+            'ORDER'  => 'changed_at DESC',
+            'LIMIT'  => $limit,
+        ]) as $r) {
+            $timeline[] = [
+                'kind'       => 'patch',
+                'ref'        => (string)$r['patch_id'],
+                'title'      => (string)$r['patch_title'],
+                'old_status' => $r['old_status'] !== null ? (string)$r['old_status'] : null,
+                'new_status' => (string)$r['new_status'],
+                'changed_at' => (string)$r['changed_at'],
+            ];
+        }
+
+        usort($timeline, static fn(array $a, array $b): int => strcmp($b['changed_at'], $a['changed_at']));
+
+        return array_slice($timeline, 0, $limit);
     }
 
     /**
@@ -1068,7 +1300,20 @@ class Sync extends CommonGLPI {
         $newFindings    = 0;
         $statusChanges  = 0;
 
-        $now = date('Y-m-d H:i:s');
+        // One round-trip for this endpoint's entire current state. The previous
+        // implementation ran a SELECT per finding: a 500-machine fleet with 40
+        // findings each meant ~40k queries per sync, which is what makes a long
+        // cron run die with "MySQL server has gone away".
+        $existingRows = [];
+        foreach ($DB->request([
+            'FROM'  => 'glpi_plugin_tanium_endpoint_cves',
+            'WHERE' => ['tanium_eid' => $eid],
+        ]) as $row) {
+            $existingRows[strtoupper((string)$row['cve_id'])] = $row;
+        }
+
+        $now  = date('Y-m-d H:i:s');
+        $seen = [];
         foreach ($cves as $finding) {
             $cveId = $finding['cveId'] ?? $finding['cve'] ?? $finding['id'] ?? '';
             // Sensors can emit artifacts like "[no results]" — only real CVE ids enter.
@@ -1076,11 +1321,9 @@ class Sync extends CommonGLPI {
                 continue;
             }
 
-            $existing = $DB->request([
-                'FROM'  => 'glpi_plugin_tanium_endpoint_cves',
-                'WHERE' => ['tanium_eid' => $eid, 'cve_id' => $cveId],
-                'LIMIT' => 1,
-            ])->current();
+            $key        = strtoupper((string)$cveId);
+            $seen[$key] = true;
+            $existing   = $existingRows[$key] ?? null;
 
             $record = [
                 'computers_id' => $computerId,
@@ -1088,7 +1331,6 @@ class Sync extends CommonGLPI {
                 'severity'     => strtolower($finding['severity'] ?? 'unknown'),
                 'status'       => $finding['state'] ?? $finding['status'] ?? 'open',
                 'detected_at'  => isset($finding['detectedAt']) ? date('Y-m-d H:i:s', strtotime($finding['detectedAt'])) : $now,
-                'date_mod'     => $now,
             ];
 
             if ($existing) {
@@ -1108,10 +1350,18 @@ class Sync extends CommonGLPI {
                         self::$remediatedCves[] = self::remediationEvent($existing, $computerName, $eid);
                     }
                 }
-                $DB->update('glpi_plugin_tanium_endpoint_cves', $record, [
-                    'tanium_eid' => $eid,
-                    'cve_id'     => $cveId,
-                ]);
+                // Steady state is "nothing moved": skip the UPDATE unless a
+                // field the plugin actually reads changed. date_mod alone is
+                // not worth a write — nothing queries it.
+                if (self::recordChanged($existing, $record)) {
+                    $DB->update(
+                        'glpi_plugin_tanium_endpoint_cves',
+                        $record + ['date_mod' => $now],
+                        ['id' => (int)$existing['id']]
+                    );
+                }
+                // Keep the in-memory state authoritative for the auto-close below.
+                $existingRows[$key] = array_merge($existing, $record);
             } else {
                 $newFindings++;
                 // New CVE finding
@@ -1132,10 +1382,11 @@ class Sync extends CommonGLPI {
                     'new_status'   => $record['status'],
                     'changed_at'   => $now,
                 ]);
-                $DB->insert('glpi_plugin_tanium_endpoint_cves', array_merge($record, [
+                $DB->insert('glpi_plugin_tanium_endpoint_cves', $record + [
                     'tanium_eid' => $eid,
                     'cve_id'     => $cveId,
-                ]));
+                    'date_mod'   => $now,
+                ]);
             }
         }
 
@@ -1144,7 +1395,7 @@ class Sync extends CommonGLPI {
         // on a sensor hiccup) and the toggle is on.
         $autoClosed = 0;
         if ($dataPresent && !empty($config['auto_close_cves'])) {
-            $autoClosed = self::autoCloseVanishedCves($eid, $computerId, $cves, $computerName, $config);
+            $autoClosed = self::autoCloseVanishedCves($eid, $computerId, $existingRows, $seen, $computerName, $config);
         }
 
         // One line in the Computer's native history tab per sync that changed
@@ -1158,6 +1409,84 @@ class Sync extends CommonGLPI {
                 $autoClosed
             )], 0, \Log::HISTORY_LOG_SIMPLE_MESSAGE);
         }
+    }
+
+    /**
+     * Flag assets Tanium stopped returning, and un-flag any that came back.
+     *
+     * Nothing is deleted here: a decommissioned machine keeps inflating the
+     * fleet risk average, the coverage KPI and the MTTR until someone acts, but
+     * silently dropping rows would be worse. `retired_at` is the marker; the
+     * `purgeretired` cron does the removal, and only if the admin sets a
+     * retention window.
+     *
+     * MUST only be called after a full, error-free sync — see the caller.
+     *
+     * @param array<string,bool> $seenEids EIDs returned by this run
+     */
+    private static function reconcileRetiredAssets(array $seenEids): void {
+        global $DB;
+
+        $now      = date('Y-m-d H:i:s');
+        $retired  = 0;
+        $returned = 0;
+
+        foreach ($DB->request([
+            'SELECT' => ['id', 'tanium_eid', 'tanium_name', 'retired_at'],
+            'FROM'   => 'glpi_plugin_tanium_assets',
+        ]) as $row) {
+            $seen       = isset($seenEids[(string)$row['tanium_eid']]);
+            $isRetired  = !empty($row['retired_at']);
+
+            if (!$seen && !$isRetired) {
+                $DB->update('glpi_plugin_tanium_assets', ['retired_at' => $now], ['id' => (int)$row['id']]);
+                $retired++;
+            } elseif ($seen && $isRetired) {
+                // Came back (re-imaged, agent reinstalled, scope restored).
+                $DB->update('glpi_plugin_tanium_assets', ['retired_at' => null], ['id' => (int)$row['id']]);
+                $returned++;
+            }
+        }
+
+        if ($retired > 0 || $returned > 0) {
+            Toolbox::logInFile('tanium', sprintf(
+                "[Tanium] Retirement reconcile: %d endpoint(s) no longer reported by Tanium, %d back online.\n",
+                $retired,
+                $returned
+            ));
+        }
+    }
+
+    /**
+     * True when writing $record over $existing would actually change something.
+     *
+     * The DB hands every column back as a string while the payload carries
+     * ints, floats and nulls, so a raw !== comparison always reports a change
+     * and defeats the purpose — both sides are normalised to strings first,
+     * with null and '' treated as the same "empty".
+     *
+     * @param array<string,mixed> $existing row as read from the database
+     * @param array<string,mixed> $record   fields about to be written
+     */
+    private static function recordChanged(array $existing, array $record): bool {
+        foreach ($record as $field => $value) {
+            $old = $existing[$field] ?? null;
+            if ($old === null && ($value === null || $value === '')) {
+                continue;
+            }
+            // Numeric columns (cvss_score is decimal(4,1)) must compare by value:
+            // "9.8" and 9.8 are equal, "9.80" and "9.8" too.
+            if (is_numeric($old) && is_numeric($value)) {
+                if ((float)$old !== (float)$value) {
+                    return true;
+                }
+                continue;
+            }
+            if ((string)$old !== (string)$value) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Normalized remediation-event entry from an endpoint_cves row. */
@@ -1186,19 +1515,12 @@ class Sync extends CommonGLPI {
     private static function autoCloseVanishedCves(
         string $eid,
         int $computerId,
-        array $payloadCves,
+        array $existingRows,
+        array $present,
         string $computerName,
         array $config
     ): int {
         global $DB;
-
-        $present = [];
-        foreach ($payloadCves as $finding) {
-            $cveId = strtoupper((string)($finding['cveId'] ?? $finding['cve'] ?? $finding['id'] ?? ''));
-            if ($cveId !== '') {
-                $present[$cveId] = true;
-            }
-        }
 
         $rank   = ['unknown' => 0, 'low' => 1, 'medium' => 2, 'high' => 3, 'critical' => 4];
         $minSev = strtolower((string)($config['cve_min_severity'] ?? 'all'));
@@ -1206,11 +1528,10 @@ class Sync extends CommonGLPI {
 
         $closed = 0;
         $now    = date('Y-m-d H:i:s');
-        foreach ($DB->request([
-            'FROM'  => 'glpi_plugin_tanium_endpoint_cves',
-            'WHERE' => ['tanium_eid' => $eid, 'status' => ['!=', 'remediated']],
-        ]) as $row) {
-            if (isset($present[strtoupper((string)$row['cve_id'])])) {
+        // Reuses the state already loaded by the caller — no second scan of the
+        // endpoint's findings.
+        foreach ($existingRows as $key => $row) {
+            if (isset($present[$key]) || ($row['status'] ?? '') === 'remediated') {
                 continue;
             }
             if ($min > 0 && ($rank[strtolower((string)($row['severity'] ?? 'unknown'))] ?? 0) < $min) {
@@ -1248,6 +1569,16 @@ class Sync extends CommonGLPI {
     ): void {
         global $DB;
 
+        // Same single-round-trip treatment as the CVE sync: load the endpoint's
+        // patch state once and diff in memory instead of a SELECT per patch.
+        $existingRows = [];
+        foreach ($DB->request([
+            'FROM'  => 'glpi_plugin_tanium_patches',
+            'WHERE' => ['tanium_eid' => $eid],
+        ]) as $row) {
+            $existingRows[(string)$row['patch_id']] = $row;
+        }
+
         $now = date('Y-m-d H:i:s');
         $seenIds = [];
         foreach ($patches as $patch) {
@@ -1257,11 +1588,7 @@ class Sync extends CommonGLPI {
             }
             $seenIds[(string)$patchId] = true;
 
-            $existing = $DB->request([
-                'FROM'  => 'glpi_plugin_tanium_patches',
-                'WHERE' => ['tanium_eid' => $eid, 'patch_id' => $patchId],
-                'LIMIT' => 1,
-            ])->current();
+            $existing = $existingRows[(string)$patchId] ?? null;
 
             $releaseDate = null;
             if (!empty($patch['releaseDate'])) {
@@ -1275,7 +1602,6 @@ class Sync extends CommonGLPI {
                 'status'       => $patch['status'] ?? 'missing',
                 'kb_id'        => $patch['kb'] ?? $patch['kbId'] ?? null,
                 'release_date' => $releaseDate,
-                'date_mod'     => $now,
             ];
 
             if ($existing) {
@@ -1293,15 +1619,20 @@ class Sync extends CommonGLPI {
                         'changed_at'   => $now,
                     ]);
                 }
-                $DB->update('glpi_plugin_tanium_patches', $record, [
-                    'tanium_eid' => $eid,
-                    'patch_id'   => $patchId,
-                ]);
+                if (self::recordChanged($existing, $record)) {
+                    $DB->update(
+                        'glpi_plugin_tanium_patches',
+                        $record + ['date_mod' => $now],
+                        ['id' => (int)$existing['id']]
+                    );
+                }
+                $existingRows[(string)$patchId] = array_merge($existing, $record);
             } else {
-                $DB->insert('glpi_plugin_tanium_patches', array_merge($record, [
+                $DB->insert('glpi_plugin_tanium_patches', $record + [
                     'tanium_eid' => $eid,
                     'patch_id'   => $patchId,
-                ]));
+                    'date_mod'   => $now,
+                ]);
                 $DB->insert('glpi_plugin_tanium_patch_history', [
                     'tanium_eid'   => $eid,
                     'patch_id'     => $patchId,
@@ -1323,10 +1654,11 @@ class Sync extends CommonGLPI {
             return;
         }
 
-        foreach ($DB->request([
-            'FROM'  => 'glpi_plugin_tanium_patches',
-            'WHERE' => ['tanium_eid' => $eid, 'status' => 'missing'],
-        ]) as $row) {
+        // Reuses the state loaded at the top — no second scan.
+        foreach ($existingRows as $row) {
+            if (($row['status'] ?? '') !== 'missing') {
+                continue;
+            }
             if (isset($seenIds[(string)$row['patch_id']])) {
                 continue;
             }

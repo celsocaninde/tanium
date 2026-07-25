@@ -77,6 +77,9 @@ class Config extends CommonDBTM {
             'last_weekly_report'      => null,
             'auto_close_cves'         => 1,
             'notify_remediation'      => 0,
+            'remediation_ticket'      => 0,
+            'retire_after_days'       => 0,
+            'reboot_sensor'           => '',
             'monthly_report_day'      => 1,
             'last_monthly_report'     => null,
             'kiosk_enabled'           => 0,
@@ -469,6 +472,19 @@ class Config extends CommonDBTM {
         $this->renderCheckbox('notify_critical', __('Notify when new Critical CVEs are detected', 'tanium'), (int)($config['notify_critical'] ?? 1));
         $this->renderCheckbox('auto_ticket_critical', __('Open a consolidated GLPI ticket when new Critical CVEs are detected', 'tanium'), (int)($config['auto_ticket_critical'] ?? 0));
         $this->renderCheckbox('notify_remediation', __('Email a remediation digest when a sync records fixes (remediated CVEs / installed patches, PDF attached)', 'tanium'), (int)($config['notify_remediation'] ?? 0));
+        $this->renderCheckbox('remediation_ticket', __('Open a GLPI ticket per endpoint that completed remediations, already solved, with the full change history', 'tanium'), (int)($config['remediation_ticket'] ?? 0));
+
+        $this->renderField(
+            __('Reboot-pending sensor', 'tanium'),
+            "<input type='text' name='reboot_sensor' class='tanium-input' value='" . htmlspecialchars($config['reboot_sensor'] ?? '') . "' placeholder='Reboot Required'/>",
+            __('Tanium sensor that reports whether the endpoint is waiting for a restart. The name varies per tenant ("Reboot Required", "Pending Restart"). It is collected automatically — you do not need to add it to the custom sensors list. Leave empty to disable the reboot warning on the patch screens.', 'tanium')
+        );
+
+        $this->renderField(
+            __('Remove retired endpoints after (days)', 'tanium'),
+            "<input type='number' name='retire_after_days' class='tanium-input' min='0' max='3650' value='" . (int)($config['retire_after_days'] ?? 0) . "'/>",
+            __('An endpoint Tanium stops returning in a full sync is flagged as retired. After this many days the purgeretired cron deletes its Tanium data (findings, patches, history) so it stops skewing the fleet risk average and the coverage KPI. The GLPI computer itself is never deleted. 0 = never remove, only flag.', 'tanium')
+        );
 
         $notifyUserIds = array_filter(array_map('intval', explode(',', (string)($config['notify_users'] ?? ''))));
         ob_start();

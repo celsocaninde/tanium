@@ -424,7 +424,7 @@ GQL;
                 'cveId'       => $cveId,
                 'cvssScore'   => $c['cvssScoreV3'] ?? $c['cvssScore'] ?? null,
                 'severity'    => strtolower((string) ($c['severityV3'] ?? $c['severity'] ?? 'unknown')),
-                'title'       => $cveId,
+                'title'       => trim((string) ($c['summary'] ?? '')) !== '' ? $c['summary'] : $cveId,
                 'description' => $c['summary'] ?? null,
                 'status'      => !empty($c['excepted']) ? 'excepted' : 'open',
                 'detectedAt'  => $c['firstFound'] ?? null,

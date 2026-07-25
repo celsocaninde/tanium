@@ -43,7 +43,7 @@ if ($eid) {
         "SELECT ec.cve_id, v.title, v.severity, v.cvss_score
          FROM glpi_plugin_tanium_endpoint_cves ec
          LEFT JOIN glpi_plugin_tanium_vulnerabilities v ON ec.cve_id = v.cve_id
-         WHERE ec.tanium_eid = '" . $DB->escape($eid) . "' AND ec.status != 'resolved'
+         WHERE ec.tanium_eid = '" . $DB->escape($eid) . "' AND ec.status NOT IN ('resolved', 'remediated')
          ORDER BY v.cvss_score DESC LIMIT 100"
     ) as $r) {
         $cves[] = $r;
@@ -63,6 +63,8 @@ if ($eid) {
     ) as $r) {
         $deployments[] = $r;
     }
+
+    $epConfig = \GlpiPlugin\Tanium\Config::getConfig();
 
     $sevClass = fn(string $s) => match(strtolower($s)) {
         'critical'           => 'tanium-badge-critical',
@@ -158,6 +160,20 @@ if ($eid) {
             <?php endif; ?>
         </div>
 
+        <?php
+        // A patch installed but not yet rebooted keeps being reported as
+        // applicable, so it sits here looking like a failed remediation. Say so
+        // explicitly when the tenant collects a reboot sensor.
+        if (\GlpiPlugin\Tanium\PatchDeploy::rebootPending($endpoint['sensor_data'] ?? null, $epConfig['reboot_sensor'] ?? null) === true):
+        ?>
+        <div class="tanium-card-body" style="padding-bottom:0">
+            <div class="tanium-alert tanium-alert-warn">
+                <span class="ti ti-refresh-alert" style="margin-right:8px"></span>
+                <?= __('This endpoint is waiting for a reboot. Patches already installed keep being reported as missing until it restarts — they clear on the first sync after the reboot.', 'tanium') ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <?php if (empty($patches)): ?>
         <div class="tanium-card-body">
             <p class="tanium-empty" style="color:#68d391">
@@ -188,9 +204,13 @@ if ($eid) {
                 <td class="tanium-small"><?= htmlspecialchars(mb_substr($p['patch_title'] ?: $p['patch_id'], 0, 85)) ?><?= mb_strlen($p['patch_title']??'') > 85 ? '…' : '' ?></td>
                 <td><span class="tanium-badge <?= $sc ?>"><?= ucfirst($p['severity']) ?></span></td>
                 <td class="tanium-mono tanium-small">
-                    <?php if ($p['kb_id']): ?>
-                    <a href="https://support.microsoft.com/kb/<?= htmlspecialchars($p['kb_id']) ?>" target="_blank" class="tanium-link"><?= htmlspecialchars($p['kb_id']) ?></a>
-                    <?php else: ?>—<?php endif; ?>
+                    <?php $kbParts = \GlpiPlugin\Tanium\PatchDeploy::kbParts($p['kb_id'] ?? null); ?>
+                    <?php if ($kbParts === []): ?>—<?php endif; ?>
+                    <?php foreach ($kbParts as $part): ?>
+                        <?php if ($part['url'] !== null): ?>
+                        <a href="<?= htmlspecialchars($part['url']) ?>" target="_blank" class="tanium-link"><?= htmlspecialchars($part['label']) ?></a>
+                        <?php else: ?><?= htmlspecialchars($part['label']) ?><?php endif; ?>
+                    <?php endforeach; ?>
                 </td>
                 <td class="tanium-small"><?= $p['release_date'] ?? '—' ?></td>
             </tr>
@@ -604,9 +624,13 @@ echo "<style>.container-xl,.container-lg{max-width:100%!important}</style>";
             <td class="tanium-mono tanium-small"><?= htmlspecialchars($p['ip_address'] ?? '—') ?></td>
             <td class="tanium-small"><?= htmlspecialchars(mb_substr($p['patch_title'] ?: $p['patch_id'], 0, 75)) ?><?= mb_strlen($p['patch_title']??'') > 75 ? '…' : '' ?></td>
             <td class="tanium-mono tanium-small">
-                <?php if ($p['kb_id']): ?>
-                <a href="https://support.microsoft.com/kb/<?= htmlspecialchars($p['kb_id']) ?>" target="_blank" class="tanium-link"><?= htmlspecialchars($p['kb_id']) ?></a>
-                <?php else: ?>—<?php endif; ?>
+                <?php $kbParts = \GlpiPlugin\Tanium\PatchDeploy::kbParts($p['kb_id'] ?? null); ?>
+                <?php if ($kbParts === []): ?>—<?php endif; ?>
+                <?php foreach ($kbParts as $part): ?>
+                    <?php if ($part['url'] !== null): ?>
+                    <a href="<?= htmlspecialchars($part['url']) ?>" target="_blank" class="tanium-link"><?= htmlspecialchars($part['label']) ?></a>
+                    <?php else: ?><?= htmlspecialchars($part['label']) ?><?php endif; ?>
+                <?php endforeach; ?>
             </td>
             <td><span class="tanium-badge <?= $sc ?>"><?= ucfirst($p['severity']) ?></span></td>
             <td><span class="tanium-badge <?= $stCls ?>"><?= htmlspecialchars($p['status']) ?></span></td>

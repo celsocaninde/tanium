@@ -37,11 +37,72 @@ class Cron extends CommonDBTM {
             'purgehistory' => [
                 'description' => __('Tanium — purge history rows older than the configured retention.', 'tanium'),
             ],
+            'purgeretired' => [
+                'description' => __('Tanium — remove endpoints Tanium stopped reporting, after the configured grace period.', 'tanium'),
+            ],
             'apihealth' => [
                 'description' => __('Tanium — verify API/token health and warn before the token expires.', 'tanium'),
             ],
             default => [],
         };
+    }
+
+    /**
+     * Drop endpoints Tanium has not reported for longer than the configured
+     * grace period, together with their findings. Off by default (0 days):
+     * deleting asset data must be an explicit decision, not a surprise.
+     *
+     * The GLPI Computer itself is never touched — it may hold inventory from
+     * other sources. Only the Tanium-owned rows go.
+     */
+    public static function cronPurgeretired(CronTask $task): int {
+        global $DB;
+
+        $days = (int)(Config::getConfig()['retire_after_days'] ?? 0);
+        if ($days <= 0) {
+            $task->log(__('Retired-endpoint purge disabled (grace period set to 0). Skipping.', 'tanium'));
+            return 0;
+        }
+
+        $cutoff = date('Y-m-d H:i:s', strtotime("-{$days} days"));
+        $eids   = [];
+        foreach ($DB->request([
+            'SELECT' => ['tanium_eid'],
+            'FROM'   => 'glpi_plugin_tanium_assets',
+            'WHERE'  => [
+                'NOT'        => ['retired_at' => null],
+                'retired_at' => ['<', $cutoff],
+            ],
+        ]) as $row) {
+            $eids[] = (string)$row['tanium_eid'];
+        }
+
+        if ($eids === []) {
+            $task->log(__('No retired endpoint past the grace period.', 'tanium'));
+            return 0;
+        }
+
+        foreach ([
+            'glpi_plugin_tanium_endpoint_cves',
+            'glpi_plugin_tanium_patches',
+            'glpi_plugin_tanium_cve_history',
+            'glpi_plugin_tanium_patch_history',
+            'glpi_plugin_tanium_compliance',
+            'glpi_plugin_tanium_assets',
+        ] as $table) {
+            if ($DB->tableExists($table)) {
+                $DB->delete($table, ['tanium_eid' => $eids]);
+            }
+        }
+
+        $task->log(sprintf(
+            __('Purged %1$d endpoint(s) retired for more than %2$d days.', 'tanium'),
+            count($eids),
+            $days
+        ));
+        $task->setVolume(count($eids));
+
+        return 1;
     }
 
     public static function cronPurgehistory(CronTask $task): int {

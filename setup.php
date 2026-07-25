@@ -13,7 +13,7 @@ use GlpiPlugin\Tanium\CentralWidget as TaniumCentralWidget;
 use GlpiPlugin\Tanium\PatchDeploy as TaniumPatchDeploy;
 use GlpiPlugin\Tanium\Vulnerability;
 
-define('PLUGIN_TANIUM_VERSION', '2.12.0');
+define('PLUGIN_TANIUM_VERSION', '2.14.0');
 define('PLUGIN_TANIUM_MIN_GLPI', '11.0.0');
 define('PLUGIN_TANIUM_MAX_GLPI', '11.99.99');
 
@@ -204,6 +204,18 @@ function plugin_init_tanium(): void {
         DAY_TIMESTAMP,
         [
             'comment'   => 'Tanium — purge history rows older than the configured retention',
+            'mode'      => CronTask::MODE_EXTERNAL,
+            'allowmode' => CronTask::MODE_INTERNAL | CronTask::MODE_EXTERNAL,
+        ]
+    );
+
+    // Cron task registration — daily purge of endpoints Tanium stopped reporting
+    CronTask::register(
+        TaniumCron::class,
+        'purgeretired',
+        DAY_TIMESTAMP,
+        [
+            'comment'   => 'Tanium — remove endpoints retired for longer than the configured grace period',
             'mode'      => CronTask::MODE_EXTERNAL,
             'allowmode' => CronTask::MODE_INTERNAL | CronTask::MODE_EXTERNAL,
         ]

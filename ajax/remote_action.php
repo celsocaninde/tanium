@@ -28,7 +28,7 @@ try {
     if (!empty($result['ticket_id'])) {
         $result['ticket_url'] = '/front/ticket.form.php?id=' . $result['ticket_id'];
         $result['message']    = sprintf(
-            'Chamado #%d criado. Envie a solicitação de aprovação — quando aprovada, a ação é disparada automaticamente no Tanium.',
+            __('Ticket #%d created. Send the approval request — once approved, the action fires automatically in Tanium.', 'tanium'),
             $result['ticket_id']
         );
     }
