@@ -395,17 +395,41 @@ GQL;
             if ($title === '' || stripos($title, 'No Patches Required') !== false) {
                 continue;
             }
-            $kb = $byName['KB Articles'][$i] ?? '';
-            $out[] = [
-                'patchId'     => $kb !== '' ? $kb : $title,
+            $kb      = $byName['KB Articles'][$i] ?? '';
+            $patchId = $kb !== '' ? $kb : $title;
+            $entry   = [
+                'patchId'     => $patchId,
                 'title'       => $title,
                 'severity'    => $byName['Severity'][$i]     ?? '',
                 'status'      => 'missing',
                 'kb'          => $kb,
                 'releaseDate' => $byName['Release Date'][$i] ?: null,
             ];
+
+            // One advisory can cover several packages (ALSA/RHSA/USN), and the
+            // sensor answers with a row per package sharing the same KB — i.e.
+            // the same patchId. The DB holds one row per (endpoint, patch_id),
+            // so collapse them here and keep the most severe: severity drives
+            // patch selection in the KEV automation, and letting the last row
+            // win would make that selection depend on row order.
+            $prev = $out[$patchId] ?? null;
+            if ($prev === null || self::patchSeverityRank($entry['severity']) > self::patchSeverityRank($prev['severity'])) {
+                $out[$patchId] = $entry;
+            }
         }
-        return $out;
+        return array_values($out);
+    }
+
+    /** Order the Applicable Patches severities, worst first. Unknown sorts lowest. */
+    private static function patchSeverityRank(string $severity): int {
+        return match (strtolower(trim($severity))) {
+            'critical'  => 5,
+            'important' => 4,
+            'high'      => 3,
+            'moderate', 'medium' => 2,
+            'low'       => 1,
+            default     => 0,
+        };
     }
 
     /**

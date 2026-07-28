@@ -1396,6 +1396,14 @@ class Sync extends CommonGLPI {
                     'cve_id'     => $cveId,
                     'date_mod'   => $now,
                 ]);
+                // Same guard as the patch sync: a cveId repeated inside one
+                // payload must update the row just inserted, never insert twice
+                // against the eid_cve unique key.
+                $existingRows[$key] = $record + [
+                    'id'         => (int)$DB->insertId(),
+                    'tanium_eid' => $eid,
+                    'cve_id'     => $cveId,
+                ];
             }
         }
 
@@ -1654,6 +1662,16 @@ class Sync extends CommonGLPI {
                     'patch_id'   => $patchId,
                     'date_mod'   => $now,
                 ]);
+                // Register the row just created: one advisory can cover several
+                // packages (ALSA/RHSA/USN), and the sensor then answers with one
+                // row per package all carrying the same patch_id. Without this,
+                // the repeat would take the INSERT branch again and hit the
+                // eid_patch unique key, aborting the whole endpoint's sync.
+                $existingRows[(string)$patchId] = $record + [
+                    'id'         => (int)$DB->insertId(),
+                    'tanium_eid' => $eid,
+                    'patch_id'   => $patchId,
+                ];
                 $DB->insert('glpi_plugin_tanium_patch_history', [
                     'tanium_eid'   => $eid,
                     'patch_id'     => $patchId,
