@@ -573,6 +573,7 @@ class Sync extends CommonGLPI {
             $requester = Config::ticketRequesterId(0, $config);
             if ($requester > 0) {
                 $ticketData['_users_id_requester'] = $requester;
+                $ticketData['_users_id_assign']    = $requester;
             }
 
             $ticketId = (int)$ticket->add($ticketData);
@@ -602,6 +603,7 @@ class Sync extends CommonGLPI {
                     )
                 ),
                 'solutiontypes_id' => 0,
+                'users_id'         => Config::automationUserId($config),
             ]);
         }
 
@@ -701,6 +703,7 @@ class Sync extends CommonGLPI {
         $requester = Config::ticketRequesterId(0, $config);
         if ($requester > 0) {
             $ticketData['_users_id_requester'] = $requester;
+            $ticketData['_users_id_assign']    = $requester;
         }
 
         $ticket   = new Ticket();
@@ -786,6 +789,7 @@ class Sync extends CommonGLPI {
                         'A sincronização com o Tanium confirmou que todos os findings críticos listados neste chamado foram <strong>remediados</strong>. Este chamado foi <strong>encerrado automaticamente</strong>.'
                     ),
                     'solutiontypes_id' => 0,
+                    'users_id'         => Config::automationUserId(),
                 ]);
             }
 
@@ -1554,6 +1558,18 @@ class Sync extends CommonGLPI {
                 'old_status'   => $row['status'],
                 'new_status'   => 'remediated',
                 'changed_at'   => $now,
+            ]);
+            // Tanium no longer reports the finding — that is the only evidence
+            // the plugin ever gets that a CVE is actually fixed, so this is the
+            // one place allowed to close its assignment.
+            $DB->update('glpi_plugin_tanium_cve_assignments', [
+                'status'   => 'resolved',
+                'date_mod' => $now,
+            ], [
+                'tanium_eid' => $eid,
+                'cve_id'     => $row['cve_id'],
+                'ref_type'   => 'cve',
+                'NOT'        => ['status' => 'resolved'],
             ]);
             self::$remediatedCves[] = self::remediationEvent($row, $computerName, $eid);
             $closed++;

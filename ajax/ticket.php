@@ -33,6 +33,7 @@ $config = \GlpiPlugin\Tanium\Config::getConfig();
 
 $ticket = new Ticket();
 
+$requester  = \GlpiPlugin\Tanium\Config::ticketRequesterId(Session::getLoginUserID(), $config);
 $ticketData = [
     'name'                => $title,
     'content'             => nl2br(htmlspecialchars($content)),
@@ -42,8 +43,12 @@ $ticketData = [
     'entities_id'         => (int)($config['ticket_entity_id'] ?? 0) > 0
                                 ? (int)$config['ticket_entity_id']
                                 : ($_SESSION['glpiactive_entity'] ?? 0),
-    '_users_id_requester' => \GlpiPlugin\Tanium\Config::ticketRequesterId(Session::getLoginUserID(), $config),
+    '_users_id_requester' => $requester,
 ];
+
+if ($requester > 0) {
+    $ticketData['_users_id_assign'] = $requester;
+}
 
 if ($itilcategoriesId > 0) {
     $ticketData['itilcategories_id'] = $itilcategoriesId;
@@ -86,7 +91,7 @@ if ($ticketId) {
             'itemtype'   => 'Ticket',
             'content'    => $note,
             'is_private' => 0,
-            'users_id'   => Session::getLoginUserID(),
+            'users_id'   => \GlpiPlugin\Tanium\Config::automationUserId($config),
         ]);
     }
 

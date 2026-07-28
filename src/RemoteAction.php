@@ -127,8 +127,9 @@ class RemoteAction {
             ? (int)$config['ticket_entity_id']
             : (int)($_SESSION['glpiactive_entity'] ?? 0);
 
-        $ticket   = new Ticket();
-        $ticketId = (int)$ticket->add([
+        $requester = Config::ticketRequesterId(Session::getLoginUserID(), $config);
+        $ticket    = new Ticket();
+        $ticketData = [
             'name'                => sprintf('[Tanium] Ação remota — %s — %s', $meta['label'], $name),
             'content'             => $html,
             'status'              => Ticket::INCOMING,
@@ -138,8 +139,12 @@ class RemoteAction {
             'priority'            => $isQuarantine ? 5 : 3,
             'entities_id'         => $entityId,
             'requesttypes_id'     => 1,
-            '_users_id_requester' => Config::ticketRequesterId(Session::getLoginUserID(), $config),
-        ]);
+            '_users_id_requester' => $requester,
+        ];
+        if ($requester > 0) {
+            $ticketData['_users_id_assign'] = $requester;
+        }
+        $ticketId = (int)$ticket->add($ticketData);
         if (!$ticketId) {
             return ['success' => false, 'error' => 'Ticket creation failed'];
         }
@@ -336,6 +341,7 @@ class RemoteAction {
   <div style='margin-top:12px;font-size:.75rem;color:#a0aec0'>🤖 Resposta automática do plugin Tanium &nbsp;·&nbsp; " . date('d/m/Y H:i') . "</div>
 </div>",
             'is_private' => 0,
+            'users_id'   => Config::automationUserId(),
         ]);
     }
 }

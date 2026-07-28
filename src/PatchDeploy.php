@@ -116,6 +116,7 @@ class PatchDeploy extends CommonGLPI {
                     $extra
                 ),
                 'is_private' => 0,
+                'users_id'   => Config::automationUserId(),
             ]);
         }
     }
@@ -223,6 +224,7 @@ class PatchDeploy extends CommonGLPI {
                           ),
                     'is_private'      => 0,
                     'requesttypes_id' => 0,
+                    'users_id'        => Config::automationUserId($config),
                 ]);
             }
 
@@ -429,6 +431,7 @@ class PatchDeploy extends CommonGLPI {
                                 . htmlspecialchars($taniumState) . '</code>'
                             ),
                             'is_private' => 0,
+                            'users_id'   => Config::automationUserId($config),
                         ]);
                     }
                     self::notifyDeployWebhook(
@@ -493,13 +496,37 @@ class PatchDeploy extends CommonGLPI {
             ]);
         }
 
-        // Auto-resolve open CVE assignments for this endpoint
-        $DB->doQuery(sprintf(
-            "UPDATE `glpi_plugin_tanium_cve_assignments`
-             SET status = 'resolved'
-             WHERE tanium_eid = '%s' AND status != 'resolved'",
-            $DB->escape($dep['tanium_eid'])
-        ));
+        // Resolve only the assignments backed by evidence.
+        //
+        // Tanium exposes no patch→CVE mapping, so a finished deploy proves
+        // nothing about any particular CVE: it only proves the patches it
+        // carried are installed. Patch assignments therefore close here, while
+        // CVE assignments wait for a sync to confirm Tanium stopped reporting
+        // the finding. Blanket-resolving every assignment of the endpoint (the
+        // behaviour up to v2.15.0) closed findings nobody had fixed.
+        $eidEsc = $DB->escape($dep['tanium_eid']);
+
+        $DB->doQuery(
+            "UPDATE `glpi_plugin_tanium_cve_assignments` asgn
+             JOIN `glpi_plugin_tanium_patches` p
+                  ON p.tanium_eid = asgn.tanium_eid AND p.patch_id = asgn.cve_id
+             SET asgn.status = 'resolved', asgn.date_mod = NOW()
+             WHERE asgn.tanium_eid = '{$eidEsc}'
+               AND asgn.ref_type = 'patch'
+               AND asgn.status != 'resolved'
+               AND p.status = 'remediated'"
+        );
+
+        $DB->doQuery(
+            "UPDATE `glpi_plugin_tanium_cve_assignments` asgn
+             JOIN `glpi_plugin_tanium_endpoint_cves` ec
+                  ON ec.tanium_eid = asgn.tanium_eid AND ec.cve_id = asgn.cve_id
+             SET asgn.status = 'resolved', asgn.date_mod = NOW()
+             WHERE asgn.tanium_eid = '{$eidEsc}'
+               AND asgn.ref_type = 'cve'
+               AND asgn.status != 'resolved'
+               AND ec.status = 'remediated'"
+        );
 
         // Recalculate endpoint risk score
         Sync::updateRiskScore($dep['tanium_eid']);
@@ -520,9 +547,12 @@ class PatchDeploy extends CommonGLPI {
                         '✅ Implantação concluída — Todos os patches foram aplicados',
                         sprintf(
                             '<strong>%d patch%s</strong> implantado%s com sucesso pelo agente Tanium em <strong>%s</strong>.<br><br>'
-                            . '✔ Atribuições de CVE para este endpoint foram <strong>resolvidas automaticamente</strong>.<br>'
+                            . '✔ Os patches acima foram marcados como <strong>corrigidos</strong>.<br>'
                             . '✔ Score de risco do endpoint foi <strong>recalculado</strong>.<br>'
-                            . '✔ Este chamado foi <strong>encerrado automaticamente</strong>.',
+                            . '✔ Este chamado foi <strong>encerrado automaticamente</strong>.<br><br>'
+                            . '⏳ As <strong>CVEs</strong> deste endpoint permanecem abertas até que uma sincronização '
+                            . 'confirme que o Tanium deixou de reportá-las — o Tanium não informa qual patch corrige '
+                            . 'qual CVE, então a instalação por si só não comprova a correção de nenhuma CVE específica.',
                             $patchCount,
                             $patchCount > 1 ? 's' : '',
                             $patchCount > 1 ? 's' : '',
@@ -538,11 +568,20 @@ class PatchDeploy extends CommonGLPI {
     // ── KEV auto-remediation ─────────────────────────────────────────────────
 
     /**
+     * Days an endpoint stays out of the KEV automation after any deployment
+     * attempt. Without it a refused approval re-qualified on the very next
+     * cron run — the automation reopened, every run, exactly the tickets a
+     * human had just declined.
+     */
+    private const KEV_COOLDOWN_DAYS = 30;
+
+    /**
      * Opt-in automation: endpoints exposed to KEV (actively exploited) CVEs
      * that have missing high-severity patches get a patch-remediation ticket
      * opened automatically, in pending_approval state — the deploy itself
      * still goes through the human approval flow. Skips endpoints with a
-     * deployment already pending/in-flight; capped per run to avoid floods.
+     * deployment already pending/in-flight or attempted within the cooldown;
+     * capped per run to avoid floods.
      */
     public static function autoDeployKev(array $config, int $maxPerRun = 5): int {
         global $DB;
@@ -568,7 +607,11 @@ class PatchDeploy extends CommonGLPI {
               AND NOT EXISTS (
                   SELECT 1 FROM glpi_plugin_tanium_patch_deployments d
                   WHERE d.tanium_eid = ec.tanium_eid
-                    AND d.status IN ('pending_approval', 'deploying')
+                    AND (
+                         d.status IN ('pending_approval', 'deploying')
+                      OR COALESCE(d.updated_at, d.created_at)
+                         > DATE_SUB(NOW(), INTERVAL " . self::KEV_COOLDOWN_DAYS . " DAY)
+                    )
               )
             LIMIT " . max(1, $maxPerRun)
         );
@@ -623,7 +666,12 @@ class PatchDeploy extends CommonGLPI {
         $name = $endpoint['tanium_name'] ?: $eid;
         $html = "<div style='border-left:4px solid #e8212a;background:#fff5f5;padding:12px 16px;border-radius:8px;margin-bottom:10px'>"
               . "<strong style='color:#c53030'>🔥 Aberto automaticamente:</strong> este endpoint tem "
-              . count($kevCves) . " CVE(s) do catálogo <strong>CISA KEV</strong> (exploração ativa confirmada) e patches de correção disponíveis."
+              . count($kevCves) . " CVE(s) do catálogo <strong>CISA KEV</strong> (exploração ativa confirmada), "
+              . "o que o coloca na fila de correção prioritária."
+              . "<br><br><span style='font-size:.85rem;color:#742a2a'>⚠️ Os <strong>" . count($patches) . " patch(es)</strong> listados abaixo são "
+              . "<strong>todos os pendentes de severidade crítica/alta</strong> deste endpoint — o Tanium não informa qual patch "
+              . "corrige qual CVE, portanto esta lista não é uma correspondência às CVEs KEV acima. As CVEs só serão dadas como "
+              . "corrigidas quando o Tanium deixar de reportá-las.</span>"
               . "</div>"
               . self::buildTicketHtml($endpoint, $patches, $kevCves, $config);
 
@@ -640,6 +688,7 @@ class PatchDeploy extends CommonGLPI {
         $requester = Config::ticketRequesterId(0, $config);
         if ($requester > 0) {
             $ticketData['_users_id_requester'] = $requester;
+            $ticketData['_users_id_assign']    = $requester;
         }
 
         $ticket   = new Ticket();

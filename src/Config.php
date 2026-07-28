@@ -224,6 +224,19 @@ class Config extends CommonDBTM {
     }
 
     /**
+     * GLPI user credited as the author of everything the plugin writes onto a
+     * ticket — solutions and automatic follow-ups.
+     *
+     * Same account as the configured requester, falling back to the session
+     * user for UI-triggered writes. Without it GLPI fills users_id from
+     * Session::getLoginUserID(), which is 0 under cron: the solution then
+     * renders as a nameless grey avatar with no author.
+     */
+    public static function automationUserId(?array $config = null): int {
+        return self::ticketRequesterId((int)Session::getLoginUserID(), $config);
+    }
+
+    /**
      * Among the picked notification users, the ones that will silently NOT
      * receive anything because their GLPI account has no (valid) email.
      * Returns [id => login] so callers can build actionable warnings.

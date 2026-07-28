@@ -72,6 +72,7 @@ switch ($action) {
         $requester = \GlpiPlugin\Tanium\Config::ticketRequesterId(Session::getLoginUserID(), $config);
         if ($requester > 0) {
             $ticketData['_users_id_requester'] = $requester;
+            $ticketData['_users_id_assign']    = $requester;
         }
         $ticket   = new Ticket();
         $ticketId = (int)$ticket->add($ticketData);

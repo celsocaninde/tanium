@@ -159,6 +159,7 @@ class ThreatResponse {
         $requester = Config::ticketRequesterId(0, $config);
         if ($requester > 0) {
             $ticketData['_users_id_requester'] = $requester;
+            $ticketData['_users_id_assign']    = $requester;
         }
 
         $ticket   = new Ticket();
@@ -200,6 +201,7 @@ class ThreatResponse {
                 )
             ),
             'solutiontypes_id' => 0,
+            'users_id'         => Config::automationUserId(),
         ]);
     }
 
