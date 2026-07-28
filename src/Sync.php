@@ -243,6 +243,14 @@ class Sync extends CommonGLPI {
                 $sensors[] = $rebootSensor;
             }
             $pageOpts   = ['sensors' => $sensors];
+            // Skip the optional blocks this Gateway already rejected, unless the
+            // cache is stale — then ask for everything again, so a module
+            // installed since the last probe comes back on its own.
+            $capsFullProbe = self::capsProbeDue($config);
+            if (!$capsFullProbe) {
+                $pageOpts['extrasLevel'] = (int)($config['caps_extras_level'] ?? 2);
+                $pageOpts['groups']      = !empty($config['caps_groups']);
+            }
             if ($sinceTs > 0) {
                 // Server-side incremental: unchanged endpoints never leave Tanium.
                 // The client-side filter below stays as a safety net.
@@ -314,6 +322,8 @@ class Sync extends CommonGLPI {
                 $withGroups,
                 $pageOpts
             );
+
+            self::persistCapabilities($api->discoveredCapabilities(), $capsFullProbe);
 
             // Fleet-wide CVE impact count (per-page upserts only see their page).
             if ($withCves) {
@@ -1472,6 +1482,59 @@ class Sync extends CommonGLPI {
                 $returned
             ));
         }
+    }
+
+    // ── Gateway capability cache ──────────────────────────────────────────
+
+    /** Days before the plugin re-asks the Gateway for the optional blocks. */
+    private const CAPS_REPROBE_DAYS = 7;
+
+    /**
+     * True when the cached capabilities are absent or old enough to re-test.
+     *
+     * Without the re-probe a tenant that later deploys the event sensors (or
+     * grants the missing module permission) would stay degraded forever; with
+     * it, the cost of discovering that is one rejected query per week instead
+     * of one per sync run.
+     */
+    private static function capsProbeDue(array $config): bool {
+        $probedAt = $config['caps_probed_at'] ?? null;
+        if (empty($probedAt)) {
+            return true;
+        }
+        $ts = strtotime((string)$probedAt);
+        return $ts === false || $ts < strtotime('-' . self::CAPS_REPROBE_DAYS . ' days');
+    }
+
+    /**
+     * Store what the Gateway actually accepted on this sweep.
+     *
+     * `caps_probed_at` is stamped only after a FULL probe — stamping it on
+     * every run would keep pushing the re-probe deadline forward and the
+     * plugin would never ask again.
+     *
+     * @param array{extrasLevel:int,groups:bool} $caps
+     */
+    private static function persistCapabilities(array $caps, bool $fullProbe): void {
+        global $DB;
+
+        $row = $DB->request([
+            'SELECT' => ['id'],
+            'FROM'   => 'glpi_plugin_tanium_configs',
+            'LIMIT'  => 1,
+        ])->current();
+        if ($row === null) {
+            return;
+        }
+
+        $update = [
+            'caps_extras_level' => (int)$caps['extrasLevel'],
+            'caps_groups'       => !empty($caps['groups']) ? 1 : 0,
+        ];
+        if ($fullProbe) {
+            $update['caps_probed_at'] = date('Y-m-d H:i:s');
+        }
+        $DB->update('glpi_plugin_tanium_configs', $update, ['id' => (int)$row['id']]);
     }
 
     /**

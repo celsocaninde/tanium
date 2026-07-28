@@ -45,6 +45,9 @@ function plugin_tanium_install(): bool {
                 `ticket_requester_id`   int unsigned NOT NULL DEFAULT 0,
                 `kiosk_enabled`         tinyint(1) NOT NULL DEFAULT 0,
                 `kiosk_token`           varchar(64) NOT NULL DEFAULT '',
+                `caps_extras_level`     tinyint NOT NULL DEFAULT 2,
+                `caps_groups`           tinyint(1) NOT NULL DEFAULT 1,
+                `caps_probed_at`        timestamp NULL DEFAULT NULL,
                 `date_mod`              timestamp NULL DEFAULT NULL,
                 PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
@@ -120,6 +123,13 @@ function plugin_tanium_install(): bool {
             'last_monthly_report'     => "timestamp NULL DEFAULT NULL",
             'kiosk_enabled'           => "tinyint(1) NOT NULL DEFAULT 0",
             'kiosk_token'             => "varchar(64) NOT NULL DEFAULT ''",
+            // Gateway capability cache: what the tenant actually answered last
+            // time, so the sync stops re-probing blocks it already knows are
+            // rejected. Re-probed periodically — a module installed later must
+            // still be picked up. See Api::eachEndpointPage().
+            'caps_extras_level'       => "tinyint NOT NULL DEFAULT 2",
+            'caps_groups'             => "tinyint(1) NOT NULL DEFAULT 1",
+            'caps_probed_at'          => "timestamp NULL DEFAULT NULL",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_configs` LIKE '{$col}'");

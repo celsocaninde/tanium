@@ -8,9 +8,24 @@ class Api {
     private string $token;
     private int    $timeout = 30;
 
+    /** Optional blocks this tenant still accepted on the last endpoint sweep. */
+    private int  $capsExtrasLevel = 2;
+    private bool $capsGroups      = true;
+
     public function __construct(string $baseUrl, string $token) {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->token   = $token;
+    }
+
+    /**
+     * What eachEndpointPage() ended up being able to ask for, after any
+     * progressive degradation. The caller persists it so the next run starts
+     * there instead of re-probing blocks the Gateway already rejected.
+     *
+     * @return array{extrasLevel:int,groups:bool}
+     */
+    public function discoveredCapabilities(): array {
+        return ['extrasLevel' => $this->capsExtrasLevel, 'groups' => $this->capsGroups];
     }
 
     // ── Endpoints ────────────────────────────────────────────────────────────
@@ -135,9 +150,18 @@ GQL;
             $pageSize = min($pageSize, self::ENRICHED_PAGE_SIZE);
         }
 
-        $extrasLevel = ($opts['extras'] ?? true) ? 2 : 0;
+        // Start from what the tenant answered last time instead of always
+        // asking for everything: a Gateway without the event sensors rejected
+        // eventCounts on every single run, burning one failed round-trip and
+        // one log line per sync, forever. The caller re-probes periodically so
+        // a module installed later is still picked up.
+        $extrasLevel = ($opts['extras'] ?? true) ? (int)($opts['extrasLevel'] ?? 2) : 0;
+        $withGroups  = $withGroups && ($opts['groups'] ?? true);
         $sensors     = array_values(array_filter((array)($opts['sensors'] ?? [])));
         $since       = $opts['since'] ?? null;
+
+        $this->capsExtrasLevel = $extrasLevel;
+        $this->capsGroups      = $withGroups;
 
         $after = null;
         $count = 0;
@@ -176,16 +200,19 @@ GQL;
                     }
                     if ($schemaError && $withGroups && str_contains($msg, 'computerGroupMemberships')) {
                         \Toolbox::logInFile('tanium', "[Tanium] Gateway does not expose computerGroupMemberships — group sync skipped.\n");
-                        $withGroups = false;
+                        $withGroups            = false;
+                        $this->capsGroups      = false;
                     } elseif ($extrasLevel === 2) {
                         \Toolbox::logInFile('tanium', "[Tanium] Gateway rejected eventCounts ({$msg}) — stability data skipped.\n");
-                        $extrasLevel = 1;
+                        $extrasLevel           = 1;
+                        $this->capsExtrasLevel = 1;
                     } elseif ($sensors !== []) {
                         \Toolbox::logInFile('tanium', "[Tanium] Custom sensors rejected ({$msg}) — skipped. Check the sensor names in the plugin settings.\n");
                         $sensors = [];
                     } elseif ($extrasLevel === 1) {
                         \Toolbox::logInFile('tanium', "[Tanium] Gateway rejected hygiene fields ({$msg}) — extras skipped.\n");
-                        $extrasLevel = 0;
+                        $extrasLevel           = 0;
+                        $this->capsExtrasLevel = 0;
                     } else {
                         throw $e;
                     }
