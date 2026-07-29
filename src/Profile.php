@@ -51,6 +51,71 @@ class Profile extends \Profile {
         return Session::haveRight(self::RIGHT_CONFIG, UPDATE);
     }
 
+    // ── Entity scoping ────────────────────────────────────────────────────
+
+    /**
+     * SQL fragment restricting a Tanium assets alias to the entities the
+     * current session may see, reached through the linked GLPI computer.
+     *
+     * Until v2.19.0 this existed only inside DashboardCards, so the native
+     * GLPI dashboard card was entity-aware while every plugin screen beside
+     * it showed the whole fleet. On a single-entity GLPI the two agree by
+     * accident; the moment entities are split, the card says twelve endpoints
+     * and the page next to it says four hundred.
+     *
+     * Two cases deliberately return no restriction at all:
+     *
+     *  • a user who can view every entity — nothing to narrow;
+     *  • no session, i.e. the CLI cron. Restricting there would quietly reduce
+     *    a fleet-wide job to nothing, which is far worse than showing too
+     *    much: crons write data, screens only display it.
+     *
+     * A session that exists but resolves to no entity gets `AND 1=0`, because
+     * "I am logged in and entitled to nothing" is a real answer.
+     *
+     * @param string $assetAlias alias of glpi_plugin_tanium_assets in the query
+     */
+    public static function entityRestrictSql(string $assetAlias = 'a'): string {
+        if (!isset($_SESSION['glpiactiveentities']) || Session::isCron() || !Session::getLoginUserID()) {
+            return '';
+        }
+        if (Session::canViewAllEntities()) {
+            return '';
+        }
+
+        $entities = array_map('intval', (array) ($_SESSION['glpiactiveentities'] ?? []));
+        if ($entities === []) {
+            return ' AND 1=0';
+        }
+
+        return " AND {$assetAlias}.computers_id IN ("
+             . "SELECT id FROM glpi_computers WHERE entities_id IN (" . implode(',', $entities) . "))";
+    }
+
+    /**
+     * May the current session see this endpoint?
+     *
+     * Used by the per-endpoint pages, where a restriction on the list would be
+     * pointless if the detail page still answered for any eid handed to it.
+     */
+    public static function canViewEndpoint(string $eid): bool {
+        global $DB;
+
+        $restrict = self::entityRestrictSql('a');
+        if ($restrict === '') {
+            return true;
+        }
+        if ($restrict === ' AND 1=0') {
+            return false;
+        }
+
+        $res = $DB->doQuery(
+            "SELECT 1 FROM glpi_plugin_tanium_assets a
+              WHERE a.tanium_eid = '" . $DB->escape($eid) . "'" . $restrict . " LIMIT 1"
+        );
+        return (bool) ($res && $res->fetch_assoc());
+    }
+
     // ── Session sync ──────────────────────────────────────────────────────
 
     public static function syncCurrentProfileRights(): void {

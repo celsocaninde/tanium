@@ -108,6 +108,21 @@ class Cron extends CommonDBTM {
     public static function cronPurgehistory(CronTask $task): int {
         global $DB;
 
+        // Self-heal first: a sync killed by the OS leaves its task pinned in
+        // STATE_RUNNING, which GLPI never schedules again. Nothing else clears
+        // it, so without this the fleet data silently stops refreshing until a
+        // human notices — the July 2026 wedge went unnoticed for 26 days.
+        $recovered = Sync::recoverWedgedRun();
+        if ($recovered['task']) {
+            $task->log(__('An interrupted sync had left the scheduler task stuck — released, so the sync runs again.', 'tanium'));
+        }
+        if ($recovered['logs'] > 0) {
+            $task->log(sprintf(
+                __('Closed %d orphan sync log row(s) left behind by interrupted runs.', 'tanium'),
+                $recovered['logs']
+            ));
+        }
+
         $config = Config::getConfig();
         $days   = max(30, (int)($config['retention_days'] ?? 365));
         $purged = 0;
@@ -124,6 +139,37 @@ class Cron extends CommonDBTM {
             }
             $DB->doQuery("DELETE FROM `{$table}` WHERE `{$col}` < DATE_SUB(NOW(), INTERVAL {$days} DAY)");
             $purged += $DB->affectedRows();
+        }
+
+        // Closed findings: their own, usually shorter retention.
+        //
+        // The live tables were deliberately never purged, and for OPEN findings
+        // that must stay true — dropping something still present on a machine
+        // would make it silently reappear as "new" on the next sync, resetting
+        // its age and its SLA clock. A CLOSED finding has no such risk: it is
+        // pure history, it only accumulates (one sync alone closed 16,687 of
+        // them), and its transition is already recorded in the history tables
+        // that feed MTTR. Off by default, because deleting data must be a
+        // decision someone makes, not a surprise on upgrade.
+        $closedDays = (int)($config['retention_closed_days'] ?? 0);
+        if ($closedDays > 0) {
+            $cutoff = date('Y-m-d H:i:s', strtotime("-{$closedDays} days"));
+            foreach ([
+                'glpi_plugin_tanium_endpoint_cves' => ['remediated'],
+                'glpi_plugin_tanium_patches'       => ['installed', 'remediated'],
+            ] as $table => $closedStates) {
+                if (!$DB->tableExists($table)) {
+                    continue;
+                }
+                $in = "'" . implode("','", array_map([$DB, 'escape'], $closedStates)) . "'";
+                $DB->doQuery(sprintf(
+                    "DELETE FROM `%s` WHERE `status` IN (%s) AND `date_mod` < '%s'",
+                    $table,
+                    $in,
+                    $DB->escape($cutoff)
+                ));
+                $purged += $DB->affectedRows();
+            }
         }
 
         // Resolved threat alerts follow the same retention; open ones stay.
@@ -311,6 +357,35 @@ class Cron extends CommonDBTM {
 
         if (empty($config['api_url']) || empty($config['api_token'])) {
             $task->log(__('Tanium plugin: API URL or token not configured. Skipping.', 'tanium'));
+            return 0;
+        }
+
+        // Honour the configured frequency.
+        //
+        // The task is registered hourly and decides here whether it is due —
+        // the same pattern the weekly and monthly reports use. Without this,
+        // "Cron frequency: 24h" was pure decoration: the setting was saved,
+        // shown on the Synchronize screen, and read by nobody, so a tenant
+        // asking for one sync a day got twenty-four.
+        //
+        // The interval is measured from the last run that actually succeeded,
+        // so a failing sync keeps retrying hourly instead of going quiet for a
+        // day after one bad run.
+        // A human pressing "Run synchronization now" outranks the schedule —
+        // otherwise the button would silently do nothing whenever the last run
+        // was recent, which is exactly when someone wants to re-check.
+        $manual = !empty($config['sync_requested_at']);
+        if ($manual) {
+            Config::clearSyncRequest();
+        }
+
+        $hours = max(1, (int)($config['cron_frequency'] ?? 24));
+        $last  = strtotime((string)($config['last_sync'] ?? '')) ?: 0;
+        if (!$manual && $last > 0 && (time() - $last) < $hours * HOUR_TIMESTAMP) {
+            $task->log(sprintf(
+                __('Last sync was less than the configured %dh ago. Skipping.', 'tanium'),
+                $hours
+            ));
             return 0;
         }
 

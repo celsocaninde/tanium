@@ -395,6 +395,15 @@ class PatchDeploy extends CommonGLPI {
 
         $api = new Api($config['api_url'], $config['api_token']);
 
+        // Deployments Tanium never resolves.
+        //
+        // The poll below only reacts to terminal states. A deployment left in
+        // PENDING or WAITING — agent offline, maintenance window never opened,
+        // the record lost on the Tanium side — was re-polled every five
+        // minutes forever and its ticket never closed, so a request that will
+        // never complete looked identical to one still in progress.
+        self::failStalledDeployments();
+
         $res = $DB->doQuery(
             "SELECT * FROM `glpi_plugin_tanium_patch_deployments`
              WHERE status = 'deploying' AND tanium_deployment_id IS NOT NULL
@@ -453,6 +462,68 @@ class PatchDeploy extends CommonGLPI {
 
         $task->addVolume($processed);
         return $processed > 0 ? 1 : 0;
+    }
+
+    /**
+     * Hours a deployment may stay in flight before it is called a failure.
+     *
+     * The deployment window itself defaults to 24h (Api::deployPatches), so
+     * anything still open well past that is not slow, it is stuck.
+     */
+    private const DEPLOY_MAX_HOURS = 72;
+
+    /** Close out deployments that have been in flight too long to be real. */
+    private static function failStalledDeployments(): void {
+        global $DB;
+
+        $cutoff = date('Y-m-d H:i:s', strtotime('-' . self::DEPLOY_MAX_HOURS . ' hours'));
+        $config = Config::getConfig();
+
+        $res = $DB->doQuery(sprintf(
+            "SELECT * FROM `glpi_plugin_tanium_patch_deployments`
+              WHERE status = 'deploying'
+                AND COALESCE(approved_at, created_at) < '%s'",
+            $DB->escape($cutoff)
+        ));
+
+        while ($res && ($dep = $res->fetch_assoc())) {
+            $DB->doQuery(sprintf(
+                "UPDATE `glpi_plugin_tanium_patch_deployments`
+                    SET status = 'failed', error_message = '%s', updated_at = NOW()
+                  WHERE id = %d AND status = 'deploying'",
+                $DB->escape(sprintf('Timed out: no terminal status from Tanium within %dh', self::DEPLOY_MAX_HOURS)),
+                (int)$dep['id']
+            ));
+
+            if (!empty($dep['ticket_id'])) {
+                $fu = new ITILFollowup();
+                $fu->add([
+                    'itemtype'   => 'Ticket',
+                    'items_id'   => (int)$dep['ticket_id'],
+                    'content'    => self::followupHtml(
+                        'warning',
+                        '⏱️ Implantação sem resposta — encerrada por tempo',
+                        sprintf(
+                            'O Tanium não reportou conclusão nem falha em <strong>%dh</strong>. '
+                            . 'O deploy foi marcado como falho para não ficar em aberto indefinidamente.<br><br>'
+                            . 'Verifique no console do Tanium se a implantação chegou a rodar — o agente pode estar '
+                            . 'offline ou a janela de manutenção pode não ter aberto.',
+                            self::DEPLOY_MAX_HOURS
+                        )
+                    ),
+                    'is_private' => 0,
+                    'users_id'   => Config::automationUserId($config),
+                ]);
+            }
+
+            self::notifyDeployWebhook(
+                'failed',
+                $dep,
+                count(json_decode((string)$dep['patch_ids'], true) ?: []),
+                (string)($dep['tanium_deployment_id'] ?? ''),
+                'timeout'
+            );
+        }
     }
 
     // ── Mark deployment as successfully completed ───────────────────────────

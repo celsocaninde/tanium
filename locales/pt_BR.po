@@ -2496,3 +2496,545 @@ msgstr "Sistema operacional fora do suporte"
 #, php-format
 msgid "%s receives no security fixes — risk floored, since patching cannot resolve it"
 msgstr "%s não recebe correções de segurança — risco com piso, já que patch não resolve"
+
+msgid "A synchronization is already running. Watch its progress in the history below."
+msgstr "Já existe uma sincronização em andamento. Acompanhe o progresso no histórico abaixo."
+
+msgid "A previous run had been interrupted and left the task stuck — it was released. Synchronization queued; it starts within a minute."
+msgstr "Uma execução anterior foi interrompida e deixou a tarefa travada — ela foi liberada. Sincronização enfileirada; começa dentro de um minuto."
+
+#, php-format
+msgid "Interrupted run: the process died without finishing (started %s)."
+msgstr "Execução interrompida: o processo morreu sem terminar (iniciada em %s)."
+
+msgid "An interrupted sync had left the scheduler task stuck — released, so the sync runs again."
+msgstr "Uma sincronização interrompida havia travado a tarefa agendada — liberada, o sync volta a rodar."
+
+#, php-format
+msgid "Closed %d orphan sync log row(s) left behind by interrupted runs."
+msgstr "Fechado(s) %d registro(s) órfão(s) de sincronização deixado(s) por execuções interrompidas."
+
+# ── v2.18.0 ──────────────────────────────────────────────────────────────
+
+msgid "Diagnostics"
+msgstr "Diagnóstico"
+
+msgid "Tanium — Diagnostics"
+msgstr "Tanium — Diagnóstico"
+
+msgid "Plugin diagnostics"
+msgstr "Diagnóstico do plugin"
+
+msgid "Everything on this page is read live from the database and the cron table — it cannot go stale."
+msgstr "Tudo nesta página é lido ao vivo do banco e da tabela de tarefas — não tem como ficar desatualizado."
+
+msgid "Check"
+msgstr "Verificação"
+
+msgid "Value"
+msgstr "Valor"
+
+msgid "What it means"
+msgstr "O que significa"
+
+msgid "Problem"
+msgstr "Problema"
+
+msgid "Attention"
+msgstr "Atenção"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Last successful sync"
+msgstr "Última sincronização bem-sucedida"
+
+msgid "never"
+msgstr "nunca"
+
+msgid "No sync has ever completed successfully. Check the API URL, the token and the cron."
+msgstr "Nenhuma sincronização jamais terminou com sucesso. Confira a URL da API, o token e o cron."
+
+#, php-format
+msgid "%dh ago"
+msgstr "há %dh"
+
+msgid "A synchronization is running right now."
+msgstr "Há uma sincronização rodando agora."
+
+#, php-format
+msgid "%d endpoint(s) on the last run."
+msgstr "%d endpoint(s) na última execução."
+
+msgid "The fleet data is no longer refreshing. Check the sync task below."
+msgstr "Os dados da frota pararam de atualizar. Veja a tarefa de sincronização abaixo."
+
+msgid "API credentials"
+msgstr "Credenciais da API"
+
+msgid "not configured"
+msgstr "não configurado"
+
+msgid "Set the Tanium API URL and token in the plugin configuration."
+msgstr "Informe a URL da API do Tanium e o token na configuração do plugin."
+
+msgid "API token"
+msgstr "Token da API"
+
+msgid "no expiry set"
+msgstr "sem data de expiração"
+
+msgid "Tanium tokens expire. Record the expiry date so the plugin can warn before the sync stops."
+msgstr "Tokens do Tanium expiram. Registre a data para o plugin avisar antes de a sincronização parar."
+
+#, php-format
+msgid "expired %d day(s) ago"
+msgstr "expirou há %d dia(s)"
+
+#, php-format
+msgid "%d day(s) left"
+msgstr "faltam %d dia(s)"
+
+msgid "Renew the token in the Tanium console and update it here."
+msgstr "Renove o token no console do Tanium e atualize aqui."
+
+msgid "Email recipients"
+msgstr "Destinatários de e-mail"
+
+msgid "alerts off"
+msgstr "alertas desligados"
+
+msgid "none"
+msgstr "nenhum"
+
+msgid "Email alerts are enabled but no recipient resolves to an address — every alert is silently dropped."
+msgstr "Os alertas por e-mail estão ligados mas nenhum destinatário resolve para um endereço — todo alerta é descartado em silêncio."
+
+#, php-format
+msgid "%d configured"
+msgstr "%d configurado(s)"
+
+msgid "Gateway: stability data"
+msgstr "Gateway: dados de estabilidade"
+
+msgid "not available"
+msgstr "indisponível"
+
+msgid "The Gateway rejected eventCounts, so application-crash data is missing. It usually needs the event sensors deployed in the tenant."
+msgstr "O Gateway recusou eventCounts, então os dados de travamento de aplicação estão faltando. Normalmente exige os sensores de evento implantados no tenant."
+
+msgid "Gateway: hygiene data"
+msgstr "Gateway: dados de higiene"
+
+msgid "The Gateway rejected the hygiene block, so disk encryption and Defender health are missing — and the health grade cannot judge them."
+msgstr "O Gateway recusou o bloco de higiene, então criptografia de disco e saúde do Defender estão faltando — e a nota de saúde não consegue avaliá-los."
+
+msgid "Gateway: computer groups"
+msgstr "Gateway: grupos de computadores"
+
+msgid "The Gateway does not expose computerGroupMemberships, so group-to-entity mapping cannot run."
+msgstr "O Gateway não expõe computerGroupMemberships, então o mapeamento de grupo para entidade não roda."
+
+msgid "Gateway capabilities"
+msgstr "Capacidades do Gateway"
+
+msgid "all available"
+msgstr "todas disponíveis"
+
+msgid "Patches without a severity"
+msgstr "Patches sem severidade"
+
+msgid "The vendor shipped no rating for these, so they count at the lowest tier. Their contribution to the risk score is an assumption, not a measurement."
+msgstr "O fabricante não classificou estes, então eles contam no degrau mais baixo. A contribuição deles para a nota de risco é uma suposição, não uma medição."
+
+msgid "Unscanned endpoints in the patch list"
+msgstr "Endpoints não varridos na lista de patches"
+
+msgid "These rows are the Tanium patch sensor reporting that it could not scan the machine. They are excluded from the risk score, but they are a visibility gap worth chasing."
+msgstr "Estas linhas são o sensor de patch do Tanium informando que não conseguiu varrer a máquina. Ficam fora da nota de risco, mas são uma lacuna de visibilidade que vale perseguir."
+
+msgid "Scheduled tasks"
+msgstr "Tarefas agendadas"
+
+msgid "Task"
+msgstr "Tarefa"
+
+msgid "State"
+msgstr "Estado"
+
+msgid "Last run"
+msgstr "Última execução"
+
+msgid "Every"
+msgstr "A cada"
+
+#, php-format
+msgid "%d day(s) ago"
+msgstr "há %d dia(s)"
+
+#, php-format
+msgid "%dh"
+msgstr "%dh"
+
+#, php-format
+msgid "%dmin"
+msgstr "%dmin"
+
+msgid "A task left in \"running\" after its process was killed is never scheduled again by GLPI. The daily purge task releases it automatically; the Synchronize screen releases it on demand."
+msgstr "Uma tarefa que fica em \"running\" depois de o processo ser morto nunca mais é agendada pelo GLPI. A tarefa diária de expurgo a libera sozinha; a tela de Sincronização libera sob demanda."
+
+msgid "Recent synchronizations"
+msgstr "Sincronizações recentes"
+
+msgid "Duration"
+msgstr "Duração"
+
+msgid "Stored data"
+msgstr "Dados armazenados"
+
+msgid "An empty table usually means a capability nobody enabled yet, not a failure."
+msgstr "Tabela vazia costuma significar recurso que ninguém ligou ainda, não falha."
+
+msgid "Recent log entries"
+msgstr "Entradas recentes de log"
+
+msgid "Open diagnostics"
+msgstr "Abrir diagnóstico"
+
+#, php-format
+msgid "%d plugin health check needs attention."
+msgid_plural "%d plugin health checks need attention."
+msgstr[0] "%d verificação de saúde do plugin precisa de atenção."
+msgstr[1] "%d verificações de saúde do plugin precisam de atenção."
+
+msgid "[Tanium] The Gateway stopped answering part of the sync"
+msgstr "[Tanium] O Gateway parou de responder parte da sincronização"
+
+msgid "[Tanium] The Gateway is answering every data block again"
+msgstr "[Tanium] O Gateway voltou a responder todos os blocos de dados"
+
+msgid "The sync still completes, but the Tanium Gateway refused the blocks below, so that data is now missing from GLPI:"
+msgstr "A sincronização continua terminando, mas o Gateway do Tanium recusou os blocos abaixo, então esses dados agora faltam no GLPI:"
+
+msgid "This is usually a missing module permission on the API token, or sensors not deployed in the tenant."
+msgstr "Normalmente é permissão de módulo faltando no token da API, ou sensores não implantados no tenant."
+
+msgid "A block the Tanium Gateway had been refusing is available again. The data it feeds is being collected once more."
+msgstr "Um bloco que o Gateway do Tanium vinha recusando voltou a ficar disponível. Os dados que ele alimenta estão sendo coletados de novo."
+
+msgid "Tanium risk score"
+msgstr "Nota de risco Tanium"
+
+msgid "Tanium last seen"
+msgstr "Tanium visto por último"
+
+msgid "Tanium endpoint name"
+msgstr "Nome do endpoint no Tanium"
+
+msgid "Tanium disk encrypted"
+msgstr "Disco criptografado (Tanium)"
+
+msgid "Tanium retired on"
+msgstr "Retirado do Tanium em"
+
+msgid "Tanium OS platform"
+msgstr "Plataforma de SO (Tanium)"
+
+msgid "Burn-down"
+msgstr "Burn-down"
+
+msgid "Tanium — Burn-down"
+msgstr "Tanium — Burn-down"
+
+msgid "Are we winning?"
+msgstr "Estamos ganhando?"
+
+msgid "Weeks"
+msgstr "Semanas"
+
+msgid "Days"
+msgstr "Dias"
+
+msgid "Apply"
+msgstr "Aplicar"
+
+msgid "Nothing open."
+msgstr "Nada em aberto."
+
+msgid "never at this rate"
+msgstr "nunca neste ritmo"
+
+msgid "More is opening than closing — the backlog is growing."
+msgstr "Abre mais do que fecha — a fila está crescendo."
+
+#, php-format
+msgid "%d week"
+msgid_plural "%d weeks"
+msgstr[0] "%d semana"
+msgstr[1] "%d semanas"
+
+#, php-format
+msgid "At the current net rate of %s per week."
+msgstr "No ritmo líquido atual de %s por semana."
+
+msgid "open now"
+msgstr "abertos agora"
+
+#, php-format
+msgid "opening %s/week · closing %s/week"
+msgstr "abrindo %s/semana · fechando %s/semana"
+
+msgid "The current, still-running week is excluded from the averages — counting a partial week always makes the forecast look worse than it is."
+msgstr "A semana corrente, ainda em andamento, fica fora das médias — contar semana pela metade sempre faz a projeção parecer pior do que é."
+
+msgid "Week"
+msgstr "Semana"
+
+msgid "CVEs opened"
+msgstr "CVEs abertos"
+
+msgid "CVEs closed"
+msgstr "CVEs fechados"
+
+msgid "Patches appeared"
+msgstr "Patches surgidos"
+
+msgid "Patches installed"
+msgstr "Patches instalados"
+
+msgid "Net"
+msgstr "Saldo"
+
+msgid "opened"
+msgstr "abertos"
+
+msgid "closed"
+msgstr "fechados"
+
+msgid "Does the work stay done?"
+msgstr "O trabalho fica feito?"
+
+msgid "Patches reinstalled"
+msgstr "Patches reinstalados"
+
+msgid "CVEs reopened"
+msgstr "CVEs reabertos"
+
+#, php-format
+msgid "%1$s came back out of %2$s closed in %3$d days"
+msgstr "%1$s voltaram de %2$s fechados em %3$d dias"
+
+msgid "A high rate is rarely the team repeating itself: it usually means a base image still shipping the old package, a policy putting it back, or a repository serving an outdated version. One root cause instead of hundreds of repeated fixes."
+msgstr "Taxa alta raramente é a equipe se repetindo: costuma ser imagem base ainda entregando o pacote antigo, política devolvendo, ou repositório servindo versão desatualizada. Uma causa raiz em vez de centenas de correções repetidas."
+
+msgid "Times reverted"
+msgstr "Vezes que voltou"
+
+msgid "Distinct patches"
+msgstr "Patches distintos"
+
+msgid "Nothing has come back in this window — the fixes are holding."
+msgstr "Nada voltou nesta janela — as correções estão se sustentando."
+
+msgid "Outliers"
+msgstr "Fora do padrão"
+
+msgid "Tanium — Outliers"
+msgstr "Tanium — Fora do padrão"
+
+msgid "Endpoints out of step with their peers"
+msgstr "Endpoints fora do padrão dos seus pares"
+
+#, php-format
+msgid "Each endpoint is compared against machines with the same operating system family and the same virtual/physical nature. Only groups of %1$d or more are judged, and only endpoints carrying at least %2$sx their group median are listed. The median is used, not the average, so one very bad machine cannot redefine \"normal\" for everyone else."
+msgstr "Cada endpoint é comparado com máquinas da mesma família de sistema operacional e da mesma natureza virtual/física. Só grupos de %1$d ou mais são avaliados, e só aparecem endpoints com pelo menos %2$sx a mediana do grupo. Usa-se a mediana, não a média, para que uma máquina muito ruim não redefina o \"normal\" de todo mundo."
+
+msgid "Peer groups compared"
+msgstr "Grupos de pares comparados"
+
+msgid "Endpoints standing out"
+msgstr "Endpoints destoando"
+
+msgid "No endpoint deviates meaningfully from its peers — the fleet is consistent. Findings here are fleet-wide gaps, not one-off drift."
+msgstr "Nenhum endpoint destoa de forma relevante dos pares — a frota está consistente. Os achados aqui são lacunas de frota inteira, não desvio pontual."
+
+msgid "Peer group"
+msgstr "Grupo de pares"
+
+msgid "Findings"
+msgstr "Achados"
+
+msgid "Peer median"
+msgstr "Mediana do grupo"
+
+msgid "How far off"
+msgstr "Quanto destoa"
+
+msgid "open"
+msgstr "abrir"
+
+msgid "Campaigns"
+msgstr "Campanhas"
+
+msgid "Tanium — Campaigns"
+msgstr "Tanium — Campanhas"
+
+msgid "Remediation campaigns"
+msgstr "Campanhas de remediação"
+
+msgid "The Action Plan re-ranks every time the data moves, which is right for triage and useless for follow through. A campaign records what was decided — target, owner, date — and measures the fleet against where it stood that day."
+msgstr "O Plano de Ação reordena toda vez que os dados mudam, o que é certo para triagem e inútil para acompanhamento. A campanha registra o que foi decidido — alvo, responsável, data — e mede a frota contra o ponto em que ela estava naquele dia."
+
+msgid "No campaigns yet. Pick a target below to start one."
+msgstr "Nenhuma campanha ainda. Escolha um alvo abaixo para começar."
+
+msgid "Campaign"
+msgstr "Campanha"
+
+msgid "Progress"
+msgstr "Progresso"
+
+msgid "Left"
+msgstr "Faltam"
+
+msgid "Baseline"
+msgstr "Linha de base"
+
+msgid "Due"
+msgstr "Prazo"
+
+msgid "Due date"
+msgstr "Data limite"
+
+msgid "eradicated"
+msgstr "erradicado"
+
+msgid "overdue"
+msgstr "atrasada"
+
+msgid "Close"
+msgstr "Encerrar"
+
+msgid "Active only"
+msgstr "Só ativas"
+
+msgid "Include closed"
+msgstr "Incluir encerradas"
+
+msgid "Start a campaign"
+msgstr "Iniciar uma campanha"
+
+msgid "Nothing left worth a campaign — every widespread target already has one."
+msgstr "Não sobrou alvo que valha campanha — todos os disseminados já têm uma."
+
+msgid "Target"
+msgstr "Alvo"
+
+msgid "Endpoints affected"
+msgstr "Endpoints afetados"
+
+msgid "Start"
+msgstr "Iniciar"
+
+msgid "Back to campaigns"
+msgstr "Voltar às campanhas"
+
+#, php-format
+msgid "%1$d of %2$d endpoints cleared"
+msgstr "%1$d de %2$d endpoints limpos"
+
+msgid "Still affected"
+msgstr "Ainda afetados"
+
+#, php-format
+msgid "%d day(s) overdue"
+msgstr "%d dia(s) de atraso"
+
+#, php-format
+msgid "Target: %1$s (%2$s). Baseline taken when the campaign opened."
+msgstr "Alvo: %1$s (%2$s). Linha de base tirada quando a campanha foi aberta."
+
+msgid "Endpoints still affected"
+msgstr "Endpoints ainda afetados"
+
+msgid "None left — this target is gone from the fleet."
+msgstr "Nenhum — este alvo sumiu da frota."
+
+msgid "Affected since"
+msgstr "Afetado desde"
+
+msgid "Close this campaign? Progress stops being tracked."
+msgstr "Encerrar esta campanha? O progresso deixa de ser acompanhado."
+
+msgid "No target selected for the campaign."
+msgstr "Nenhum alvo selecionado para a campanha."
+
+msgid "An active campaign already targets this item."
+msgstr "Já existe uma campanha ativa para este alvo."
+
+msgid "Nothing in the fleet is affected by this target — there is nothing to eradicate."
+msgstr "Nada na frota é afetado por este alvo — não há o que erradicar."
+
+msgid "Closed-findings retention (days)"
+msgstr "Retenção de achados fechados (dias)"
+
+msgid "Remediated CVEs and installed patches are kept this long, then dropped. Open findings are never purged. 0 = keep closed findings forever."
+msgstr "CVEs remediados e patches instalados ficam guardados por este prazo e depois são removidos. Achados abertos nunca são expurgados. 0 = guardar para sempre."
+
+msgid "Kiosk breaks out of the carousel to show urgent events (new KEV exposure, sync stopped, agents going silent)"
+msgstr "O Kiosk interrompe o carrossel para mostrar eventos urgentes (nova exposição KEV, sincronização parada, agentes em silêncio)"
+
+msgid "Tanium has never synchronized"
+msgstr "O Tanium nunca sincronizou"
+
+msgid "Every number on this screen is empty until the first sync completes."
+msgstr "Todo número desta tela fica vazio até a primeira sincronização terminar."
+
+#, php-format
+msgid "No successful sync for %dh"
+msgstr "Sem sincronização bem-sucedida há %dh"
+
+msgid "These numbers are frozen — they describe the fleet as it was, not as it is."
+msgstr "Estes números estão congelados — descrevem a frota como ela era, não como está."
+
+#, php-format
+msgid "%1$d actively exploited CVE(s) found on %2$d endpoint(s)"
+msgstr "%1$d CVE(s) sob exploração ativa encontrado(s) em %2$d endpoint(s)"
+
+msgid "In the CISA KEV catalog — exploitation is confirmed in the wild, not theoretical."
+msgstr "No catálogo KEV da CISA — a exploração é confirmada em campo, não teórica."
+
+#, php-format
+msgid "%1$d of %2$d agents have gone silent"
+msgstr "%1$d de %2$d agentes ficaram em silêncio"
+
+#, php-format
+msgid "No report for more than %d day(s). Coverage is dropping, so the fleet looks healthier than it is."
+msgstr "Sem reportar há mais de %d dia(s). A cobertura está caindo, então a frota parece mais saudável do que está."
+
+# ── v2.19.0 ──────────────────────────────────────────────────────────────
+
+msgid "Minimum CVE severity to import"
+msgstr "Severidade mínima de CVE para importar"
+
+msgid "All severities (recommended)"
+msgstr "Todas as severidades (recomendado)"
+
+msgid "Low and above"
+msgstr "Baixa ou acima"
+
+msgid "Medium and above"
+msgstr "Média ou acima"
+
+msgid "High and above"
+msgstr "Alta ou acima"
+
+msgid "Critical only"
+msgstr "Somente crítica"
+
+msgid "Trims volume on a large fleet. Careful: a finding filtered out here never enters the payload, so its absence proves nothing and it can never be auto-closed — it simply stops being tracked."
+msgstr "Reduz volume em frota grande. Cuidado: achado cortado aqui nunca entra no payload, então a ausência dele não prova nada e ele jamais será fechado automaticamente — simplesmente deixa de ser acompanhado."
+
+#, php-format
+msgid "Last sync was less than the configured %dh ago. Skipping."
+msgstr "A última sincronização foi há menos que as %dh configuradas. Pulando."

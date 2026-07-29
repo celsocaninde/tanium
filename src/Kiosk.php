@@ -235,4 +235,84 @@ class Kiosk {
             'last_sync'          => $config['last_sync'] ?? null,
         ];
     }
+
+    /** Hours of newly-detected findings that still count as "just happened". */
+    private const ALERT_WINDOW_HOURS = 24;
+
+    /**
+     * Things a wall TV should interrupt its rotation for.
+     *
+     * A carousel that always shows the same seven screens becomes wallpaper —
+     * people stop reading it, which is the opposite of why it is on the wall.
+     * These are the events where the screen has something to say that was not
+     * true yesterday, so the display earns its attention back.
+     *
+     * Deliberately few and deliberately narrow. An alert that fires most days
+     * teaches the room to ignore the alert state itself, and then the screen is
+     * wallpaper again with extra steps.
+     *
+     * @return array<int,array{level:string,title:string,detail:string}>
+     */
+    public static function alerts(): array {
+        global $DB;
+
+        $config = Config::getConfig();
+        $out    = [];
+        $since  = date('Y-m-d H:i:s', strtotime('-' . self::ALERT_WINDOW_HOURS . ' hours'));
+
+        // 1. The data itself stopped moving. Everything else on screen is only
+        //    as trustworthy as this, so it goes first.
+        $lastSync = strtotime((string)($config['last_sync'] ?? '')) ?: 0;
+        $ageHours = $lastSync > 0 ? (int) floor((time() - $lastSync) / 3600) : null;
+        if ($ageHours === null) {
+            $out[] = [
+                'level'  => 'critical',
+                'title'  => __('Tanium has never synchronized', 'tanium'),
+                'detail' => __('Every number on this screen is empty until the first sync completes.', 'tanium'),
+            ];
+        } elseif ($ageHours >= 6) {
+            $out[] = [
+                'level'  => 'critical',
+                'title'  => sprintf(__('No successful sync for %dh', 'tanium'), $ageHours),
+                'detail' => __('These numbers are frozen — they describe the fleet as it was, not as it is.', 'tanium'),
+            ];
+        }
+
+        // 2. Exposure to something confirmed as actively exploited, detected
+        //    within the window. KEV is the one signal worth breaking rotation.
+        $kevRow = $DB->doQuery(sprintf(
+            "SELECT COUNT(DISTINCT ec.cve_id) AS cves, COUNT(DISTINCT ec.tanium_eid) AS eps
+               FROM glpi_plugin_tanium_endpoint_cves ec
+               JOIN glpi_plugin_tanium_cve_enrichment e ON e.cve_id = ec.cve_id AND e.is_kev = 1
+              WHERE ec.status != 'remediated' AND ec.detected_at >= '%s'",
+            $DB->escape($since)
+        ));
+        $kev = $kevRow ? $kevRow->fetch_assoc() : null;
+        if ($kev && (int) $kev['cves'] > 0) {
+            $out[] = [
+                'level'  => 'critical',
+                'title'  => sprintf(
+                    __('%1$d actively exploited CVE(s) found on %2$d endpoint(s)', 'tanium'),
+                    (int) $kev['cves'],
+                    (int) $kev['eps']
+                ),
+                'detail' => __('In the CISA KEV catalog — exploitation is confirmed in the wild, not theoretical.', 'tanium'),
+            ];
+        }
+
+        // 3. Agents going quiet in numbers. One silent machine is noise; a
+        //    cluster of them usually means something broke centrally.
+        $staleDays = (int)($config['agent_stale_days'] ?? 7);
+        $stale     = AgentHealth::countStale($staleDays);
+        $total     = (int)($DB->doQuery("SELECT COUNT(*) AS cpt FROM glpi_plugin_tanium_assets WHERE retired_at IS NULL")->fetch_assoc()['cpt'] ?? 0);
+        if ($total > 0 && $stale > 0 && ($stale * 100 / $total) >= 10) {
+            $out[] = [
+                'level'  => 'warning',
+                'title'  => sprintf(__('%1$d of %2$d agents have gone silent', 'tanium'), $stale, $total),
+                'detail' => sprintf(__('No report for more than %d day(s). Coverage is dropping, so the fleet looks healthier than it is.', 'tanium'), $staleDays),
+            ];
+        }
+
+        return $out;
+    }
 }

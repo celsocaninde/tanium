@@ -12,6 +12,9 @@ $eid    = $_GET['eid'] ?? '';  // if set → per-endpoint view
 
 // ── Per-endpoint view ─────────────────────────────────────────────────────────
 if ($eid) {
+    if (!\GlpiPlugin\Tanium\Profile::canViewEndpoint((string)$eid)) {
+        Html::displayRightError();
+    }
     $endpoint = null;
     $res = $DB->doQuery(
         "SELECT a.*, a.tanium_name, a.ip_address, a.os_name, a.last_seen, a.risk_score,

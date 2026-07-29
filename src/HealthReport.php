@@ -67,6 +67,7 @@ class HealthReport {
                 WHERE status = 'missing'
                 GROUP BY tanium_eid
             ) p ON p.tanium_eid = a.tanium_eid
+            WHERE 1=1" . Profile::entityRestrictSql('a') . "
         ";
 
         $staleDays = (int)(Config::getConfig()['agent_stale_days'] ?? 7);

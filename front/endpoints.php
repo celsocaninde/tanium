@@ -38,28 +38,28 @@ if ($stale) {
     // same criteria as AgentHealth::countStale (dashboard KPI)
     $conditions[] = "last_seen IS NOT NULL AND last_seen < DATE_SUB(NOW(), INTERVAL {$staleDays} DAY)";
 }
-$whereSQL = implode(' AND ', $conditions);
+// Only the entities this session may see (empty for a user who sees all).
+$whereSQL = implode(' AND ', $conditions) . \GlpiPlugin\Tanium\Profile::entityRestrictSql('a');
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 $rows = [];
 // silent agents view: oldest contact first (most silent on top)
 $orderSQL = $stale ? 'last_seen ASC' : 'risk_score DESC, last_seen DESC';
-$sql  = "SELECT * FROM glpi_plugin_tanium_assets WHERE {$whereSQL} ORDER BY {$orderSQL} LIMIT {$limit} OFFSET {$offset}";
+$sql  = "SELECT a.* FROM glpi_plugin_tanium_assets a WHERE {$whereSQL} ORDER BY {$orderSQL} LIMIT {$limit} OFFSET {$offset}";
 foreach ($DB->doQuery($sql) as $r) { $rows[] = $r; }
 
-$cntRes = $DB->doQuery("SELECT COUNT(*) AS cnt FROM glpi_plugin_tanium_assets WHERE {$whereSQL}");
+$cntRes = $DB->doQuery("SELECT COUNT(*) AS cnt FROM glpi_plugin_tanium_assets a WHERE {$whereSQL}");
 $total  = (int)(($cntRes ? $cntRes->fetch_assoc() : [])['cnt'] ?? 0);
 $pages  = (int)ceil($total / $limit);
 
-// OS dropdown
+// OS dropdown — scoped too, so the filter never offers an option that
+// resolves to an empty list for this user.
 $osRows = [];
-foreach ($DB->request([
-    'SELECT'  => ['os_name'],
-    'FROM'    => 'glpi_plugin_tanium_assets',
-    'WHERE'   => ['NOT' => ['os_name' => null]],
-    'GROUPBY' => 'os_name',
-    'ORDER'   => 'os_name ASC',
-]) as $r) { $osRows[] = $r['os_name']; }
+foreach ($DB->doQuery(
+    "SELECT a.os_name FROM glpi_plugin_tanium_assets a
+      WHERE a.os_name IS NOT NULL" . \GlpiPlugin\Tanium\Profile::entityRestrictSql('a') . "
+      GROUP BY a.os_name ORDER BY a.os_name ASC"
+) as $r) { $osRows[] = $r['os_name']; }
 
 $webDir = \Plugin::getWebDir('tanium');
 

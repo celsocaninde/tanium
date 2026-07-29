@@ -9,9 +9,19 @@ $eid1   = $_GET['eid1'] ?? '';
 $eid2   = $_GET['eid2'] ?? '';
 $webDir = \Plugin::getWebDir('tanium');
 
+foreach ([$eid1, $eid2] as $requested) {
+    if ($requested !== '' && !\GlpiPlugin\Tanium\Profile::canViewEndpoint((string)$requested)) {
+        Html::displayRightError();
+    }
+}
+
 // Load all endpoint names for selectors
 $allEndpoints = [];
-foreach ($DB->request(['SELECT' => ['tanium_eid', 'tanium_name'], 'FROM' => 'glpi_plugin_tanium_assets', 'ORDER' => 'tanium_name ASC', 'LIMIT' => 1000]) as $r) {
+foreach ($DB->doQuery(
+    "SELECT a.tanium_eid, a.tanium_name FROM glpi_plugin_tanium_assets a WHERE 1=1"
+    . \GlpiPlugin\Tanium\Profile::entityRestrictSql('a')
+    . " ORDER BY a.tanium_name ASC LIMIT 1000"
+) as $r) {
     $allEndpoints[] = $r;
 }
 

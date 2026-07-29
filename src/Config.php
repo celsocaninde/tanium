@@ -84,6 +84,12 @@ class Config extends CommonDBTM {
             'last_monthly_report'     => null,
             'kiosk_enabled'           => 0,
             'kiosk_token'             => '',
+            'caps_notified'           => '',
+            'retention_closed_days'   => 0,
+            'kiosk_alerts'            => 1,
+            'cve_min_severity'        => 'all',
+            'sync_requested_at'       => null,
+            'last_retire_sweep'       => null,
         ];
     }
 
@@ -109,6 +115,31 @@ class Config extends CommonDBTM {
             $DB->update('glpi_plugin_tanium_configs', $data, ['id' => $config['id']]);
         } else {
             $DB->insert('glpi_plugin_tanium_configs', $data);
+        }
+    }
+
+    /**
+     * Record that a human asked for a sync now.
+     *
+     * The cron decides when to run from `cron_frequency`; this is the flag that
+     * lets an explicit request jump that queue exactly once.
+     */
+    public static function requestSync(): void {
+        global $DB;
+
+        $row = $DB->request(['SELECT' => ['id'], 'FROM' => 'glpi_plugin_tanium_configs', 'LIMIT' => 1])->current();
+        if ($row !== null) {
+            $DB->update('glpi_plugin_tanium_configs', ['sync_requested_at' => date('Y-m-d H:i:s')], ['id' => (int)$row['id']]);
+        }
+    }
+
+    /** Consume the manual request, so it grants exactly one extra run. */
+    public static function clearSyncRequest(): void {
+        global $DB;
+
+        $row = $DB->request(['SELECT' => ['id'], 'FROM' => 'glpi_plugin_tanium_configs', 'LIMIT' => 1])->current();
+        if ($row !== null) {
+            $DB->update('glpi_plugin_tanium_configs', ['sync_requested_at' => null], ['id' => (int)$row['id']]);
         }
     }
 
@@ -354,6 +385,25 @@ class Config extends CommonDBTM {
             (int)($config['auto_close_cves'] ?? 1)
         );
 
+        $minSev    = strtolower((string)($config['cve_min_severity'] ?? 'all'));
+        $sevSelect = "<select name='cve_min_severity' class='tanium-input tanium-input-sm'>";
+        foreach ([
+            'all'      => __('All severities (recommended)', 'tanium'),
+            'low'      => __('Low and above', 'tanium'),
+            'medium'   => __('Medium and above', 'tanium'),
+            'high'     => __('High and above', 'tanium'),
+            'critical' => __('Critical only', 'tanium'),
+        ] as $value => $label) {
+            $sel        = $minSev === $value ? ' selected' : '';
+            $sevSelect .= "<option value='" . htmlspecialchars($value) . "'{$sel}>" . htmlspecialchars($label) . "</option>";
+        }
+        $sevSelect .= "</select>";
+        $this->renderField(
+            __('Minimum CVE severity to import', 'tanium'),
+            $sevSelect,
+            __('Trims volume on a large fleet. Careful: a finding filtered out here never enters the payload, so its absence proves nothing and it can never be auto-closed — it simply stops being tracked.', 'tanium')
+        );
+
         $this->renderField(
             __('Cron frequency (hours)', 'tanium'),
             "<input type='number' name='cron_frequency' class='tanium-input tanium-input-sm' value='" . intval($config['cron_frequency']) . "' min='1' max='168'/>",
@@ -430,6 +480,16 @@ class Config extends CommonDBTM {
             __('History retention (days)', 'tanium'),
             "<input type='number' name='retention_days' class='tanium-input tanium-input-sm' value='" . intval($config['retention_days'] ?? 365) . "' min='30' max='3650'/>",
             __('Rows older than this are purged daily from risk/CVE history, sync logs and resolved threat alerts.', 'tanium')
+        );
+        $this->renderField(
+            __('Closed-findings retention (days)', 'tanium'),
+            "<input type='number' name='retention_closed_days' class='tanium-input tanium-input-sm' value='" . intval($config['retention_closed_days'] ?? 0) . "' min='0' max='3650'/>",
+            __('Remediated CVEs and installed patches are kept this long, then dropped. Open findings are never purged. 0 = keep closed findings forever.', 'tanium')
+        );
+        $this->renderCheckbox(
+            'kiosk_alerts',
+            __('Kiosk breaks out of the carousel to show urgent events (new KEV exposure, sync stopped, agents going silent)', 'tanium'),
+            (int)($config['kiosk_alerts'] ?? 1)
         );
         $this->renderField(
             __('Custom sensors to sync', 'tanium'),

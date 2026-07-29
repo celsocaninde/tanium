@@ -43,6 +43,11 @@
     border: 1px solid rgba(240,160,48,.4);
     color: var(--t-orange);
 }
+.tanium-alert-error {
+    background: rgba(232,33,42,.12);
+    border: 1px solid rgba(232,33,42,.45);
+    color: var(--t-red);
+}
 
 /* ── Dashboard hero ──────────────────────────────────────────────────────── */
 

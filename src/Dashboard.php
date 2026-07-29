@@ -29,8 +29,12 @@ class Dashboard {
             'sync_status'       => 'never',
         ];
 
+        // Everything below is scoped to the entities this session may see, so
+        // the plugin dashboard and the native GLPI card finally agree.
+        $scope = Profile::entityRestrictSql('a');
+
         // Endpoint count
-        $row = $DB->request(['FROM' => 'glpi_plugin_tanium_assets', 'COUNT' => 'cpt'])->current();
+        $row = $DB->doQuery("SELECT COUNT(*) AS cpt FROM glpi_plugin_tanium_assets a WHERE 1=1{$scope}")->fetch_assoc();
         $stats['total_endpoints'] = (int) ($row['cpt'] ?? 0);
 
         // CVE counts by severity
@@ -45,22 +49,26 @@ class Dashboard {
         }
 
         // Missing patches
-        $pRow = $DB->request([
-            'FROM'  => 'glpi_plugin_tanium_patches',
-            'WHERE' => ['status' => 'missing'],
-            'COUNT' => 'cpt',
-        ])->current();
+        $pRow = $DB->doQuery(
+            "SELECT COUNT(*) AS cpt FROM glpi_plugin_tanium_patches p
+               JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = p.tanium_eid
+              WHERE p.status = 'missing'{$scope}"
+        )->fetch_assoc();
         $stats['patches_missing'] = (int) ($pRow['cpt'] ?? 0);
 
         // Patch compliance %
-        $totalPatches = (int) ($DB->request(['FROM' => 'glpi_plugin_tanium_patches', 'COUNT' => 'cpt'])->current()['cpt'] ?? 0);
+        $totalPatches = (int) ($DB->doQuery(
+            "SELECT COUNT(*) AS cpt FROM glpi_plugin_tanium_patches p
+               JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = p.tanium_eid
+              WHERE 1=1{$scope}"
+        )->fetch_assoc()['cpt'] ?? 0);
         if ($totalPatches > 0) {
             $installed = $totalPatches - $stats['patches_missing'];
             $stats['patch_compliance'] = (int) round($installed / $totalPatches * 100);
         }
 
         // Endpoints by risk level
-        foreach ($DB->request(['SELECT' => ['risk_score'], 'FROM' => 'glpi_plugin_tanium_assets']) as $r) {
+        foreach ($DB->doQuery("SELECT a.risk_score FROM glpi_plugin_tanium_assets a WHERE 1=1{$scope}") as $r) {
             $rs = (int)$r['risk_score'];
             if ($rs >= 70)      $stats['endpoints_critical']++;
             elseif ($rs >= 40)  $stats['endpoints_high']++;
@@ -69,14 +77,11 @@ class Dashboard {
         }
 
         // OS distribution
-        $osRows = $DB->request([
-            'SELECT' => ['os_name', 'COUNT' => 'id AS cnt'],
-            'FROM'   => 'glpi_plugin_tanium_assets',
-            'WHERE'  => ['NOT' => ['os_name' => null]],
-            'GROUPBY'=> 'os_name',
-            'ORDER'  => 'cnt DESC',
-            'LIMIT'  => 8,
-        ]);
+        $osRows = $DB->doQuery(
+            "SELECT a.os_name, COUNT(a.id) AS cnt FROM glpi_plugin_tanium_assets a
+              WHERE a.os_name IS NOT NULL{$scope}
+              GROUP BY a.os_name ORDER BY cnt DESC LIMIT 8"
+        );
         foreach ($osRows as $r) {
             $stats['os_distribution'][$r['os_name']] = (int) $r['cnt'];
         }
@@ -103,7 +108,8 @@ class Dashboard {
             FROM glpi_plugin_tanium_endpoint_cves ec
             JOIN glpi_plugin_tanium_cve_enrichment e
                  ON e.cve_id = ec.cve_id AND e.is_kev = 1
-            WHERE ec.status != 'remediated'
+            JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = ec.tanium_eid
+            WHERE ec.status != 'remediated'{$scope}
         ")->fetch_assoc();
         $stats['kev_findings'] = (int)($kevRow['cpt'] ?? 0);
         $stats['kev_cves']     = (int)($kevRow['cves'] ?? 0);
@@ -133,6 +139,7 @@ class Dashboard {
             FROM glpi_plugin_tanium_assets AS a
             LEFT JOIN glpi_plugin_tanium_endpoint_cves AS ec
                 ON a.tanium_eid = ec.tanium_eid
+            WHERE 1=1" . Profile::entityRestrictSql('a') . "
             GROUP BY a.tanium_eid
             ORDER BY cve_count DESC
             LIMIT {$limit}
@@ -246,6 +253,34 @@ class Dashboard {
             &#9888; <?= __('Tanium plugin is not configured yet.', 'tanium') ?>
             <a href="<?= $webDir ?>/front/config.form.php" class="tanium-btn tanium-btn-primary tanium-btn-sm" style="margin-left:16px">
                 <?= __('Configure now', 'tanium') ?>
+            </a>
+        </div>
+        <?php endif; ?>
+
+        <?php
+        // Anything wrong with the plugin itself surfaces here, on the landing
+        // page. The sync wedging for 26 days in July 2026 was invisible
+        // precisely because a healthy-looking dashboard never mentioned it.
+        $diag = Diagnostics::checks();
+        $bad  = array_values(array_filter($diag, static fn(array $c): bool => $c['status'] !== Diagnostics::OK));
+        ?>
+        <?php if ($bad !== []): ?>
+        <div class="tanium-alert <?= Diagnostics::worst($bad) === Diagnostics::ERROR ? 'tanium-alert-error' : 'tanium-alert-warn' ?>">
+            &#9888;
+            <?= sprintf(
+                _n(
+                    '%d plugin health check needs attention.',
+                    '%d plugin health checks need attention.',
+                    count($bad),
+                    'tanium'
+                ),
+                count($bad)
+            ) ?>
+            <span class="tanium-small" style="margin-left:8px">
+                <?= htmlspecialchars(implode(' · ', array_column($bad, 'label'))) ?>
+            </span>
+            <a href="<?= $webDir ?>/front/diagnostics.php" class="tanium-btn tanium-btn-secondary tanium-btn-sm" style="margin-left:16px">
+                <?= __('Open diagnostics', 'tanium') ?>
             </a>
         </div>
         <?php endif; ?>

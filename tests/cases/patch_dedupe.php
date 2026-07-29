@@ -1,12 +1,50 @@
 <?php
 
+/** @mirror src/Sync.php::isSensorNoise */
+function self_isSensorNoise(string $title, string $patchId = ''): bool {
+    $haystack = strtolower(trim($title . ' ' . $patchId));
+    if ($haystack === '') {
+        return true;
+    }
+    foreach (['no scan results', 'no results found', 'tse-error', 'error:', 'not applicable'] as $marker) {
+        if (str_contains($haystack, $marker)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** @mirror src/Severity.php::patch */
+function self_patch(?string $raw): string {
+    $key = strtolower(trim((string) $raw));
+    if ($key === '' || $key === '[no results]') {
+        return 'unknown';
+    }
+    return PATCH_MAP[$key] ?? 'unknown';
+}
+
+/** Stand-in for the Severity::PATCH_MAP constant. */
+const PATCH_MAP = [
+    'critical'    => 'critical',
+    'important'   => 'important',
+    'moderate'    => 'moderate',
+    'low'         => 'low',
+    'high'        => 'important',
+    'medium'      => 'moderate',
+    'negligible'  => 'low',
+    'untriaged'   => 'unknown',
+    'unspecified' => 'unknown',
+    'none'        => 'unknown',
+    'n/a'         => 'unknown',
+    'unknown'     => 'unknown',
+];
+
 /** @mirror src/Api.php::patchSeverityRank */
 function patchSeverityRank(string $severity): int {
     return match (strtolower(trim($severity))) {
-        'critical'  => 5,
-        'important' => 4,
-        'high'      => 3,
-        'moderate', 'medium' => 2,
+        'critical'  => 4,
+        'important' => 3,
+        'moderate'  => 2,
         'low'       => 1,
         default     => 0,
     };
@@ -30,10 +68,26 @@ function mapApplicablePatches(array $sensorReadings): array {
         }
         $kb      = $byName['KB Articles'][$i] ?? '';
         $patchId = $kb !== '' ? $kb : $title;
+
+        // The sensor answers a machine it could not scan with a row like
+        // "No Scan Results Found" instead of an empty result. That is a
+        // visibility gap, not a missing patch, and it was being stored as
+        // one: filtered out of the risk score and the action plan, but
+        // still counted in the patch list, the dashboard KPI, the health
+        // report and the coverage screen — and still selectable for a
+        // deployment that could only ever fail. Dropping it here, at the
+        // single point of entry, is the only place that fixes all of them.
+        if (self_isSensorNoise((string)$title, (string)$patchId)) {
+            continue;
+        }
         $entry   = [
             'patchId'     => $patchId,
             'title'       => $title,
-            'severity'    => $byName['Severity'][$i]     ?? '',
+            // Vendors spell the same three ideas five different ways, and
+            // some rows arrive with no rating at all. Normalising here, at
+            // the only place patch severity enters the plugin, means every
+            // count and filter downstream groups on one vocabulary.
+            'severity'    => self_patch($byName['Severity'][$i] ?? ''),
             'status'      => 'missing',
             'kb'          => $kb,
             'releaseDate' => $byName['Release Date'][$i] ?: null,
@@ -84,7 +138,23 @@ it('entre duplicatas sobrevive a severidade mais alta', function () {
         ['Low', 'Critical', 'Moderate']
     ));
     assertSame(1, count($out));
-    assertSame('Critical', $out[0]['severity']);
+    assertSame('critical', $out[0]['severity'], 'sai normalizada, não na grafia do fornecedor');
+});
+
+it('grafias diferentes do mesmo nível viram o mesmo valor', function () {
+    // Ubuntu diz "High", a Microsoft diz "Important": é o mesmo degrau, e
+    // guardar os dois faz toda contagem por severidade se fragmentar.
+    $ubuntu = mapApplicablePatches(sensor(['a'], ['USN-1'], ['High']));
+    $ms     = mapApplicablePatches(sensor(['b'], ['KB1'], ['Important']));
+    assertSame('important', $ubuntu[0]['severity']);
+    assertSame($ms[0]['severity'], $ubuntu[0]['severity']);
+});
+
+it('rótulo sem rating vira "unknown" explícito, não "low" silencioso', function () {
+    foreach (['', 'none', 'Unspecified', '[no results]', 'coisa que ninguém mapeou'] as $raw) {
+        $out = mapApplicablePatches(sensor(['a'], ['KB1'], [$raw]));
+        assertSame('unknown', $out[0]['severity'], "entrada: '{$raw}'");
+    }
 });
 
 it('a ordem das linhas não muda o resultado', function () {
@@ -134,7 +204,7 @@ it('severidade desconhecida perde para qualquer conhecida', function () {
         ['KB1', 'KB1'],
         ['', 'Low']
     ));
-    assertSame('Low', $out[0]['severity']);
+    assertSame('low', $out[0]['severity']);
 });
 
 it('as chaves saem sequenciais para o consumidor iterar', function () {
@@ -144,4 +214,17 @@ it('as chaves saem sequenciais para o consumidor iterar', function () {
         ['Low', 'Critical', 'Low']
     ));
     assertSame([0, 1], array_keys($out));
+});
+
+it('linha de sensor que falhou não vira patch ausente', function () {
+    // "No Scan Results Found" é máquina que ninguém conseguiu varrer — lacuna
+    // de visibilidade, não vulnerabilidade. Entrava como missing e inflava a
+    // lista, o KPI do dashboard e o boletim de saúde.
+    $out = mapApplicablePatches(sensor(
+        ['No Scan Results Found', 'Patch de verdade', 'TSE-Error: sensor timeout'],
+        ['', 'KB5000001', ''],
+        ['', 'Critical', '']
+    ));
+    assertSame(1, count($out));
+    assertSame('Patch de verdade', $out[0]['title']);
 });

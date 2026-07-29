@@ -234,6 +234,53 @@ GQL;
         } while ($hasNext && $after !== null && $count < self::MAX_ENDPOINTS);
     }
 
+    private const ENDPOINT_IDS_QUERY = <<<'GQL'
+query($first: Int!, $after: Cursor) {
+  endpoints(first: $first, after: $after) {
+    pageInfo { hasNextPage endCursor }
+    edges { node { id } }
+  }
+}
+GQL;
+
+    /**
+     * Every endpoint id currently in the fleet, and nothing else.
+     *
+     * Retirement can only be decided by seeing the WHOLE fleet: an endpoint is
+     * gone when Tanium stops listing it, and an incremental sync — which
+     * returns only what changed — can never establish that. Asking for ids
+     * alone keeps the sweep cheap enough to run on its own schedule instead of
+     * forcing a full enrichment pass just to find out who left.
+     *
+     * @return array<string,bool> set of endpoint ids, keyed for O(1) lookup
+     */
+    public function allEndpointIds(int $pageSize = 1000): array {
+        $ids   = [];
+        $after = null;
+        $count = 0;
+
+        do {
+            $data = $this->graphql(self::ENDPOINT_IDS_QUERY, [
+                'first' => $pageSize,
+                'after' => $after,
+            ]);
+            $conn = $data['endpoints'] ?? [];
+
+            foreach ($conn['edges'] ?? [] as $edge) {
+                $id = (string)($edge['node']['id'] ?? '');
+                if ($id !== '') {
+                    $ids[$id] = true;
+                    $count++;
+                }
+            }
+
+            $hasNext = $conn['pageInfo']['hasNextPage'] ?? false;
+            $after   = $conn['pageInfo']['endCursor']   ?? null;
+        } while ($hasNext && $after !== null && $count < self::MAX_ENDPOINTS);
+
+        return $ids;
+    }
+
     public function getAllEndpoints(int $pageSize = 500, bool $withCves = false, bool $withApps = false, bool $withPatches = false, bool $withGroups = false, array $opts = []): array {
         $all = [];
         $this->eachEndpointPage($pageSize, $withCves, $withApps, $withPatches, function (array $page) use (&$all): void {
@@ -265,15 +312,6 @@ GQL;
                 return $seen > $sinceTs;
             }
         ));
-    }
-
-    public function getEndpoint(string $eid): array {
-        foreach ($this->getEndpoints(1000) as $endpoint) {
-            if ((string) ($endpoint['eid'] ?? '') === (string) $eid) {
-                return $endpoint;
-            }
-        }
-        return [];
     }
 
     /**
@@ -424,10 +462,26 @@ GQL;
             }
             $kb      = $byName['KB Articles'][$i] ?? '';
             $patchId = $kb !== '' ? $kb : $title;
+
+            // The sensor answers a machine it could not scan with a row like
+            // "No Scan Results Found" instead of an empty result. That is a
+            // visibility gap, not a missing patch, and it was being stored as
+            // one: filtered out of the risk score and the action plan, but
+            // still counted in the patch list, the dashboard KPI, the health
+            // report and the coverage screen — and still selectable for a
+            // deployment that could only ever fail. Dropping it here, at the
+            // single point of entry, is the only place that fixes all of them.
+            if (Sync::isSensorNoise((string)$title, (string)$patchId)) {
+                continue;
+            }
             $entry   = [
                 'patchId'     => $patchId,
                 'title'       => $title,
-                'severity'    => $byName['Severity'][$i]     ?? '',
+                // Vendors spell the same three ideas five different ways, and
+                // some rows arrive with no rating at all. Normalising here, at
+                // the only place patch severity enters the plugin, means every
+                // count and filter downstream groups on one vocabulary.
+                'severity'    => Severity::patch($byName['Severity'][$i] ?? ''),
                 'status'      => 'missing',
                 'kb'          => $kb,
                 'releaseDate' => $byName['Release Date'][$i] ?: null,
@@ -447,13 +501,18 @@ GQL;
         return array_values($out);
     }
 
-    /** Order the Applicable Patches severities, worst first. Unknown sorts lowest. */
+    /**
+     * Order the canonical patch severities, worst first. Unknown sorts lowest.
+     *
+     * Severity is normalised by Severity::patch() before it reaches here, so
+     * only the canonical words can arrive — vendor spellings were already
+     * collapsed upstream.
+     */
     private static function patchSeverityRank(string $severity): int {
         return match (strtolower(trim($severity))) {
-            'critical'  => 5,
-            'important' => 4,
-            'high'      => 3,
-            'moderate', 'medium' => 2,
+            'critical'  => 4,
+            'important' => 3,
+            'moderate'  => 2,
             'low'       => 1,
             default     => 0,
         };
@@ -537,55 +596,20 @@ GQL;
         return $raw;
     }
 
-    // ── Software ─────────────────────────────────────────────────────────────
+    // ── Comply / Threat Response (still REST) ─────────────────────────────
+    //
+    // The endpoint, CVE and patch inventory all moved to the GraphQL Gateway
+    // (they hang off the endpoint node). What remains on REST are these two
+    // module feeds, which have no Gateway equivalent. The seven REST readers
+    // the migration left behind — getEndpoint, getAllSoftware,
+    // getAllVulnerabilities, getAllCVEFindings, getEndpointCVEs,
+    // getAllPatchFindings, getEndpointPatches — had no callers left and were
+    // removed in v2.19.0. getEndpoint in particular was a trap: it fetched a
+    // thousand endpoints and scanned them linearly to find one.
 
-    public function getAllSoftware(int $pageSize = 500): array {
-        // Asset rows carry the full per-machine component inventory and are very
-        // large — a single 500-row response decodes to >128 MB and kills the
-        // worker. Cap the page size hard so one response can never exhaust memory.
-        return $this->paginate('/plugin/products/asset/v1/assets', [], min($pageSize, 50));
-    }
-
-    // ── Vulnerabilities (Tanium Comply) ───────────────────────────────────
-
-    public function getAllVulnerabilities(int $pageSize = 500): array {
-        return $this->paginate('/plugin/products/comply/v1/findings', [], $pageSize);
-    }
-
-    /**
-     * CVE-level findings — one record per CVE with list of affected endpoints.
-     */
-    public function getAllCVEFindings(int $pageSize = 500): array {
-        // Try CVE-grouped endpoint first; fall back to raw findings
-        try {
-            return $this->paginate('/plugin/products/comply/v1/cve-findings', [], $pageSize);
-        } catch (\RuntimeException $e) {
-            return $this->paginate('/plugin/products/comply/v1/findings', [], $pageSize);
-        }
-    }
-
-    /**
-     * Per-endpoint CVE findings for a single endpoint.
-     */
-    public function getEndpointCVEs(string $eid, int $pageSize = 500): array {
-        try {
-            return $this->paginate("/plugin/products/comply/v1/findings", [
-                'filter' => "computerName=={$eid}",
-            ], $pageSize);
-        } catch (\RuntimeException $e) {
-            return [];
-        }
-    }
-
-    // ── Patches (Tanium Patch) ────────────────────────────────────────────
-
-    /**
-     * All patch findings — pending/missing patches across all endpoints.
-     */
     /**
      * Compliance (benchmark) findings from Tanium Comply. Endpoint shape varies
-     * per Comply version; both known paths are tried, mirroring the CVE-findings
-     * fallback above.
+     * per Comply version; both known paths are tried.
      */
     public function getComplianceFindings(int $pageSize = 500): array {
         try {
@@ -598,29 +622,6 @@ GQL;
     /** Threat Response alerts (module optional — callers handle failures). */
     public function getThreatAlerts(int $pageSize = 500): array {
         return $this->paginate('/plugin/products/threat-response/api/v1/alerts', [], $pageSize);
-    }
-
-    public function getAllPatchFindings(int $pageSize = 500): array {
-        try {
-            return $this->paginate('/plugin/products/patch/v1/patch-findings', [], $pageSize);
-        } catch (\RuntimeException $e) {
-            try {
-                return $this->paginate('/plugin/products/patch/v1/endpoints/patches', [], $pageSize);
-            } catch (\RuntimeException $e2) {
-                return [];
-            }
-        }
-    }
-
-    /**
-     * Patches for a specific endpoint.
-     */
-    public function getEndpointPatches(string $eid, int $pageSize = 200): array {
-        try {
-            return $this->paginate("/plugin/products/patch/v1/endpoints/{$eid}/patches", [], $pageSize);
-        } catch (\RuntimeException $e) {
-            return [];
-        }
     }
 
     // ── Patch Deployments ─────────────────────────────────────────────────
@@ -1043,42 +1044,6 @@ GQL;
             }
         } while ($offset < $total && count($page) > 0);
         return $all;
-    }
-
-    private function post(string $path, array $payload): array {
-        $url = $this->baseUrl . $path;
-
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL            => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => $this->timeout,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => json_encode($payload),
-            CURLOPT_HTTPHEADER     => [
-                'session: ' . $this->token,
-                'Content-Type: application/json',
-                'Accept: application/json',
-            ],
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_SSL_VERIFYHOST => 2,
-        ]);
-
-        $body  = curl_exec($ch);
-        $error = curl_error($ch);
-        $code  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($error) throw new \RuntimeException(sprintf(__('cURL error: %s', 'tanium'), $error));
-        if ($code === 401) throw new \RuntimeException(__('Tanium API authentication failed.', 'tanium') . self::errorDetail($body));
-        if ($code === 403) throw new \RuntimeException(__('Tanium API access forbidden.', 'tanium') . self::errorDetail($body));
-        if ($code >= 400) throw new \RuntimeException(sprintf(__('Tanium API returned HTTP %d for POST %s', 'tanium'), $code, $path) . self::errorDetail($body));
-
-        $data = json_decode($body, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \RuntimeException(sprintf(__('Invalid JSON from Tanium API: %s', 'tanium'), json_last_error_msg()));
-        }
-        return $data ?? [];
     }
 
     /**

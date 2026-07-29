@@ -24,6 +24,13 @@ if (!$asset) {
     Html::displayErrorAndDie(__('Endpoint not found.', 'tanium'));
 }
 
+// Restricting the list without restricting the detail page would be theatre:
+// the eid comes from the query string, so anyone could read any endpoint by
+// typing one in.
+if (!\GlpiPlugin\Tanium\Profile::canViewEndpoint((string)$eid)) {
+    Html::displayRightError();
+}
+
 // CVEs for this endpoint
 $cves = [];
 foreach ($DB->request([

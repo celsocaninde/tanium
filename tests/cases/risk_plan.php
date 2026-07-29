@@ -35,7 +35,7 @@ function simulate(array $state, array $remove): int {
     $kev = max(0, $kev - (int) ($remove['kev'] ?? 0));
 
     $result = score(tierCounts($cves, $kev, $patches));
-    $result = applyLifecycleFloor($result, (string) $state['lifecycle']);
+    $result = applyLifecycleFloor($result, (string) ($state['lifecycle']['state'] ?? ''));
 
     return (int) $result['score'];
 }
@@ -54,7 +54,7 @@ function endpointState(array $over = []): array {
         'cves'      => ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0],
         'kev'       => 0,
         'patches'   => ['critical' => 0, 'important' => 0, 'moderate' => 0, 'low' => 0],
-        'lifecycle' => 'supported',
+        'lifecycle' => ['state' => 'supported'],
     ], $over);
 }
 
@@ -101,7 +101,7 @@ it('patch removido conta um nível abaixo, como no modelo', function () {
 it('em máquina sem suporte o piso segura o ganho da correção', function () {
     $eol = endpointState([
         'cves'      => ['critical' => 2, 'high' => 0, 'medium' => 0, 'low' => 0],
-        'lifecycle' => 'eol',
+        'lifecycle' => ['state' => 'eol'],
     ]);
     assertSame(40, simulate($eol, ['cves' => ['critical' => 2]]),
         'corrigir tudo num SO morto não pode pintar a máquina de verde');
@@ -115,7 +115,7 @@ it('a mesma correção numa máquina suportada zera o risco', function () {
 it('por isso patch rende menos em host sem suporte que em host suportado', function () {
     $comp = ['cves' => ['critical' => 2, 'high' => 0, 'medium' => 0, 'low' => 0]];
     $ganhoOk  = simulate(endpointState($comp), []) - simulate(endpointState($comp), ['cves' => ['critical' => 2]]);
-    $eol      = endpointState($comp + ['lifecycle' => 'eol']);
+    $eol      = endpointState($comp + ['lifecycle' => ['state' => 'eol']]);
     $ganhoEol = simulate($eol, []) - simulate($eol, ['cves' => ['critical' => 2]]);
     assertTrue($ganhoOk > $ganhoEol, 'o plano tem que preferir consertar onde o conserto resolve');
 });
@@ -152,4 +152,25 @@ it('limite inválido ainda devolve alguma coisa', function () {
 
 it('plano vazio continua vazio', function () {
     assertSame([], rank([], 10));
+});
+
+// Regressão: `lifecycle` guarda o array inteiro de Lifecycle::status(), e
+// simulate() fazia (string) nele — virava a string literal "Array", o piso de
+// fim de suporte nunca casava, e toda simulação em host morto saía menor que a
+// verdade. Passava despercebido porque o teste alimentava a string documentada
+// em vez da forma que a produção realmente grava.
+it('aceita a forma que buildState() grava de verdade', function () {
+    $eol = endpointState([
+        'cves'      => ['critical' => 2, 'high' => 0, 'medium' => 0, 'low' => 0],
+        'lifecycle' => ['state' => 'eol', 'product' => 'CentOS 7', 'eol_date' => '2024-06-30', 'days' => -400],
+    ]);
+    assertSame(40, simulate($eol, ['cves' => ['critical' => 2]]),
+        'o piso tem que valer mesmo com o array completo do Lifecycle');
+});
+
+it('lifecycle ausente ou desconhecido não aplica piso nenhum', function () {
+    $semLifecycle = endpointState(['cves' => ['critical' => 1, 'high' => 0, 'medium' => 0, 'low' => 0]]);
+    unset($semLifecycle['lifecycle']);
+    assertSame(0, simulate($semLifecycle, ['cves' => ['critical' => 1]]),
+        'sem informação de suporte não se inventa piso');
 });

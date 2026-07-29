@@ -43,6 +43,13 @@ if (!$byToken && !$bySession) {
 $interval = max(5, min(120, (int)($_GET['interval'] ?? 15)));
 $pinned   = max(0, min(7, (int)($_GET['slide'] ?? 0)));
 
+// A wall panel that always shows the same seven screens stops being read.
+// When something happened that was not true yesterday, an extra screen is
+// prepended and the rotation starts there — so the display earns attention
+// back exactly when it has something to say. Empty on a quiet day, which is
+// the point: an alert state that fires most days is ignored like any other.
+$alerts = !empty($config['kiosk_alerts']) ? TaniumKiosk::alerts() : [];
+
 $d    = TaniumKiosk::getData();
 $sev  = $d['severity'];
 $sla  = $d['sla'];
@@ -122,6 +129,14 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-se
 .stage{flex:1;position:relative;overflow:hidden}
 .slide{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .6s ease;padding-bottom:16px;overflow:auto}
 .slide.active{opacity:1;visibility:visible}
+.alertwrap{display:flex;flex-direction:column;justify-content:center;gap:24px;height:100%;padding:0 48px}
+.alertbox{border-left:10px solid;border-radius:12px;padding:28px 36px;animation:alertpulse 2.4s ease-in-out infinite}
+.alertbox.lvl-critical{border-color:#e8212a;background:rgba(232,33,42,.14)}
+.alertbox.lvl-warning{border-color:#f0a030;background:rgba(240,160,48,.12)}
+.alerttitle{font-size:44px;font-weight:800;color:#fff;line-height:1.15}
+.alertdetail{margin-top:12px;font-size:24px;color:#c7d3e3;line-height:1.4}
+@keyframes alertpulse{0%,100%{opacity:1}50%{opacity:.82}}
+@media (prefers-reduced-motion:reduce){.alertbox{animation:none}}
 .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;padding:20px 32px 0}
 .grid.g4{grid-template-columns:repeat(4,1fr)}
 .grid.g5{grid-template-columns:repeat(5,1fr)}
@@ -187,6 +202,20 @@ td.num{font-variant-numeric:tabular-nums}
 <div class="progress"><div id="progressbar"></div></div>
 
 <div class="stage">
+
+<?php if ($alerts !== []): ?>
+<!-- ── Tela de alerta: só existe quando há o que interromper a rotação ── -->
+<section class="slide alertslide" data-title="⚠ Atenção">
+  <div class="alertwrap">
+    <?php foreach ($alerts as $a): ?>
+    <div class="alertbox <?php echo $a['level'] === 'critical' ? 'lvl-critical' : 'lvl-warning'; ?>">
+      <div class="alerttitle"><?php echo htmlspecialchars($a['title']); ?></div>
+      <div class="alertdetail"><?php echo htmlspecialchars($a['detail']); ?></div>
+    </div>
+    <?php endforeach; ?>
+  </div>
+</section>
+<?php endif; ?>
 
 <!-- ── Tela 1: Visão geral ─────────────────────────────────────────────── -->
 <section class="slide" data-title="Visão geral">
@@ -553,8 +582,11 @@ td.num{font-variant-numeric:tabular-nums}
   var titleBox = document.getElementById('slidetitle');
   var progress = document.getElementById('progressbar');
   var INTERVAL = <?php echo $interval * 1000; ?>;
+  // The alert screen, when present, is prepended — so ?slide=N must be shifted
+  // by it or every pinned screen would silently point one to the left.
+  var OFFSET   = <?php echo $alerts !== [] ? 1 : 0; ?>;
   var PINNED   = <?php echo $pinned; ?>; // 0 = rotate through all
-  var current  = PINNED > 0 ? PINNED - 1 : 0;
+  var current  = PINNED > 0 ? Math.min(slides.length - 1, PINNED - 1 + OFFSET) : 0;
   var shown    = 0;
   var sliceStart = Date.now();
 

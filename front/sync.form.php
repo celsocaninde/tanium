@@ -8,6 +8,27 @@ include('../../../inc/includes.php');
 if (!\GlpiPlugin\Tanium\Profile::hasSyncRight()) { Html::displayRightError(); }
 
 if (isset($_POST['run_sync'])) {
+    // A run already in flight must not be duplicated: GLPI serialises the task
+    // through its state, and a second sync writing the same rows would only
+    // fight the first one.
+    if (TaniumSync::isRunning()) {
+        Session::addMessageAfterRedirect(
+            __('A synchronization is already running. Watch its progress in the history below.', 'tanium'),
+            true,
+            WARNING
+        );
+        Html::redirect('sync.form.php');
+    }
+
+    // A previous run killed by the OS leaves the task pinned in STATE_RUNNING,
+    // which GLPI never schedules again — resetDate() alone only clears the
+    // due date, so the button used to report success while nothing happened.
+    $recovered = TaniumSync::recoverWedgedRun();
+
+    // The cron honours "Cron frequency", so an explicit request has to say so
+    // or the button would quietly do nothing whenever the last run was recent.
+    TaniumConfig::requestSync();
+
     // A full sync can take several minutes for a large fleet — running it inside
     // this web request risks an HTTP timeout and a tied-up worker. Instead we
     // queue the GLPI external cron task (mode = CLI); the automatic-action
@@ -19,7 +40,13 @@ if (isset($_POST['run_sync'])) {
         'name'     => 'taniumsync',
     ]) && $cron->resetDate();
 
-    if ($queued) {
+    if ($queued && $recovered['task']) {
+        Session::addMessageAfterRedirect(
+            __('A previous run had been interrupted and left the task stuck — it was released. Synchronization queued; it starts within a minute.', 'tanium'),
+            true,
+            WARNING
+        );
+    } elseif ($queued) {
         Session::addMessageAfterRedirect(
             __('Synchronization queued — it runs in the background within a minute (no risk to the web server). Watch the history below; refresh to see progress.', 'tanium'),
             true,

@@ -13,16 +13,20 @@ $webDir  = \Plugin::getWebDir('tanium');
 $conds = ['1=1'];
 if ($os)      $conds[] = "os_name = '" . $DB->escape($os) . "'";
 if ($minRisk) $conds[] = "risk_score >= {$minRisk}";
-$where = implode(' AND ', $conds);
+$where = implode(' AND ', $conds) . \GlpiPlugin\Tanium\Profile::entityRestrictSql('a');
 
 $endpoints = [];
-foreach ($DB->doQuery("SELECT tanium_eid, tanium_name, ip_address, os_name, risk_score, last_seen, sync_status FROM glpi_plugin_tanium_assets WHERE {$where} ORDER BY risk_score DESC, tanium_name ASC LIMIT 500") as $r) {
+foreach ($DB->doQuery("SELECT a.tanium_eid, a.tanium_name, a.ip_address, a.os_name, a.risk_score, a.last_seen, a.sync_status FROM glpi_plugin_tanium_assets a WHERE {$where} ORDER BY a.risk_score DESC, a.tanium_name ASC LIMIT 500") as $r) {
     $endpoints[] = $r;
 }
 
 // OS dropdown
 $osRows = [];
-foreach ($DB->request(['SELECT' => ['os_name'], 'FROM' => 'glpi_plugin_tanium_assets', 'WHERE' => ['NOT' => ['os_name' => null]], 'GROUPBY' => 'os_name', 'ORDER' => 'os_name ASC']) as $r) {
+foreach ($DB->doQuery(
+    "SELECT a.os_name FROM glpi_plugin_tanium_assets a WHERE a.os_name IS NOT NULL"
+    . \GlpiPlugin\Tanium\Profile::entityRestrictSql('a')
+    . " GROUP BY a.os_name ORDER BY a.os_name ASC"
+) as $r) {
     $osRows[] = $r['os_name'];
 }
 

@@ -66,11 +66,15 @@ if (isset($_POST['save'])) {
         'token_expires_at'        => preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['token_expires_at'] ?? '')
             ? $_POST['token_expires_at'] : null,
         'retention_days'          => max(30, (int)($_POST['retention_days'] ?? 365)),
+        'retention_closed_days'   => max(0, min(3650, (int)($_POST['retention_closed_days'] ?? 0))),
+        'kiosk_alerts'            => isset($_POST['kiosk_alerts']) ? 1 : 0,
         'custom_sensors'          => trim($_POST['custom_sensors'] ?? ''),
         'auto_deploy_kev'         => isset($_POST['auto_deploy_kev']) ? 1 : 0,
         'report_day'              => max(0, min(6, (int)($_POST['report_day'] ?? 1))),
         'report_hour'             => max(0, min(23, (int)($_POST['report_hour'] ?? 8))),
         'auto_close_cves'         => isset($_POST['auto_close_cves']) ? 1 : 0,
+        'cve_min_severity'        => in_array($_POST['cve_min_severity'] ?? '', ['all', 'low', 'medium', 'high', 'critical'], true)
+            ? $_POST['cve_min_severity'] : 'all',
         'notify_remediation'      => isset($_POST['notify_remediation']) ? 1 : 0,
         'remediation_ticket'      => isset($_POST['remediation_ticket']) ? 1 : 0,
         'retire_after_days'       => max(0, min(3650, (int)($_POST['retire_after_days'] ?? 0))),

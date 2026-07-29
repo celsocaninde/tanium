@@ -130,6 +130,24 @@ function plugin_tanium_install(): bool {
             'caps_extras_level'       => "tinyint NOT NULL DEFAULT 2",
             'caps_groups'             => "tinyint(1) NOT NULL DEFAULT 1",
             'caps_probed_at'          => "timestamp NULL DEFAULT NULL",
+            // Last capability set the admin was told about, so the degradation
+            // notice fires on the transition instead of on every sync.
+            'caps_notified'           => "varchar(20) NOT NULL DEFAULT ''",
+            // Findings that are closed carry no operational value, only history:
+            // they get their own, shorter retention than the live tables, which
+            // are never purged. 0 = keep forever (previous behaviour).
+            'retention_closed_days'   => "int NOT NULL DEFAULT 0",
+            // Kiosk breaks out of the carousel when something needs eyes now.
+            'kiosk_alerts'            => "tinyint(1) NOT NULL DEFAULT 1",
+            // CVE severity floor for ingestion. Read by Sync since v2.6 but
+            // never stored or exposed, so it was permanently 'all'.
+            'cve_min_severity'        => "varchar(20) NOT NULL DEFAULT 'all'",
+            // Set by the "Run synchronization now" button so an explicit
+            // request outranks the configured cron frequency exactly once.
+            'sync_requested_at'       => "timestamp NULL DEFAULT NULL",
+            // Last fleet-wide id sweep — the only way an incremental sync can
+            // learn which endpoints left.
+            'last_retire_sweep'       => "timestamp NULL DEFAULT NULL",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_configs` LIKE '{$col}'");
@@ -411,6 +429,70 @@ function plugin_tanium_install(): bool {
         }
     }
 
+    // ── v2.18.0: one severity vocabulary ──────────────────────────────────
+    //
+    // Severity is normalised at ingest from now on, but rows already stored
+    // still carry whatever spelling their vendor used, plus the unrated ones
+    // ('', 'none', '[no results]') that used to fold silently into "low".
+    // Rewrite them once so every count groups on the same words. Idempotent:
+    // the canonical values map to themselves and match nothing on re-run.
+    if ($DB->tableExists('glpi_plugin_tanium_patches')) {
+        foreach ([
+            'high'        => 'important',
+            'medium'      => 'moderate',
+            'negligible'  => 'low',
+            'none'        => 'unknown',
+            'unspecified' => 'unknown',
+            'untriaged'   => 'unknown',
+            'n/a'         => 'unknown',
+            ''            => 'unknown',
+            '[no results]' => 'unknown',
+        ] as $from => $to) {
+            $DB->doQuery(sprintf(
+                "UPDATE `glpi_plugin_tanium_patches` SET `severity` = '%s' WHERE LOWER(TRIM(`severity`)) = '%s'",
+                $DB->escape($to),
+                $DB->escape($from)
+            ));
+        }
+        // Anything left in mixed case ("Critical") becomes lower case without
+        // needing to be listed above.
+        $DB->doQuery("UPDATE `glpi_plugin_tanium_patches` SET `severity` = LOWER(TRIM(`severity`)) WHERE `severity` <> LOWER(TRIM(`severity`))");
+
+        // v2.19.0: drop sensor-failure rows stored as missing patches.
+        //
+        // Deleted rather than closed on purpose. Letting the next sync
+        // auto-close them would write "installed" into patch_history for
+        // something that was never a patch, inflating the remediation counts
+        // and the MTTR with a machine nobody managed to scan. They are not
+        // findings, so they leave no history.
+        $DB->doQuery(
+            "DELETE FROM `glpi_plugin_tanium_patches`
+              WHERE LOWER(CONCAT(COALESCE(patch_title,''), ' ', COALESCE(patch_id,''))) REGEXP
+                    'no scan results|no results found|tse-error|error:|not applicable'"
+        );
+    }
+
+    // ── v2.19.0: indexes for the status filters used on every screen ──────
+    //
+    // "status != 'remediated'" and "status = 'missing'" appear in a dozen
+    // queries across the dashboard, the kiosk, the health report and the SLA
+    // screens. At 84k CVE rows a scan is still fast; it stops being fast well
+    // before anyone notices it got slow.
+    foreach ([
+        'glpi_plugin_tanium_endpoint_cves' => ['status_eid' => '(`status`, `tanium_eid`)'],
+        'glpi_plugin_tanium_patches'       => ['status_eid' => '(`status`, `tanium_eid`)'],
+    ] as $table => $indexes) {
+        if (!$DB->tableExists($table)) {
+            continue;
+        }
+        foreach ($indexes as $name => $cols) {
+            $has = $DB->doQuery("SHOW INDEX FROM `{$table}` WHERE Key_name = '{$name}'");
+            if ($has && $DB->numrows($has) === 0) {
+                $DB->doQuery("ALTER TABLE `{$table}` ADD KEY `{$name}` {$cols}");
+            }
+        }
+    }
+
     // ── Patch status history (v2.6.0) ─────────────────────────────────────
     // Mirrors cve_history for patches: every status transition (missing →
     // installed/remediated) is recorded here, feeding the remediation trend
@@ -493,6 +575,36 @@ function plugin_tanium_install(): bool {
                 PRIMARY KEY (`id`),
                 KEY `users_id`    (`users_id`),
                 KEY `filter_type` (`filter_type`)
+            ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
+        );
+    }
+
+    // ── Campaigns ─────────────────────────────────────────────────────────
+    //
+    // The Action Plan answers "what do I do first"; a campaign is the follow
+    // through: one advisory picked, a target date, and the eradication tracked
+    // across the fleet until it is gone. Progress is never stored — it is
+    // derived from the live patch/CVE tables, so it can never drift from
+    // reality the way a cached counter would.
+    if (!$DB->tableExists('glpi_plugin_tanium_campaigns')) {
+        $DB->doQuery(
+            "CREATE TABLE `glpi_plugin_tanium_campaigns` (
+                `id`             int {$sign} NOT NULL AUTO_INCREMENT,
+                `name`           varchar(255) NOT NULL DEFAULT '',
+                `target_type`    varchar(20)  NOT NULL DEFAULT 'patch',
+                `target_key`     varchar(255) NOT NULL DEFAULT '',
+                `baseline_count` int NOT NULL DEFAULT 0,
+                `due_date`       date DEFAULT NULL,
+                `owner_id`       int {$sign} DEFAULT NULL,
+                `status`         varchar(20) NOT NULL DEFAULT 'active',
+                `notes`          text DEFAULT NULL,
+                `created_by`     int {$sign} DEFAULT NULL,
+                `created_at`     timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `closed_at`      timestamp NULL DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                KEY `status`      (`status`),
+                KEY `target_type` (`target_type`),
+                KEY `owner_id`    (`owner_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation}"
         );
     }
@@ -584,6 +696,7 @@ function plugin_tanium_uninstall(): bool {
         'glpi_plugin_tanium_compliance',
         'glpi_plugin_tanium_threat_alerts',
         'glpi_plugin_tanium_remote_actions',
+        'glpi_plugin_tanium_campaigns',
     ] as $table) {
         if ($DB->tableExists($table)) {
             $DB->dropTable($table);
@@ -593,6 +706,94 @@ function plugin_tanium_uninstall(): bool {
     CronTask::unregister('tanium');
 
     return true;
+}
+
+/**
+ * Expose Tanium data as native GLPI search options on Computer.
+ *
+ * Until now the risk score lived only inside the plugin's own screens, so it
+ * could not be a column in a saved search, a filter in the native list, a
+ * criterion in a GLPI business rule, or a field in an export. Registering it
+ * here hands all of that to the parts of GLPI that already do it well, at the
+ * cost of one LEFT JOIN — no new code to maintain, no second search engine.
+ *
+ * IDs are in the 5100-5199 band reserved for this plugin. They must stay
+ * stable: GLPI persists them inside saved searches and dashboards, so
+ * renumbering an option silently repoints every saved search that used it.
+ *
+ * @param string $itemtype
+ * @return array<int,array<string,mixed>>
+ */
+function plugin_tanium_getAddSearchOptionsNew($itemtype): array {
+    if ($itemtype !== 'Computer') {
+        return [];
+    }
+
+    $join = [
+        'glpi_plugin_tanium_assets' => [
+            'ON' => [
+                'glpi_plugin_tanium_assets' => 'computers_id',
+                'glpi_computers'            => 'id',
+            ],
+        ],
+    ];
+
+    return [
+        [
+            'id'            => 5100,
+            'table'         => 'glpi_plugin_tanium_assets',
+            'field'         => 'risk_score',
+            'name'          => __('Tanium risk score', 'tanium'),
+            'datatype'      => 'number',
+            'massiveaction' => false,
+            'joinparams'    => $join,
+        ],
+        [
+            'id'            => 5101,
+            'table'         => 'glpi_plugin_tanium_assets',
+            'field'         => 'last_seen',
+            'name'          => __('Tanium last seen', 'tanium'),
+            'datatype'      => 'datetime',
+            'massiveaction' => false,
+            'joinparams'    => $join,
+        ],
+        [
+            'id'            => 5102,
+            'table'         => 'glpi_plugin_tanium_assets',
+            'field'         => 'tanium_name',
+            'name'          => __('Tanium endpoint name', 'tanium'),
+            'datatype'      => 'string',
+            'massiveaction' => false,
+            'joinparams'    => $join,
+        ],
+        [
+            'id'            => 5103,
+            'table'         => 'glpi_plugin_tanium_assets',
+            'field'         => 'is_encrypted',
+            'name'          => __('Tanium disk encrypted', 'tanium'),
+            'datatype'      => 'bool',
+            'massiveaction' => false,
+            'joinparams'    => $join,
+        ],
+        [
+            'id'            => 5104,
+            'table'         => 'glpi_plugin_tanium_assets',
+            'field'         => 'retired_at',
+            'name'          => __('Tanium retired on', 'tanium'),
+            'datatype'      => 'datetime',
+            'massiveaction' => false,
+            'joinparams'    => $join,
+        ],
+        [
+            'id'            => 5105,
+            'table'         => 'glpi_plugin_tanium_assets',
+            'field'         => 'os_platform',
+            'name'          => __('Tanium OS platform', 'tanium'),
+            'datatype'      => 'string',
+            'massiveaction' => false,
+            'joinparams'    => $join,
+        ],
+    ];
 }
 
 // Helper: ALTER column from datetime to timestamp only if still datetime

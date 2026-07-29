@@ -49,7 +49,8 @@ Plugin que conecta a plataforma **Tanium** ao **GLPI 11**, trazendo visibilidade
 | 🔎 **Cálculo aberto** | O endpoint mostra a conta que gerou a nota — piso da severidade, volume e amplitude, com os achados que entraram |
 | 📈 **Antes → depois** | Histórico de risco por endpoint com variação do período, gráfico e quantos CVEs/patches foram corrigidos |
 | 🛟 **Sync resiliente** | O cursor incremental só avança quando o ciclo termina sem erro — endpoints que falharam voltam na execução seguinte em vez de serem pulados |
-| 🗑️ **Endpoints retirados** | Máquinas que somem da frota do Tanium são marcadas com data de retirada e, opcionalmente, expurgadas após carência configurável |
+| 🗑️ **Endpoints retirados** | Máquinas que somem da frota do Tanium são marcadas com data de retirada e, opcionalmente, expurgadas após carência configurável. Detectado por varredura diária de IDs, que funciona **também** com sync incremental |
+| 🔐 **Escopo por entidade** | Listas, dashboard, boletim, plano de ação e páginas por endpoint respeitam as entidades do perfil — inclusive a ficha individual, que recusa um `eid` fora do escopo |
 | 💻 **Aba no Computador** | Dados Tanium diretamente na ficha do ativo no GLPI |
 | 🎯 **Widget Central** | Resumo de risco no painel inicial do GLPI |
 | 🔒 **Perfis** | Controle de acesso granular por perfil GLPI |
@@ -63,7 +64,15 @@ Plugin que conecta a plataforma **Tanium** ao **GLPI 11**, trazendo visibilidade
 | 🧩 **Dashboard cards nativos** | 7 cards no dashboard nativo do GLPI (grupo "Tanium") |
 | 🔗 **Correlação cross-plugin** | Badges quando o CVE também é visto pelo Nessus/SentinelOne |
 | 📄 **Exportações** | PDF do comparativo de endpoints e busca nativa GLPI com CSV |
-| 🌐 **i18n completa** | 736 strings traduzidas para pt_BR (.mo compilado, sem dependência de `msgfmt`) |
+| 🩺 **Diagnóstico do plugin** | Tela que responde "isto está funcionando?": estado de cada cron, capacidades que o Gateway recusou, tamanho das tabelas, últimas execuções e log — tudo lido ao vivo |
+| 📉 **Burn-down** | Vazão em vez de estoque: abertos vs fechados por semana, saldo e projeção — incluindo "nunca neste ritmo" quando a fila cresce |
+| ♻️ **Reincidência** | Patch que foi instalado e voltou a faltar, com os endpoints que mais revertem — aponta imagem base, GPO ou repositório, não a equipe |
+| 🎯 **Campanhas** | Erradicação de um alvo acompanhada até o fim: linha de base no dia da decisão, prazo, progresso e quem ainda falta |
+| 🧭 **Fora do padrão** | Endpoint comparado com máquinas do mesmo SO **e mesma geração** — desvio ali é configuração divergente, não falta de patch |
+| 🏷️ **Severidade unificada** | Windows, RHEL, Ubuntu e SUSE falam escalas diferentes; tudo é normalizado na entrada e o que não tem nota vira `unknown` explícito |
+| 🔎 **Campos nativos** | Nota de risco, último contato e criptografia expostos como critérios de busca do Computer — usáveis em listas salvas, dashboards e **regras de negócio** do GLPI |
+| 📺 **Kiosk com alerta** | A TV rompe o carrossel quando há o que dizer (exposição KEV nova, sync parado, agentes em silêncio) |
+| 🌐 **i18n completa** | 901 strings traduzidas para pt_BR (.mo compilado, sem dependência de `msgfmt`) |
 
 ### 🚀 Requisitos
 
@@ -95,18 +104,21 @@ glpi/plugins/
 |---|---|
 | 🌐 **API URL** | Endereço da API REST do Tanium (ex: `https://tanium.empresa.com.br`) |
 | 🔑 **API Token** | Token de autenticação gerado no console Tanium |
-| 🔄 **Frequência** | Intervalo de sincronização (horas) |
+| 🔄 **Frequência** | Intervalo entre sincronizações (horas). A tarefa roda de hora em hora e ela mesma decide se está na hora; o botão "Executar agora" ignora o intervalo |
 | 📥 **Limite** | Máximo de endpoints por execução do cron |
 | 📧 **E-mail** | Destinatário do relatório semanal de segurança |
 | 🔁 **Auto-close de findings** | Marca como remediado o que sumiu do feed do Tanium (ligado por padrão) |
+| 🎚️ **Severidade mínima de CVE** | Corta achados abaixo do nível escolhido já na importação. Cuidado: o que é cortado nunca entra no payload, logo nunca é fechado automaticamente |
 | 🎫 **Chamado de remediação** | Abre um chamado por endpoint que concluiu correções, já solucionado, com o histórico completo |
 | ♻️ **Sensor de reboot pendente** | Nome do sensor do Tanium que indica reinício pendente (coletado automaticamente; vazio desativa o aviso) |
 | 🗑️ **Remover endpoints retirados** | Dias de carência antes de apagar os dados Tanium de uma máquina que sumiu da frota (0 = só marcar) |
+| 🧹 **Retenção de achados fechados** | Por quanto tempo CVEs remediados e patches instalados são guardados. Achados **abertos** nunca são expurgados (0 = guardar para sempre) |
+| 📺 **Alertas no Kiosk** | A TV interrompe o carrossel em eventos urgentes: nova exposição KEV, sincronização parada, agentes em silêncio |
 
 ### 🧪 Testes
 
 ```
-php tests/run.php      # lógica pura (106 casos)
+php tests/run.php      # lógica pura (142 casos)
 php tests/mirror.php   # garante que as cópias dos testes conferem com src/
 php tools/lint.php     # php -l em todo o plugin
 php tools/i18n_audit.php pt_BR
@@ -236,6 +248,10 @@ src/
 ├── RemoteAction.php   — Ações remotas condicionadas a aprovação
 ├── PatchDeploy.php    — Implantação e monitoramento de patches
 ├── CrossPlugin.php    — Correlação com Nessus/SentinelOne
+├── Analytics.php      — Burn-down, projeção, reincidência e outliers
+├── Campaign.php       — Campanhas de erradicação (progresso derivado, nunca gravado)
+├── Diagnostics.php    — Autodiagnóstico do plugin (crons, capacidades, dados)
+├── Severity.php       — Vocabulário único de severidade entre plataformas
 ├── PdfReport.php      — Exportações em PDF
 ├── Config.php         — Configurações do plugin
 ├── Profile.php        — Controle de acesso por perfil
@@ -247,7 +263,7 @@ src/
 └── Notification.php   — Notificações GLPI
 
 tests/
-├── run.php            — Executor da suíte (43 casos, sem dependências)
+├── run.php            — Executor da suíte (142 casos, sem dependências)
 ├── mirror.php         — Verifica se as cópias dos testes batem com src/
 └── cases/             — Casos por função (os_type, kb_parts, reboot_pending, …)
 
@@ -291,7 +307,8 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | 🔎 **Open arithmetic** | The endpoint page shows the calculation behind its score — severity floor, volume and breadth, with the findings that went in |
 | 📈 **Before → after** | Per-endpoint risk history with the period's movement, a chart, and how many CVEs/patches were fixed |
 | 🛟 **Resilient sync** | The incremental cursor only advances when the cycle ends without errors — failed endpoints come back on the next run instead of being skipped |
-| 🗑️ **Retired endpoints** | Machines that disappear from the Tanium fleet are stamped with a retirement date and, optionally, purged after a configurable grace period |
+| 🗑️ **Retired endpoints** | Machines that disappear from the Tanium fleet are stamped with a retirement date and, optionally, purged after a configurable grace period. Detected by a daily id sweep, so it works **with** incremental sync too |
+| 🔐 **Entity scoping** | Lists, dashboard, health report, action plan and per-endpoint pages honour the profile's entities — including the detail page, which refuses an out-of-scope `eid` |
 | 💻 **Computer Tab** | Tanium data directly on the asset record in GLPI |
 | 🎯 **Central Widget** | Risk summary on the GLPI home panel |
 | 🔒 **Profiles** | Granular access control per GLPI profile |
@@ -305,7 +322,15 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | 🧩 **Native dashboard cards** | 7 cards in the native GLPI dashboard ("Tanium" group) |
 | 🔗 **Cross-plugin correlation** | Badges when a CVE is also seen by Nessus/SentinelOne |
 | 📄 **Exports** | Endpoint comparison PDF and native GLPI search with CSV |
-| 🌐 **Full i18n** | 736 strings translated to pt_BR (compiled .mo, no `msgfmt` dependency) |
+| 🩺 **Plugin diagnostics** | A screen that answers "is this working?": every cron's state, the capabilities the Gateway refused, table sizes, recent runs and the log — all read live |
+| 📉 **Burn-down** | Flow instead of stock: opened vs closed per week, net movement and a forecast — including "never at this rate" when the queue is growing |
+| ♻️ **Reincidence** | Patches installed that came back, with the endpoints that revert most — points at the base image, a policy or a repository, not at the team |
+| 🎯 **Campaigns** | One target tracked to eradication: baseline taken the day it was decided, due date, progress and who is left |
+| 🧭 **Outliers** | Endpoints compared against machines on the same OS **and the same major version** — deviation there is configuration drift, not a missing patch |
+| 🏷️ **Unified severity** | Windows, RHEL, Ubuntu and SUSE speak different scales; everything is normalised at ingest and anything unrated becomes an explicit `unknown` |
+| 🔎 **Native search fields** | Risk score, last seen and encryption exposed as Computer search options — usable in saved searches, dashboards and GLPI **business rules** |
+| 📺 **Kiosk alert mode** | The wall TV breaks out of the carousel when it has something to say (new KEV exposure, sync stopped, agents going silent) |
+| 🌐 **Full i18n** | 901 strings translated to pt_BR (compiled .mo, no `msgfmt` dependency) |
 
 ### 🚀 Requirements
 
@@ -326,18 +351,21 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 |---|---|
 | 🌐 **API URL** | Tanium REST API endpoint (e.g. `https://tanium.company.com`) |
 | 🔑 **API Token** | Authentication token generated in the Tanium console |
-| 🔄 **Frequency** | Sync interval (hours) |
+| 🔄 **Frequency** | Interval between syncs (hours). The task runs hourly and decides for itself whether it is due; "Run now" bypasses the interval |
 | 📥 **Limit** | Max endpoints per cron run |
 | 📧 **E-mail** | Weekly security report recipient |
 | 🔁 **Findings auto-close** | Marks whatever vanished from the Tanium feed as remediated (on by default) |
+| 🎚️ **Minimum CVE severity** | Drops findings below the chosen level at import. Careful: what is filtered out never enters the payload, so it can never be auto-closed |
 | 🎫 **Remediation ticket** | Opens one already-solved ticket per endpoint that finished remediating, with the full history |
 | ♻️ **Pending reboot sensor** | Name of the Tanium sensor reporting a pending restart (collected automatically; empty disables the warning) |
 | 🗑️ **Purge retired endpoints** | Grace period, in days, before deleting the Tanium data of a machine that left the fleet (0 = flag only) |
+| 🧹 **Closed-findings retention** | How long remediated CVEs and installed patches are kept. **Open** findings are never purged (0 = keep forever) |
+| 📺 **Kiosk alerts** | The wall TV breaks out of the carousel on urgent events: new KEV exposure, sync stopped, agents going silent |
 
 ### 🧪 Tests
 
 ```
-php tests/run.php      # pure logic (106 cases)
+php tests/run.php      # pure logic (142 cases)
 php tests/mirror.php   # asserts the test copies still match src/
 php tools/lint.php     # php -l across the whole plugin
 php tools/i18n_audit.php pt_BR
@@ -467,6 +495,10 @@ src/
 ├── RemoteAction.php   — Approval-gated remote actions
 ├── PatchDeploy.php    — Patch deployment & monitoring
 ├── CrossPlugin.php    — Nessus/SentinelOne correlation
+├── Analytics.php      — Burn-down, forecast, reincidence and outliers
+├── Campaign.php       — Eradication campaigns (progress derived, never stored)
+├── Diagnostics.php    — Plugin self-diagnostics (crons, capabilities, data)
+├── Severity.php       — One severity vocabulary across platforms
 ├── PdfReport.php      — PDF exports
 ├── Config.php         — Plugin settings
 ├── Profile.php        — Profile-based access control
@@ -478,7 +510,7 @@ src/
 └── Notification.php   — GLPI notifications
 
 tests/
-├── run.php            — Suite runner (43 cases, zero dependencies)
+├── run.php            — Suite runner (142 cases, zero dependencies)
 ├── mirror.php         — Checks the test copies still match src/
 └── cases/             — One file per function (os_type, kb_parts, reboot_pending, …)
 

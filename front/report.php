@@ -15,6 +15,9 @@ if (!\GlpiPlugin\Tanium\Profile::hasReadRight()) { Html::displayRightError(); }
 global $DB, $CFG_GLPI;
 
 $eid    = $_GET['eid'] ?? '';
+if ($eid !== '' && !\GlpiPlugin\Tanium\Profile::canViewEndpoint((string)$eid)) {
+    Html::displayRightError();
+}
 $mode   = $eid ? 'endpoint' : 'global';
 $webDir = Plugin::getWebDir('tanium');
 $logo   = $webDir . '/public/img/tanium-logo.svg';

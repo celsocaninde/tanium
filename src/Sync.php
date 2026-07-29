@@ -4,6 +4,7 @@ namespace GlpiPlugin\Tanium;
 
 use CommonGLPI;
 use Computer;
+use CronTask;
 use DeviceMemory;
 use DeviceProcessor;
 use Domain;
@@ -140,10 +141,30 @@ class Sync extends CommonGLPI {
                     'page'  => Plugin::getWebDir('tanium') . '/front/report.php',
                     'icon'  => 'ti ti-printer',
                 ],
+                'campaigns'       => [
+                    'title' => __('Campaigns', 'tanium'),
+                    'page'  => Plugin::getWebDir('tanium') . '/front/campaigns.php',
+                    'icon'  => 'ti ti-target-arrow',
+                ],
+                'burndown'        => [
+                    'title' => __('Burn-down', 'tanium'),
+                    'page'  => Plugin::getWebDir('tanium') . '/front/burndown.php',
+                    'icon'  => 'ti ti-chart-line',
+                ],
+                'outliers'        => [
+                    'title' => __('Outliers', 'tanium'),
+                    'page'  => Plugin::getWebDir('tanium') . '/front/outliers.php',
+                    'icon'  => 'ti ti-alert-hexagon',
+                ],
                 'sync'            => [
                     'title' => __('Synchronize', 'tanium'),
                     'page'  => Plugin::getWebDir('tanium') . '/front/sync.form.php',
                     'icon'  => 'ti ti-refresh',
+                ],
+                'diagnostics'     => [
+                    'title' => __('Diagnostics', 'tanium'),
+                    'page'  => Plugin::getWebDir('tanium') . '/front/diagnostics.php',
+                    'icon'  => 'ti ti-stethoscope',
                 ],
                 'config'          => [
                     'title' => __('Configuration', 'tanium'),
@@ -330,12 +351,28 @@ class Sync extends CommonGLPI {
                 self::recomputeCveAffectedCounts();
             }
 
-            // Endpoints Tanium no longer returns. Only meaningful after a run
-            // that saw the WHOLE fleet: an incremental run returns just what
-            // changed, and a run with errors has an incomplete picture — either
-            // one would retire the entire estate.
-            if ($sinceTs === 0 && $errors === 0 && $seenEids !== []) {
-                self::reconcileRetiredAssets($seenEids);
+            // Endpoints Tanium no longer returns.
+            //
+            // A full run already saw the whole fleet, so its own seen-set is
+            // authoritative. An INCREMENTAL run never can be — it returns only
+            // what changed — and since the cursor is written after every
+            // successful run, incremental is the steady state. That left
+            // retirement detection dead from the second sync onward: on the
+            // reference fleet, 27 machines last seen in May and June still
+            // carried retired_at = NULL in late July, inflating the fleet
+            // average and the coverage KPI, with purgeretired finding nothing
+            // to purge. The id-only sweep below closes that, cheaply and on
+            // its own schedule.
+            //
+            // A run with errors is never trusted for this either way: an
+            // incomplete picture would retire the entire estate.
+            if ($errors === 0) {
+                if ($sinceTs === 0 && $seenEids !== []) {
+                    self::reconcileRetiredAssets($seenEids);
+                    self::stampRetireSweep();
+                } elseif (self::retireSweepDue($config)) {
+                    self::sweepRetiredAssets($api);
+                }
             }
 
             // Save cursor for next incremental run — but only when every
@@ -1241,14 +1278,127 @@ class Sync extends CommonGLPI {
 
     // ── Software sync ─────────────────────────────────────────────────────
 
+    /**
+     * Reconcile one endpoint's installed software in a bounded number of
+     * queries, instead of a handful per application.
+     *
+     * The old loop called linkSoftware() per app, and that did four queries
+     * each: find Software, find SoftwareVersion, find the link, insert. A
+     * machine with 200 applications cost ~800 round-trips, and a 420-endpoint
+     * fleet ran into the hundreds of thousands — which is what made a full
+     * sync take a quarter of an hour and what killed the run that wedged the
+     * scheduler in July 2026. Everything an endpoint needs is now read in
+     * three queries up front; only genuinely new rows are written.
+     *
+     * It also removes what is no longer installed. The previous version only
+     * ever added, so uninstalled software stayed attached to the asset
+     * forever and the inventory drifted further from reality with every sync.
+     * Only links this plugin created (is_dynamic) are removed — an entry a
+     * human or another inventory source added is never touched.
+     */
     private static function syncSoftware(int $computerId, array $softwareList): void {
+        global $DB;
+
+        // Normalise and de-duplicate first: the sensor happily reports the
+        // same product twice, and both copies would race for the same row.
+        $wanted = [];
         foreach ($softwareList as $app) {
-            $name    = $app['name']    ?? ($app['applicationName'] ?? '');
-            $version = $app['version'] ?? '';
-            if (empty($name)) {
+            $name    = trim((string)($app['name'] ?? $app['applicationName'] ?? ''));
+            $version = trim((string)($app['version'] ?? ''));
+            if ($name === '') {
                 continue;
             }
-            self::linkSoftware($computerId, $name, $version);
+            $wanted[$name . "\0" . $version] = ['name' => $name, 'version' => $version];
+        }
+        if ($wanted === []) {
+            return;
+        }
+
+        $names = array_values(array_unique(array_column($wanted, 'name')));
+
+        // 1. Software rows that already exist.
+        $softIds = [];
+        foreach ($DB->request([
+            'SELECT' => ['id', 'name'],
+            'FROM'   => 'glpi_softwares',
+            'WHERE'  => ['name' => $names],
+        ]) as $row) {
+            $softIds[(string)$row['name']] = (int)$row['id'];
+        }
+        foreach ($names as $name) {
+            if (!isset($softIds[$name])) {
+                $softIds[$name] = self::getOrCreate('Software', $name, ['entities_id' => 0, 'is_recursive' => 1]);
+            }
+        }
+
+        // 2. Versions of exactly those Software rows.
+        $versionIds = [];
+        $ids        = array_values(array_filter($softIds));
+        if ($ids !== []) {
+            foreach ($DB->request([
+                'SELECT' => ['id', 'softwares_id', 'name'],
+                'FROM'   => 'glpi_softwareversions',
+                'WHERE'  => ['softwares_id' => $ids],
+            ]) as $row) {
+                $versionIds[(int)$row['softwares_id'] . "\0" . (string)$row['name']] = (int)$row['id'];
+            }
+        }
+
+        // 3. Links this computer already has.
+        $linked = [];
+        foreach ($DB->request([
+            'SELECT' => ['id', 'softwareversions_id', 'is_dynamic'],
+            'FROM'   => 'glpi_items_softwareversions',
+            'WHERE'  => ['items_id' => $computerId, 'itemtype' => 'Computer'],
+        ]) as $row) {
+            $linked[(int)$row['softwareversions_id']] = [
+                'id'         => (int)$row['id'],
+                'is_dynamic' => (int)$row['is_dynamic'],
+            ];
+        }
+
+        $keep = [];
+        foreach ($wanted as $app) {
+            $softId = $softIds[$app['name']] ?? 0;
+            if ($softId <= 0) {
+                continue;
+            }
+            $versionName = $app['version'] !== '' ? $app['version'] : '—';
+            $vkey        = $softId . "\0" . $versionName;
+
+            $versionId = $versionIds[$vkey] ?? 0;
+            if ($versionId <= 0) {
+                $sv        = new SoftwareVersion();
+                $versionId = (int)$sv->add([
+                    'softwares_id' => $softId,
+                    'name'         => $versionName,
+                    'entities_id'  => 0,
+                    'is_recursive' => 1,
+                    'is_dynamic'   => 1,
+                ]);
+                if ($versionId <= 0) {
+                    continue;
+                }
+                $versionIds[$vkey] = $versionId;
+            }
+
+            $keep[$versionId] = true;
+            if (!isset($linked[$versionId])) {
+                (new Item_SoftwareVersion())->add([
+                    'items_id'            => $computerId,
+                    'itemtype'            => 'Computer',
+                    'softwareversions_id' => $versionId,
+                    'is_dynamic'          => 1,
+                ]);
+            }
+        }
+
+        // Uninstalled: present on the asset, absent from this report, and ours
+        // to remove. A link someone added by hand has is_dynamic = 0 and stays.
+        foreach ($linked as $versionId => $link) {
+            if (!isset($keep[$versionId]) && $link['is_dynamic'] === 1) {
+                (new Item_SoftwareVersion())->delete(['id' => $link['id']], true);
+            }
         }
     }
 
@@ -1484,6 +1634,59 @@ class Sync extends CommonGLPI {
         }
     }
 
+    /** Hours between fleet-wide id sweeps when the sync runs incrementally. */
+    private const RETIRE_SWEEP_HOURS = 24;
+
+    /** True when no sweep has run recently enough to still be trusted. */
+    private static function retireSweepDue(array $config): bool {
+        $last = $config['last_retire_sweep'] ?? null;
+        if (empty($last)) {
+            return true;
+        }
+        $ts = strtotime((string)$last);
+        return $ts === false || $ts < strtotime('-' . self::RETIRE_SWEEP_HOURS . ' hours');
+    }
+
+    private static function stampRetireSweep(): void {
+        global $DB;
+
+        $row = $DB->request(['SELECT' => ['id'], 'FROM' => 'glpi_plugin_tanium_configs', 'LIMIT' => 1])->current();
+        if ($row !== null) {
+            $DB->update(
+                'glpi_plugin_tanium_configs',
+                ['last_retire_sweep' => date('Y-m-d H:i:s')],
+                ['id' => (int)$row['id']]
+            );
+        }
+    }
+
+    /**
+     * Ask Tanium for the fleet's ids alone, then reconcile retirement.
+     *
+     * Deliberately a separate, cheap request rather than widening the sync:
+     * forcing a full enrichment pass just to learn who left would undo the
+     * whole point of syncing incrementally.
+     *
+     * An empty answer is treated as a failure, never as "the fleet is gone" —
+     * that is the one mistake here that would retire every asset at once.
+     */
+    private static function sweepRetiredAssets(Api $api): void {
+        try {
+            $ids = $api->allEndpointIds();
+        } catch (\Throwable $e) {
+            Toolbox::logInFile('tanium', '[Tanium] Retirement sweep failed (' . $e->getMessage() . ") — nothing retired.\n");
+            return;
+        }
+
+        if ($ids === []) {
+            Toolbox::logInFile('tanium', "[Tanium] Retirement sweep returned no endpoints — refusing to retire the whole fleet.\n");
+            return;
+        }
+
+        self::reconcileRetiredAssets($ids);
+        self::stampRetireSweep();
+    }
+
     // ── Gateway capability cache ──────────────────────────────────────────
 
     /** Days before the plugin re-asks the Gateway for the optional blocks. */
@@ -1535,6 +1738,80 @@ class Sync extends CommonGLPI {
             $update['caps_probed_at'] = date('Y-m-d H:i:s');
         }
         $DB->update('glpi_plugin_tanium_configs', $update, ['id' => (int)$row['id']]);
+
+        self::notifyCapabilityChange($update + ['id' => (int)$row['id']]);
+    }
+
+    /**
+     * Tell someone when the Gateway starts (or stops) refusing a data block.
+     *
+     * Degrading silently is the dangerous part: the sync keeps succeeding, the
+     * screens keep rendering, and whole columns are simply absent — hygiene
+     * data missing makes the health grade quietly incomplete, and nobody knows
+     * to go looking. The log line the degradation already wrote is not enough,
+     * because nobody reads logs until something is visibly broken.
+     *
+     * Fires on the TRANSITION only. Re-notifying every hour would train
+     * everyone to ignore it, and a recovery is worth knowing about too.
+     *
+     * @param array{id:int,caps_extras_level:int,caps_groups:int} $current
+     */
+    private static function notifyCapabilityChange(array $current): void {
+        global $DB;
+
+        $config    = Config::getConfig();
+        $signature = Diagnostics::capabilitySignature([
+            'caps_extras_level' => $current['caps_extras_level'],
+            'caps_groups'       => $current['caps_groups'],
+        ]);
+
+        $previous = (string)($config['caps_notified'] ?? '');
+        if ($signature === $previous) {
+            return;
+        }
+
+        $DB->update('glpi_plugin_tanium_configs', ['caps_notified' => $signature], ['id' => $current['id']]);
+
+        // First observation: record the baseline without crying wolf about a
+        // tenant that simply never exposed those blocks.
+        if ($previous === '') {
+            return;
+        }
+
+        $degraded = Diagnostics::capabilityChecks([
+            'caps_extras_level' => $current['caps_extras_level'],
+            'caps_groups'       => $current['caps_groups'],
+        ]);
+        $problems = array_values(array_filter(
+            $degraded,
+            static fn(array $c): bool => ($c['status'] ?? '') !== Diagnostics::OK
+        ));
+
+        if ($problems === []) {
+            $subject = __('[Tanium] The Gateway is answering every data block again', 'tanium');
+            $body    = '<p>' . __('A block the Tanium Gateway had been refusing is available again. The data it feeds is being collected once more.', 'tanium') . '</p>';
+        } else {
+            $lines = '';
+            foreach ($problems as $p) {
+                $lines .= '<li><strong>' . htmlspecialchars($p['label']) . '</strong> — ' . htmlspecialchars($p['detail']) . '</li>';
+            }
+            $subject = __('[Tanium] The Gateway stopped answering part of the sync', 'tanium');
+            $body    = '<p>' . __('The sync still completes, but the Tanium Gateway refused the blocks below, so that data is now missing from GLPI:', 'tanium')
+                     . '</p><ul>' . $lines . '</ul>'
+                     . '<p>' . __('This is usually a missing module permission on the API token, or sensors not deployed in the tenant.', 'tanium') . '</p>';
+        }
+
+        foreach (Config::resolveNotifyRecipients($config) as $to) {
+            Notification::sendEmail($to, $subject, $body);
+        }
+        if (!empty($config['webhook_enabled']) && !empty($config['webhook_url'])) {
+            Notification::sendWebhook($config['webhook_url'], [
+                'username'   => 'Tanium + GLPI',
+                'icon_emoji' => ':warning:',
+                'title'      => $subject,
+                'text'       => strip_tags(str_replace(['</li>', '</p>'], ["\n", "\n"], $body)),
+            ]);
+        }
     }
 
     /**
@@ -2038,53 +2315,6 @@ class Sync extends CommonGLPI {
         }
     }
 
-    private static function linkSoftware(int $computerId, string $name, string $version): void {
-        global $DB;
-
-        // Software and SoftwareVersion are entity-aware: create them at the root
-        // entity, recursive, so they are visible everywhere (as agent inventory does).
-        $softId = self::getOrCreate('Software', $name, ['entities_id' => 0, 'is_recursive' => 1]);
-
-        $versionRow = $DB->request([
-            'FROM'  => 'glpi_softwareversions',
-            'WHERE' => ['softwares_id' => $softId, 'name' => $version],
-            'LIMIT' => 1,
-        ])->current();
-
-        if ($versionRow) {
-            $versionId = (int) $versionRow['id'];
-        } else {
-            $sv        = new SoftwareVersion();
-            $versionId = (int) $sv->add([
-                'softwares_id' => $softId,
-                'name'         => $version ?: '—',
-                'entities_id'  => 0,
-                'is_recursive' => 1,
-                'is_dynamic'   => 1,
-            ]);
-        }
-
-        $linked = $DB->request([
-            'FROM'  => 'glpi_items_softwareversions',
-            'WHERE' => [
-                'items_id'            => $computerId,
-                'itemtype'            => 'Computer',
-                'softwareversions_id' => $versionId,
-            ],
-            'LIMIT' => 1,
-        ])->current();
-
-        if (!$linked) {
-            $isv = new Item_SoftwareVersion();
-            $isv->add([
-                'items_id'            => $computerId,
-                'itemtype'            => 'Computer',
-                'softwareversions_id' => $versionId,
-                'is_dynamic'          => 1,
-            ]);
-        }
-    }
-
     // ── Risk history snapshot ─────────────────────────────────────────────
 
     private static function saveRiskHistory(int $logId): void {
@@ -2129,6 +2359,104 @@ class Sync extends CommonGLPI {
             'patches_missing' => (int)($patchRow['patches_missing'] ?? 0),
             'recorded_at'     => date('Y-m-d H:i:s'),
         ]);
+    }
+
+    // ── Recovery from a run killed outside PHP's control ──────────────────
+
+    /**
+     * A run killed outside PHP's control — OOM kill, container restart, worker
+     * timeout — leaves two things behind, and neither ever clears on its own:
+     *
+     *   • the GLPI cron task pinned in STATE_RUNNING. `getNeedToRun()` only
+     *     ever selects STATE_WAITING, so the scheduler silently stops picking
+     *     the sync up — forever.
+     *   • this plugin's own log row stuck at 'running', which is what the
+     *     sync screen reports as progress, so the UI shows a frozen percentage
+     *     as if the job were still working.
+     *
+     * The shutdown handler in run() covers PHP fatals only; it never fires for
+     * a process that was killed. In July 2026 that left taniumsync wedged at
+     * 45% for 26 days while every other Tanium task kept running normally.
+     */
+    private const STALE_RUN_HOURS = 2;
+
+    /**
+     * Release a wedged run so the scheduler can schedule the sync again.
+     *
+     * A live run must never be touched — clearing the state of a sync that is
+     * genuinely working would let a second one start on top of it. So nothing
+     * is recovered until the run is older than STALE_RUN_HOURS; a full sync of
+     * the reference fleet takes around 20 minutes.
+     *
+     * @return array{task:bool,logs:int} whether the cron task was released,
+     *                                   and how many orphan log rows closed
+     */
+    public static function recoverWedgedRun(): array {
+        global $DB;
+
+        $cutoff = date('Y-m-d H:i:s', strtotime('-' . self::STALE_RUN_HOURS . ' hours'));
+
+        $logs = 0;
+        foreach ($DB->request([
+            'SELECT' => ['id', 'started_at'],
+            'FROM'   => 'glpi_plugin_tanium_sync_logs',
+            'WHERE'  => ['status' => 'running', 'started_at' => ['<', $cutoff]],
+        ]) as $row) {
+            $DB->update('glpi_plugin_tanium_sync_logs', [
+                'finished_at' => date('Y-m-d H:i:s'),
+                'status'      => 'error',
+                'errors'      => 1,
+                'message'     => sprintf(
+                    __('Interrupted run: the process died without finishing (started %s).', 'tanium'),
+                    (string) ($row['started_at'] ?? '?')
+                ),
+            ], ['id' => (int) $row['id']]);
+            $logs++;
+        }
+
+        $task     = new CronTask();
+        $released = false;
+        if (
+            $task->getFromDBByCrit(['itemtype' => Cron::class, 'name' => 'taniumsync'])
+            && (int) ($task->fields['state'] ?? 0) === CronTask::STATE_RUNNING
+            && !self::taskLooksAlive($task)
+        ) {
+            $released = (bool) $task->update([
+                'id'    => (int) $task->fields['id'],
+                'state' => CronTask::STATE_WAITING,
+            ]);
+        }
+
+        if ($released || $logs > 0) {
+            Toolbox::logInFile('tanium', sprintf(
+                "[Tanium] Recovered a wedged sync: cron task released=%s, orphan log rows closed=%d.\n",
+                $released ? 'yes' : 'no',
+                $logs
+            ));
+        }
+
+        return ['task' => $released, 'logs' => $logs];
+    }
+
+    /**
+     * True while a RUNNING cron task is still young enough that it could
+     * plausibly be doing work. `lastrun` is stamped when the task starts, so
+     * its age is how long the current run has been going.
+     */
+    private static function taskLooksAlive(CronTask $task): bool {
+        $startedAt = strtotime((string) ($task->fields['lastrun'] ?? '')) ?: 0;
+        if ($startedAt === 0) {
+            return false;   // no start time recorded — it cannot be running
+        }
+        return $startedAt >= strtotime('-' . self::STALE_RUN_HOURS . ' hours');
+    }
+
+    /** Is the sync task currently held by a run that still looks alive? */
+    public static function isRunning(): bool {
+        $task = new CronTask();
+        return $task->getFromDBByCrit(['itemtype' => Cron::class, 'name' => 'taniumsync'])
+            && (int) ($task->fields['state'] ?? 0) === CronTask::STATE_RUNNING
+            && self::taskLooksAlive($task);
     }
 
     // ── Log helpers ───────────────────────────────────────────────────────

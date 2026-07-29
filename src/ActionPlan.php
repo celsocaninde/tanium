@@ -38,8 +38,19 @@ class ActionPlan {
      * Pure on purpose — this is the heart of the ranking and the test suite
      * mirrors it.
      *
-     * @param array{cves:array<string,int>,kev:int,patches:array<string,int>,lifecycle:string} $state
-     * @param array{cves?:array<string,int>,kev?:int,patches?:array<string,int>}                $remove
+     * `lifecycle` is the full array from Lifecycle::status(), which is what
+     * buildState() stores and what rank() already reads as
+     * `$s['lifecycle']['state']`. This method used to cast that array straight
+     * to string: PHP turned it into the literal "Array", so the end-of-support
+     * floor never matched and every simulation on an unsupported host came out
+     * lower than the truth — the exact hosts where no patch will ever help.
+     * It also emitted one "Array to string conversion" warning per call, which
+     * on a debug instance inflated the Action Plan page to 22 MB. The mirrored
+     * test passed throughout because it fed the documented string instead of
+     * the shape production actually stores.
+     *
+     * @param array{cves:array<string,int>,kev:int,patches:array<string,int>,lifecycle:array{state:string}} $state
+     * @param array{cves?:array<string,int>,kev?:int,patches?:array<string,int>}                            $remove
      */
     public static function simulate(array $state, array $remove): int {
         $cves    = $state['cves'];
@@ -59,7 +70,7 @@ class ActionPlan {
         $kev = max(0, $kev - (int) ($remove['kev'] ?? 0));
 
         $result = Risk::score(Risk::tierCounts($cves, $kev, $patches));
-        $result = Risk::applyLifecycleFloor($result, (string) $state['lifecycle']);
+        $result = Risk::applyLifecycleFloor($result, (string) ($state['lifecycle']['state'] ?? ''));
 
         return (int) $result['score'];
     }
@@ -136,10 +147,11 @@ class ActionPlan {
         global $DB;
 
         $state = [];
-        foreach ($DB->request([
-            'SELECT' => ['tanium_eid', 'tanium_name', 'os_name', 'os_version', 'computers_id'],
-            'FROM'   => 'glpi_plugin_tanium_assets',
-        ]) as $a) {
+        foreach ($DB->doQuery(
+            "SELECT a.tanium_eid, a.tanium_name, a.os_name, a.os_version, a.computers_id
+               FROM glpi_plugin_tanium_assets a
+              WHERE 1=1" . Profile::entityRestrictSql('a')
+        ) as $a) {
             $eid = (string) $a['tanium_eid'];
             $state[$eid] = [
                 'name'      => (string) ($a['tanium_name'] ?: $eid),
