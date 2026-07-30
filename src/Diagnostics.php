@@ -17,8 +17,21 @@ namespace GlpiPlugin\Tanium;
  */
 class Diagnostics {
 
-    /** Sync older than this is reported as a problem, not as a delay. */
-    private const SYNC_STALE_HOURS = 6;
+    /**
+     * How far past its own configured interval a sync may drift.
+     *
+     * Measured as a multiple of `cron_frequency` rather than a fixed window: a
+     * tenant syncing once a day is not late at hour seven, and a tenant syncing
+     * hourly is late long before hour six. A fixed six-hour threshold called a
+     * daily sync stale for eighteen hours out of every twenty-four — the check
+     * cried wolf about a schedule that was being honoured exactly, which is how
+     * a diagnostics page teaches people to ignore it.
+     */
+    private const SYNC_LATE_WARN  = 1.5;
+    private const SYNC_LATE_ERROR = 3.0;
+
+    /** Floor for the warning window, so an hourly sync is not judged by the minute. */
+    private const SYNC_LATE_MIN_HOURS = 2;
 
     /** Cron whose last run is older than this many times its own frequency. */
     private const CRON_LATE_FACTOR = 3;
@@ -138,15 +151,33 @@ class Diagnostics {
                 __('A synchronization is running right now.', 'tanium'));
         }
 
-        $status = $ageHours >= self::SYNC_STALE_HOURS * 4
-            ? self::ERROR
-            : ($ageHours >= self::SYNC_STALE_HOURS ? self::WARN : self::OK);
+        // Judged against the interval the tenant actually asked for — the same
+        // value `Cron::crontaniumsync()` uses to decide whether a run is due.
+        $interval = max(1, (int) ($config['cron_frequency'] ?? 24));
+        $status   = self::syncStatus($ageHours, $interval);
 
         return self::row('sync', __('Last successful sync', 'tanium'), $status,
             sprintf(__('%dh ago', 'tanium'), $ageHours),
             $status === self::OK
                 ? sprintf(__('%d endpoint(s) on the last run.', 'tanium'), (int) $last['total'])
-                : __('The fleet data is no longer refreshing. Check the sync task below.', 'tanium'));
+                : sprintf(__('The fleet data is no longer refreshing — a sync is expected every %dh. Check the sync task below.', 'tanium'), $interval));
+    }
+
+    /**
+     * Where a sync age falls against the interval that was configured for it.
+     *
+     * Kept separate from the database read so the thresholds can be exercised
+     * directly — the surrounding check short-circuits whenever a sync happens
+     * to be in flight, which is precisely when the boundaries cannot be tested.
+     */
+    public static function syncStatus(int $ageHours, int $intervalHours): string {
+        $interval = max(1, $intervalHours);
+        $warnAt   = max(self::SYNC_LATE_MIN_HOURS, (int) ceil($interval * self::SYNC_LATE_WARN));
+        $errorAt  = max($warnAt + 1, (int) ceil($interval * self::SYNC_LATE_ERROR));
+
+        return $ageHours >= $errorAt
+            ? self::ERROR
+            : ($ageHours >= $warnAt ? self::WARN : self::OK);
     }
 
     private static function checkToken(array $config): array {

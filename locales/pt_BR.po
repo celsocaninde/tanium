@@ -2566,8 +2566,9 @@ msgstr "Há uma sincronização rodando agora."
 msgid "%d endpoint(s) on the last run."
 msgstr "%d endpoint(s) na última execução."
 
-msgid "The fleet data is no longer refreshing. Check the sync task below."
-msgstr "Os dados da frota pararam de atualizar. Veja a tarefa de sincronização abaixo."
+#, php-format
+msgid "The fleet data is no longer refreshing — a sync is expected every %dh. Check the sync task below."
+msgstr "Os dados da frota pararam de atualizar — o esperado é uma sincronização a cada %dh. Veja a tarefa de sincronização abaixo."
 
 msgid "API credentials"
 msgstr "Credenciais da API"
