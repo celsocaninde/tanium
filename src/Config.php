@@ -491,10 +491,17 @@ class Config extends CommonDBTM {
             __('Kiosk breaks out of the carousel to show urgent events (new KEV exposure, sync stopped, agents going silent)', 'tanium'),
             (int)($config['kiosk_alerts'] ?? 1)
         );
+        $lists    = self::discoveryLists($config);
+        $sensorDl = self::datalist('tanium-sensors', $lists['sensors']);
+        $pkgDl    = self::datalist('tanium-packages', $lists['packages']);
+        $hintTail = $lists['sensors'] !== []
+            ? ' ' . sprintf(__('%d sensors read from your Tanium — start typing to pick one.', 'tanium'), count($lists['sensors']))
+            : '';
+
         $this->renderField(
             __('Custom sensors to sync', 'tanium'),
-            "<input type='text' name='custom_sensors' class='tanium-input' value='" . htmlspecialchars((string)($config['custom_sensors'] ?? '')) . "' placeholder='Chassis Type, Uptime, Logged In Users'/>",
-            __('Comma-separated Tanium sensor names collected per endpoint during sync and shown on the endpoint page.', 'tanium')
+            "<input type='text' name='custom_sensors' class='tanium-input'{$sensorDl} value='" . htmlspecialchars((string)($config['custom_sensors'] ?? '')) . "' placeholder='Chassis Type, Uptime, Logged In Users'/>",
+            __('Comma-separated Tanium sensor names collected per endpoint during sync and shown on the endpoint page.', 'tanium') . $hintTail
         );
         $this->renderCheckbox(
             'auto_deploy_kev',
@@ -507,12 +514,12 @@ class Config extends CommonDBTM {
 
         $this->renderField(
             __('Quarantine package name', 'tanium'),
-            "<input type='text' name='quarantine_package' class='tanium-input' value='" . htmlspecialchars($config['quarantine_package'] ?? '') . "' placeholder='" . htmlspecialchars(\GlpiPlugin\Tanium\RemoteAction::ACTIONS['quarantine']['default']) . "'/>",
+            "<input type='text' name='quarantine_package' class='tanium-input'{$pkgDl} value='" . htmlspecialchars($config['quarantine_package'] ?? '') . "' placeholder='" . htmlspecialchars(\GlpiPlugin\Tanium\RemoteAction::ACTIONS['quarantine']['default']) . "'/>",
             __('Tanium package run when a quarantine request is approved. Leave empty to use the default. Package names are tenant-specific — check your Tanium console.', 'tanium')
         );
         $this->renderField(
             __('Client restart package name', 'tanium'),
-            "<input type='text' name='restart_package' class='tanium-input' value='" . htmlspecialchars($config['restart_package'] ?? '') . "' placeholder='" . htmlspecialchars(\GlpiPlugin\Tanium\RemoteAction::ACTIONS['restart_client']['default']) . "'/>",
+            "<input type='text' name='restart_package' class='tanium-input'{$pkgDl} value='" . htmlspecialchars($config['restart_package'] ?? '') . "' placeholder='" . htmlspecialchars(\GlpiPlugin\Tanium\RemoteAction::ACTIONS['restart_client']['default']) . "'/>",
             __('Tanium package run when a client-restart request is approved. Leave empty to use the default.', 'tanium')
         );
 
@@ -549,7 +556,7 @@ class Config extends CommonDBTM {
 
         $this->renderField(
             __('Reboot-pending sensor', 'tanium'),
-            "<input type='text' name='reboot_sensor' class='tanium-input' value='" . htmlspecialchars($config['reboot_sensor'] ?? '') . "' placeholder='Reboot Required'/>",
+            "<input type='text' name='reboot_sensor' class='tanium-input'{$sensorDl} value='" . htmlspecialchars($config['reboot_sensor'] ?? '') . "' placeholder='Reboot Required'/>",
             __('Tanium sensor that reports whether the endpoint is waiting for a restart. The name varies per tenant ("Reboot Required", "Pending Restart"). It is collected automatically — you do not need to add it to the custom sensors list. Leave empty to disable the reboot warning on the patch screens.', 'tanium')
         );
 
@@ -767,6 +774,75 @@ class Config extends CommonDBTM {
      * Plain <select> of active entities. -1 renders an extra "no mapping"
      * option (used by the per-group mapping UI); the config default uses 0+.
      */
+    /**
+     * Sensor and package names the tenant actually has, for the settings
+     * datalists.
+     *
+     * These three settings were plain text boxes, and a wrong name is not
+     * caught when it is saved: a bad sensor shows up later as a rejected sync
+     * block, and a bad package name as a quarantine that fails at the moment
+     * someone needed it to work. A datalist keeps the field a free-text input
+     * — so nothing breaks when Tanium is unreachable or the token lacks the
+     * permission — while offering the real names to pick from.
+     *
+     * Cached for an hour: the config screen must not make two paginated
+     * Gateway round-trips on every render, and this list changes rarely.
+     *
+     * @return array{sensors:string[],packages:string[]}
+     */
+    private static function discoveryLists(array $config): array {
+        $empty = ['sensors' => [], 'packages' => []];
+
+        if (empty($config['api_url']) || empty($config['api_token'])) {
+            return $empty;
+        }
+
+        $cache = \Glpi\Cache\CacheManager::class;
+        $key   = 'plugin_tanium_discovery_lists';
+
+        try {
+            $cached = class_exists($cache) ? (new $cache())->getCoreCacheInstance()->get($key) : null;
+            if (is_array($cached) && isset($cached['sensors'], $cached['packages'])) {
+                return $cached;
+            }
+        } catch (\Throwable) {
+            // Cache is an optimisation; carry on and query.
+        }
+
+        try {
+            $api  = new Api($config['api_url'], $config['api_token']);
+            $out  = [
+                'sensors'  => array_column($api->getSensors(), 'name'),
+                'packages' => array_column($api->getPackageSpecs(), 'name'),
+            ];
+        } catch (\Throwable) {
+            return $empty;
+        }
+
+        try {
+            if (class_exists($cache)) {
+                (new $cache())->getCoreCacheInstance()->set($key, $out, 3600);
+            }
+        } catch (\Throwable) {
+            // Not fatal — the screen just re-queries next time.
+        }
+
+        return $out;
+    }
+
+    /** Renders a <datalist> and returns the attribute that binds an input to it. */
+    private static function datalist(string $id, array $values): string {
+        if ($values === []) {
+            return '';
+        }
+        $opts = '';
+        foreach ($values as $v) {
+            $opts .= "<option value='" . htmlspecialchars((string)$v) . "'></option>";
+        }
+        echo "<datalist id='" . htmlspecialchars($id) . "'>{$opts}</datalist>";
+        return " list='" . htmlspecialchars($id) . "'";
+    }
+
     public static function entitySelect(string $name, ?int $selected, bool $allowNone = false): string {
         global $DB;
 

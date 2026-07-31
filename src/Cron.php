@@ -205,7 +205,29 @@ class Cron extends CommonDBTM {
             $problems[] = sprintf(__('Tanium API check failed: %s', 'tanium'), $e->getMessage());
         }
 
-        // 2) Token expiry warning window
+        // 2) Ask Tanium when the token actually expires.
+        //
+        // This used to depend entirely on an admin typing the date into a
+        // `type=date` box, so the warning was only ever as good as that memory
+        // — and when the box was left empty, the whole check below was skipped
+        // and the token could lapse with no warning at all. Tanium knows the
+        // date; ask it, and only fall back to the manual value when the query
+        // is unavailable (older Gateway, or a token without Token-Use).
+        try {
+            $live = (new Api($config['api_url'], $config['api_token']))->getTokenExpiration();
+            if ($live !== null && !empty($live['expiration']) && $live['expiration'] !== ($config['token_expires_at'] ?? null)) {
+                Config::saveConfig(['token_expires_at' => $live['expiration']]);
+                $config['token_expires_at'] = $live['expiration'];
+                $task->log(sprintf(
+                    __('Token expiry read from Tanium: %s', 'tanium'),
+                    $live['expiration']
+                ));
+            }
+        } catch (\Throwable) {
+            // Keep whatever is configured; this is an enrichment, not a gate.
+        }
+
+        // 3) Token expiry warning window
         if (!empty($config['token_expires_at'])) {
             $daysLeft = (int)floor((strtotime($config['token_expires_at']) - time()) / 86400);
             if ($daysLeft < 0) {

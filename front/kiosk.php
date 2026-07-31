@@ -80,22 +80,46 @@ $deployStatus = static function (string $s): array {
     };
 };
 
-// ── Sparkline (risk trend) — pure inline SVG, no libraries ────────────────
+// ── Trend sparklines — pure inline SVG, no libraries ──────────────────────
+//
+// Two separate charts, deliberately. These were one plot with two polylines:
+// critical CVEs scaled to their own max, fleet risk scaled to 100, drawn on top
+// of each other in the same 110px box. Two y-scales on one plot make the
+// alignment of the two lines arbitrary, so the picture invents a correlation
+// that is not in the data — the crossings and the gaps meant nothing. Small
+// multiples keep each series honest against its own axis, and each chart is a
+// single series, so its title is its legend.
 $sparkW = 1000;
-$sparkH = 110;
+$sparkH = 84;
 $trend  = $d['risk_trend'];
-$sparkCrit = '';
-$sparkRisk = '';
-if (count($trend) >= 2) {
-    $maxCrit = max(1, max(array_map(static fn($p) => (int)$p['critical_cves'], $trend)));
-    $maxRisk = 100;
-    $n       = count($trend) - 1;
-    foreach ($trend as $i => $p) {
-        $x = round($i * $sparkW / $n, 1);
-        $sparkCrit .= $x . ',' . round($sparkH - ((int)$p['critical_cves'] * ($sparkH - 12) / $maxCrit) - 6, 1) . ' ';
-        $sparkRisk .= $x . ',' . round($sparkH - ((float)$p['avg_risk'] * ($sparkH - 12) / $maxRisk) - 6, 1) . ' ';
+
+/**
+ * Builds the polyline points plus the end-marker for one series.
+ *
+ * @return array{points:string,max:float,last:float,cx:float,cy:float}|null
+ */
+$sparkline = static function (array $rows, string $field, ?float $fixedMax) use ($sparkW, $sparkH): ?array {
+    if (count($rows) < 2) {
+        return null;
     }
-}
+    $vals = array_map(static fn($p) => (float)$p[$field], $rows);
+    $max  = $fixedMax ?? max(1.0, max($vals));
+    $n    = count($rows) - 1;
+    $pts  = '';
+    $cx   = 0.0;
+    $cy   = 0.0;
+    foreach ($vals as $i => $v) {
+        $x = round($i * $sparkW / $n, 1);
+        $y = round($sparkH - ($v * ($sparkH - 14) / $max) - 7, 1);
+        $pts .= $x . ',' . $y . ' ';
+        $cx = $x;
+        $cy = $y;
+    }
+    return ['points' => trim($pts), 'max' => $max, 'last' => end($vals), 'cx' => $cx, 'cy' => $cy];
+};
+
+$sparkCrit = $sparkline($trend, 'critical_cves', null);
+$sparkRisk = $sparkline($trend, 'avg_risk', 100.0);
 
 // ── Weekly remediation bars ───────────────────────────────────────────────
 $weekMax = 1;
@@ -113,17 +137,34 @@ header('Content-Type: text/html; charset=utf-8');
 <meta name="robots" content="noindex,nofollow">
 <title>Tanium — Kiosk</title>
 <style>
-:root{--bg:#0a1628;--panel:#0f1e33;--border:#1e2d44;--text:#e8edf5;--muted:#7a8da8;--red:#e8212a}
+:root{
+  --bg:#0a1628;--panel:#0f1e33;--border:#1e2d44;--text:#e8edf5;--muted:#7a8da8;--red:#e8212a;
+  /* Fluid type. Every size below scales with the viewport instead of sitting at
+   * a fixed px built for a monitor at arm's length. The same page has to read
+   * on a 24" desk screen and on a 65" TV across a room, and the old fixed 11-15px
+   * table text was unreadable at the second one. vw units do the work; the clamp
+   * floors keep the desk case from shrinking. */
+  --fs-micro: clamp(11px, .70vw, 20px);
+  --fs-small: clamp(12px, .85vw, 24px);
+  --fs-body:  clamp(15px, 1.05vw, 30px);
+  --fs-h2:    clamp(14px, 1.00vw, 28px);
+  --fs-tile:  clamp(40px, 3.60vw, 104px);
+  --fs-tilemd:clamp(30px, 2.60vw, 76px);
+  --fs-mini:  clamp(28px, 2.40vw, 68px);
+  --fs-alert: clamp(38px, 3.20vw, 92px);
+  --fs-alertd:clamp(20px, 1.60vw, 46px);
+  --fs-clock: clamp(26px, 2.20vw, 62px);
+}
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;min-height:100vh;display:flex;flex-direction:column}
 .header{background:linear-gradient(120deg,#7a0d1f 0%,#e8212a 100%);padding:16px 32px;display:flex;align-items:center;gap:16px}
 .roundel{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:center}
-.wordmark{font-size:24px;font-weight:800;letter-spacing:4px;color:#fff}
-.subtitle{font-size:13px;color:#ffd6d9;margin-top:2px}
-.slidetitle{margin-left:32px;font-size:20px;font-weight:700;color:#fff;opacity:.95}
+.wordmark{font-size:clamp(22px,1.7vw,48px);font-weight:800;letter-spacing:4px;color:#fff}
+.subtitle{font-size:var(--fs-small);color:#ffd6d9;margin-top:2px}
+.slidetitle{margin-left:32px;font-size:clamp(18px,1.5vw,42px);font-weight:700;color:#fff;opacity:.95}
 .header .right{margin-left:auto;text-align:right}
-.clock{font-size:30px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
-.syncinfo{font-size:12px;color:#ffd6d9}
+.clock{font-size:var(--fs-clock);font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
+.syncinfo{font-size:var(--fs-small);color:#ffd6d9}
 .progress{height:4px;background:var(--border)}
 .progress>div{height:100%;width:0;background:var(--red);transition:width .3s linear}
 .stage{flex:1;position:relative;overflow:hidden}
@@ -133,8 +174,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-se
 .alertbox{border-left:10px solid;border-radius:12px;padding:28px 36px;animation:alertpulse 2.4s ease-in-out infinite}
 .alertbox.lvl-critical{border-color:#e8212a;background:rgba(232,33,42,.14)}
 .alertbox.lvl-warning{border-color:#f0a030;background:rgba(240,160,48,.12)}
-.alerttitle{font-size:44px;font-weight:800;color:#fff;line-height:1.15}
-.alertdetail{margin-top:12px;font-size:24px;color:#c7d3e3;line-height:1.4}
+.alerttitle{font-size:var(--fs-alert);font-weight:800;color:#fff;line-height:1.15}
+.alertdetail{margin-top:12px;font-size:var(--fs-alertd);color:#c7d3e3;line-height:1.4}
 @keyframes alertpulse{0%,100%{opacity:1}50%{opacity:.82}}
 @media (prefers-reduced-motion:reduce){.alertbox{animation:none}}
 .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;padding:20px 32px 0}
@@ -142,30 +183,45 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-se
 .grid.g5{grid-template-columns:repeat(5,1fr)}
 @media(max-width:1100px){.grid,.grid.g4,.grid.g5{grid-template-columns:repeat(3,1fr)}}
 .tile{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 20px}
-.tile .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
-.tile .value{font-size:46px;font-weight:800;line-height:1.15;font-variant-numeric:tabular-nums}
-.tile .value.md{font-size:34px}
-.tile .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.tile .label{font-size:var(--fs-small);color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.tile .value{font-size:var(--fs-tile);font-weight:800;line-height:1.1}
+.tile .value.md{font-size:var(--fs-tilemd)}
+.tile .sub{font-size:var(--fs-small);color:var(--muted);margin-top:2px}
+/* Hero row: one dominant figure, the rest stepped down to supporting size.
+ * Proportional figures on the hero — tabular-nums gives every digit the width
+ * of a zero, which makes a number like 121 look loose at display size. */
+.herorow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:14px;padding:20px 32px 0;align-items:stretch}
+@media(max-width:1100px){.herorow{grid-template-columns:1fr}}
+.herorow .grid.herogrid{grid-template-columns:repeat(3,1fr);padding:0}
+.tile.hero{display:flex;flex-direction:column;justify-content:center}
+.herovalue{font-size:clamp(64px,7vw,190px);font-weight:800;line-height:.95;letter-spacing:-.02em}
 .tile.mini{padding:12px 18px}
-.tile.mini .value{font-size:30px}
-.sevbar{display:flex;height:14px;border-radius:7px;overflow:hidden;margin:18px 32px 0;border:1px solid var(--border)}
-.sevlegend{display:flex;gap:24px;padding:10px 32px 0;font-size:13px;color:var(--muted)}
+.tile.mini .value{font-size:var(--fs-mini)}
+/* The 2px surface gap is what separates touching segments — not a stroke around
+ * them. It also carries a real measurement: critical (#e8212a) and high
+ * (#f97316) sit ΔE 13.9 apart in normal vision, under the 15 floor, so side by
+ * side on a wall TV they blur into one band. The gap plus the labelled legend
+ * below is the separation; hue alone was never doing the job here. */
+.sevbar{display:flex;height:clamp(14px,1.1vw,30px);border-radius:7px;margin:18px 32px 0;gap:2px;background:var(--panel)}
+.sevbar>div:first-child{border-radius:7px 0 0 7px}
+.sevbar>div:last-child{border-radius:0 7px 7px 0}
+.sevlegend{display:flex;gap:24px;padding:10px 32px 0;font-size:var(--fs-body);color:var(--muted)}
 .sevlegend b{color:var(--text)}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
 .panels{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:20px 32px 0}
 .panels.single{grid-template-columns:1fr}
 @media(max-width:1100px){.panels{grid-template-columns:1fr}}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 20px}
-.panel h2{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
-table{width:100%;border-collapse:collapse;font-size:15px}
+.panel h2{font-size:var(--fs-h2);color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-body)}
 td,th{padding:7px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
 td.wrap{white-space:normal}
-th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+th{color:var(--muted);font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.5px}
 td.num{font-variant-numeric:tabular-nums}
 .riskbar{display:inline-block;height:8px;border-radius:4px;background:var(--red);vertical-align:middle}
 .cve{font-family:Consolas,monospace;color:#ff6b71;font-weight:700}
-.empty{color:var(--muted);font-size:14px;padding:14px 0}
-.footer{padding:10px 32px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:16px}
+.empty{color:var(--muted);font-size:var(--fs-body);padding:14px 0}
+.footer{padding:10px 32px;font-size:var(--fs-small);color:var(--muted);display:flex;align-items:center;gap:16px}
 .dots{display:flex;gap:8px;margin-left:auto}
 .dots span{width:10px;height:10px;border-radius:50%;background:var(--border);transition:background .3s}
 .dots span.on{background:var(--red)}
@@ -173,17 +229,25 @@ td.num{font-variant-numeric:tabular-nums}
 .sev-high{color:#f97316;font-weight:700}
 .sev-medium{color:#e8c42a;font-weight:700}
 .sev-low{color:#1eb464;font-weight:700}
-.badge{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.5px;border-radius:4px;padding:2px 6px;margin-left:6px;vertical-align:middle}
+.badge{display:inline-block;font-size:var(--fs-micro);font-weight:800;letter-spacing:.5px;border-radius:4px;padding:2px 6px;margin-left:6px;vertical-align:middle}
 .badge.kev{background:rgba(232,33,42,.18);color:#ff6b71;border:1px solid rgba(232,33,42,.5)}
 .badge.rw{background:rgba(168,85,247,.15);color:#c48aff;border:1px solid rgba(168,85,247,.45)}
-.wbar{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:13px}
+.wbar{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:var(--fs-body)}
 .wbar .wl{width:60px;color:var(--muted);font-variant-numeric:tabular-nums}
 .wbar .wt{flex:1;background:var(--border);border-radius:5px;height:20px;overflow:hidden}
 .wbar .wf{height:100%;background:#1eb464;border-radius:5px;min-width:2px}
 .wbar .wn{width:44px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
 .trendpanel{margin:18px 32px 0;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 20px}
-.trendpanel h2{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
-.trendlegend{font-size:12px;color:var(--muted);display:flex;gap:18px;margin-top:4px}
+.trendpanel h2{font-size:var(--fs-h2);color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.trendlegend{font-size:var(--fs-small);color:var(--muted);display:flex;gap:18px;margin-top:4px}
+/* Small multiples: one series per chart, each against its own axis */
+.sparkrow{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+@media(max-width:1100px){.sparkrow{grid-template-columns:1fr}}
+.sparkcell svg{width:100%;height:clamp(64px,6vw,150px);display:block}
+.sparkhead{display:flex;align-items:baseline;gap:12px;margin-bottom:2px}
+.sparktitle{font-size:var(--fs-small);color:var(--muted)}
+.sparknow{margin-left:auto;font-size:var(--fs-h2);font-weight:800}
+.sparkscale{display:flex;justify-content:space-between;font-size:var(--fs-micro);color:var(--muted);font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -219,28 +283,42 @@ td.num{font-variant-numeric:tabular-nums}
 
 <!-- ── Tela 1: Visão geral ─────────────────────────────────────────────── -->
 <section class="slide" data-title="Visão geral">
-  <div class="grid">
-    <div class="tile"><div class="label">Endpoints</div><div class="value"><?php echo (int)$d['endpoints']; ?></div>
-      <div class="sub">cobertura ativa: <?php echo $d['coverage_pct'] === null ? '—' : $d['coverage_pct'] . '%'; ?></div></div>
-    <div class="tile"><div class="label">CVEs críticos</div><div class="value" style="color:#e8212a"><?php echo (int)$sev['critical']; ?></div>
-      <div class="sub">altos: <?php echo (int)$sev['high']; ?></div></div>
-    <div class="tile"><div class="label">KEV (explorados)</div><div class="value" style="color:#f97316"><?php echo (int)$d['kev']; ?></div>
-      <div class="sub">ransomware: <?php echo (int)$d['ransomware']; ?></div></div>
-    <div class="tile"><div class="label">SLA compliance</div><div class="value" style="color:<?php echo $slaColor; ?>"><?php echo htmlspecialchars($slaLabel); ?></div>
-      <div class="sub">vencidos: <?php echo (int)$sla['breached']; ?></div></div>
-    <div class="tile"><div class="label">Agentes silenciosos &gt;<?php echo (int)$d['stale_days']; ?>d</div><div class="value" style="color:<?php echo $d['stale'] > 0 ? '#f0a030' : '#1eb464'; ?>"><?php echo (int)$d['stale']; ?></div>
-      <div class="sub">de <?php echo (int)$d['endpoints']; ?> endpoints</div></div>
-    <div class="tile"><div class="label">Ameaças abertas</div><div class="value" style="color:<?php echo $d['threats'] > 0 ? '#e8212a' : '#1eb464'; ?>"><?php echo (int)$d['threats']; ?></div>
-      <div class="sub">Threat Response</div></div>
+  <!--
+    Eleven equal-sized numbers used to sit here, so nothing led and the eye had
+    nowhere to land — from across a room that reads as texture, not as a status.
+    One hero carries the screen (exactly one per view) and the rest step down to
+    supporting size. The hero is open critical CVEs because that is the number
+    the room is supposed to act on; endpoints and coverage are context for it.
+  -->
+  <div class="herorow">
+    <div class="tile hero">
+      <div class="label">CVEs críticos abertos</div>
+      <div class="herovalue" style="color:#e8212a"><?php echo number_format((int)$sev['critical'], 0, ',', '.'); ?></div>
+      <div class="sub">altos: <?php echo number_format((int)$sev['high'], 0, ',', '.'); ?> · findings abertos: <?php echo number_format((int)array_sum($sev), 0, ',', '.'); ?></div>
+    </div>
+    <div class="grid herogrid">
+      <div class="tile"><div class="label">Endpoints</div><div class="value"><?php echo (int)$d['endpoints']; ?></div>
+        <div class="sub">cobertura ativa: <?php echo $d['coverage_pct'] === null ? '—' : $d['coverage_pct'] . '%'; ?></div></div>
+      <div class="tile"><div class="label">KEV (explorados)</div><div class="value" style="color:#f97316"><?php echo (int)$d['kev']; ?></div>
+        <div class="sub">ransomware: <?php echo (int)$d['ransomware']; ?></div></div>
+      <div class="tile"><div class="label">SLA compliance</div><div class="value" style="color:<?php echo $slaColor; ?>"><?php echo htmlspecialchars($slaLabel); ?></div>
+        <div class="sub">vencidos: <?php echo (int)$sla['breached']; ?></div></div>
+      <div class="tile"><div class="label">Agentes silenciosos &gt;<?php echo (int)$d['stale_days']; ?>d</div><div class="value" style="color:<?php echo $d['stale'] > 0 ? '#f0a030' : '#1eb464'; ?>"><?php echo (int)$d['stale']; ?></div>
+        <div class="sub">de <?php echo (int)$d['endpoints']; ?> endpoints</div></div>
+      <div class="tile"><div class="label">Ameaças abertas</div><div class="value" style="color:<?php echo $d['threats'] > 0 ? '#e8212a' : '#1eb464'; ?>"><?php echo (int)$d['threats']; ?></div>
+        <div class="sub">Threat Response</div></div>
+      <div class="tile"><div class="label">Patches ausentes</div><div class="value" style="color:<?php echo $d['patches']['critical'] > 0 ? '#e8212a' : 'inherit'; ?>"><?php echo (int)$d['patches']['total']; ?></div>
+        <div class="sub"><?php echo (int)$d['patches']['critical']; ?> críticos · <?php echo (int)$d['patches']['high']; ?> altos</div></div>
+    </div>
   </div>
 
-  <div class="grid g5">
-    <div class="tile mini"><div class="label">Findings abertos</div><div class="value"><?php echo (int)array_sum($sev); ?></div></div>
-    <div class="tile mini"><div class="label">Patches ausentes</div><div class="value" style="color:<?php echo $d['patches']['critical'] > 0 ? '#e8212a' : 'inherit'; ?>"><?php echo (int)$d['patches']['total']; ?></div>
-      <div class="sub"><?php echo (int)$d['patches']['critical']; ?> críticos · <?php echo (int)$d['patches']['high']; ?> altos</div></div>
+  <!-- Findings abertos e patches ausentes subiram para o bloco do hero; repeti-los
+       aqui seria o mesmo número duas vezes na mesma tela. -->
+  <div class="grid g4">
     <div class="tile mini"><div class="label">Remediados 7d</div><div class="value" style="color:#1eb464"><?php echo (int)$d['remediated_7d']; ?></div></div>
     <div class="tile mini"><div class="label">Deploys em andamento</div><div class="value" style="color:#4da3ff"><?php echo (int)$d['deploys_active']; ?></div></div>
     <div class="tile mini"><div class="label">MTTR 90d</div><div class="value"><?php echo htmlspecialchars($fmtDays($mttr['overall'])); ?></div></div>
+    <div class="tile mini"><div class="label">SLA no prazo</div><div class="value" style="color:#1eb464"><?php echo (int)$sla['within']; ?></div></div>
   </div>
 
   <div class="sevbar">
@@ -256,16 +334,40 @@ td.num{font-variant-numeric:tabular-nums}
 
   <div class="trendpanel">
     <h2>📈 Tendência da frota — últimos 30 dias</h2>
-    <?php if ($sparkCrit === ''): ?>
+    <?php if ($sparkCrit === null): ?>
       <div class="empty">Histórico insuficiente — os pontos são gravados a cada sincronização.</div>
     <?php else: ?>
-    <svg viewBox="0 0 <?php echo $sparkW; ?> <?php echo $sparkH; ?>" preserveAspectRatio="none" style="width:100%;height:<?php echo $sparkH; ?>px;display:block">
-      <polyline points="<?php echo trim($sparkRisk); ?>" fill="none" stroke="#4da3ff" stroke-width="2.5" stroke-linejoin="round"/>
-      <polyline points="<?php echo trim($sparkCrit); ?>" fill="none" stroke="#e8212a" stroke-width="2.5" stroke-linejoin="round"/>
-    </svg>
-    <div class="trendlegend">
-      <span><span class="dot" style="background:#e8212a"></span>CVEs críticos</span>
-      <span><span class="dot" style="background:#4da3ff"></span>Risco médio da frota (0–100)</span>
+    <div class="sparkrow">
+      <?php
+      // Each series gets its own chart and its own axis. Single series per
+      // chart, so the caption is the legend — no swatch box needed.
+      $sparks = [
+          ['spark' => $sparkCrit, 'color' => '#e8212a', 'title' => 'CVEs críticos abertos',
+           'fmt' => static fn($v) => number_format($v, 0, ',', '.')],
+          ['spark' => $sparkRisk, 'color' => '#4da3ff', 'title' => 'Risco médio da frota (0–100)',
+           'fmt' => static fn($v) => number_format($v, 1, ',', '.')],
+      ];
+      foreach ($sparks as $s): $sp = $s['spark']; if ($sp === null) { continue; } ?>
+      <div class="sparkcell">
+        <div class="sparkhead">
+          <span class="sparktitle"><?php echo htmlspecialchars($s['title']); ?></span>
+          <span class="sparknow" style="color:<?php echo $s['color']; ?>"><?php echo htmlspecialchars($s['fmt']($sp['last'])); ?></span>
+        </div>
+        <svg viewBox="0 0 <?php echo $sparkW; ?> <?php echo $sparkH; ?>" preserveAspectRatio="none"
+             role="img" aria-label="<?php echo htmlspecialchars($s['title']); ?>">
+          <line x1="0" y1="<?php echo $sparkH - 7; ?>" x2="<?php echo $sparkW; ?>" y2="<?php echo $sparkH - 7; ?>"
+                stroke="#1e2d44" stroke-width="1"/>
+          <polyline points="<?php echo $sp['points']; ?>" fill="none" stroke="<?php echo $s['color']; ?>"
+                    stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+          <!-- 2px surface ring so the end marker stays legible over the line -->
+          <circle cx="<?php echo $sp['cx']; ?>" cy="<?php echo $sp['cy']; ?>" r="7"
+                  fill="<?php echo $s['color']; ?>" stroke="var(--panel)" stroke-width="2"/>
+        </svg>
+        <div class="sparkscale">
+          <span>0</span><span>máx <?php echo htmlspecialchars($s['fmt']($sp['max'])); ?></span>
+        </div>
+      </div>
+      <?php endforeach; ?>
     </div>
     <?php endif; ?>
   </div>

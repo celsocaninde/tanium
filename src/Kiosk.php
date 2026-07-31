@@ -6,6 +6,13 @@ namespace GlpiPlugin\Tanium;
  * Data provider for the TV/kiosk dashboard (front/kiosk.php). Session-free:
  * numbers are fleet-wide (no entity restriction) because the kiosk is opened
  * by a wall TV with a token, not by a logged-in profile.
+ *
+ * Every list here caps at six rows. This is a viewing-distance decision, not a
+ * performance one: the panel is read from across a room, and eight to ten rows
+ * of endpoint names and CVE identifiers only fit by shrinking the type to a
+ * size nobody can resolve at that distance. Six rows leave the height for text
+ * that is actually legible. The full lists live in the plugin screens, where
+ * there is a person at a keyboard who can scroll.
  */
 class Kiosk {
 
@@ -57,7 +64,7 @@ class Kiosk {
                 WHERE ec.status != 'remediated' AND e.epss_score IS NOT NULL
                 GROUP BY e.cve_id
                 ORDER BY epss DESC
-                LIMIT 8
+                LIMIT 6
             ") as $r) {
                 $topEpss[] = $r;
             }
@@ -69,7 +76,7 @@ class Kiosk {
             FROM glpi_plugin_tanium_assets
             WHERE risk_score > 0
             ORDER BY risk_score DESC, tanium_name ASC
-            LIMIT 10
+            LIMIT 6
         ") as $r) {
             $topRisk[] = $r;
         }
@@ -82,7 +89,7 @@ class Kiosk {
             LEFT JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = ec.tanium_eid
             WHERE ec.status != 'remediated' AND LOWER(v.severity) = 'critical'
             ORDER BY ec.detected_at DESC
-            LIMIT 8
+            LIMIT 6
         ") as $r) {
             $recentCritical[] = $r;
         }
@@ -97,7 +104,7 @@ class Kiosk {
             WHERE ec.status != 'remediated' AND LOWER(v.severity) IN ('critical', 'high')
             GROUP BY v.cve_id, v.title, LOWER(v.severity), v.cvss_score
             ORDER BY affected DESC
-            LIMIT 8
+            LIMIT 6
         ") as $r) {
             $widestCves[] = $r;
         }
@@ -126,7 +133,7 @@ class Kiosk {
             WHERE p.status = 'missing' AND LOWER(p.severity) IN ('critical', 'high')
             GROUP BY p.tanium_eid, a.tanium_name, a.os_name
             ORDER BY crit DESC, missing DESC
-            LIMIT 8
+            LIMIT 6
         ") as $r) {
             $patchTopEndpoints[] = $r;
         }
@@ -138,7 +145,7 @@ class Kiosk {
             WHERE status = 'missing' AND patch_title != ''
             GROUP BY patch_title, LOWER(severity)
             ORDER BY affected DESC
-            LIMIT 8
+            LIMIT 6
         ") as $r) {
             $patchTopTitles[] = $r;
         }
@@ -198,7 +205,7 @@ class Kiosk {
             LEFT JOIN glpi_plugin_tanium_assets a ON a.tanium_eid = t.tanium_eid
             WHERE t.status NOT IN ('resolved', 'closed', 'suppressed')
             ORDER BY t.detected_at DESC
-            LIMIT 8
+            LIMIT 6
         ") as $r) {
             $recentThreats[] = $r;
         }
@@ -216,7 +223,7 @@ class Kiosk {
             'most_overdue'       => Sla::getMostOverdue(8),
             'platform'           => Sla::getPlatformBenchmark(),
             'stale'              => $stale,
-            'stale_list'         => array_slice(AgentHealth::getStale($days), 0, 8),
+            'stale_list'         => array_slice(AgentHealth::getStale($days), 0, 6),
             'stale_days'         => $days,
             'coverage_pct'       => $endpoints > 0 ? (int)round(($endpoints - $stale) * 100 / $endpoints) : null,
             'threats'            => ThreatResponse::countOpen(),

@@ -935,6 +935,179 @@ GQL;
         }
     }
 
+    // ── Schema discovery ──────────────────────────────────────────────────
+    //
+    // Three settings used to be free-text boxes an admin typed from memory:
+    // the custom sensor list, the reboot sensor, and the quarantine/restart
+    // package names. A typo in any of them is not caught when it is saved —
+    // it surfaces later as a rejected sync, or worse, as a quarantine that
+    // silently fails at the moment someone needed it. The Gateway can list all
+    // three, so the settings can offer a validated choice instead of a guess.
+    //
+    // Every method here returns [] on any error: these feed optional pickers,
+    // and a tenant whose token lacks the permission must still see a working
+    // configuration screen with the plain text field as the fallback.
+
+    private const SENSORS_QUERY = <<<'GQL'
+query($first: Int!, $after: Cursor) {
+  sensors(first: $first, after: $after) {
+    pageInfo { hasNextPage endCursor }
+    edges { node { name description harvested virtual } }
+  }
+}
+GQL;
+
+    /**
+     * Sensor names the tenant actually exposes, for the settings pickers.
+     *
+     * @return array<int,array{name:string,description:string,harvested:bool,virtual:bool}>
+     */
+    public function getSensors(): array {
+        $prevTimeout   = $this->timeout;
+        $this->timeout = 25;
+        try {
+            $sensors = [];
+            $after   = null;
+            $guard   = 0;
+
+            do {
+                $data  = $this->graphql(self::SENSORS_QUERY, ['first' => 500, 'after' => $after]);
+                $conn  = $data['sensors'] ?? [];
+                foreach ($conn['edges'] ?? [] as $edge) {
+                    $node = $edge['node'] ?? null;
+                    $name = trim((string)($node['name'] ?? ''));
+                    if ($name === '') {
+                        continue;
+                    }
+                    $sensors[$name] = [
+                        'name'        => $name,
+                        'description' => (string)($node['description'] ?? ''),
+                        'harvested'   => (bool)($node['harvested'] ?? false),
+                        'virtual'     => (bool)($node['virtual'] ?? false),
+                    ];
+                }
+                $hasNext = (bool)($conn['pageInfo']['hasNextPage'] ?? false);
+                $after   = $conn['pageInfo']['endCursor'] ?? null;
+            } while ($hasNext && $after !== null && ++$guard < 40);
+
+            ksort($sensors, SORT_NATURAL | SORT_FLAG_CASE);
+            return array_values($sensors);
+        } catch (\Throwable) {
+            return [];
+        } finally {
+            $this->timeout = $prevTimeout;
+        }
+    }
+
+    private const PACKAGE_SPECS_QUERY = <<<'GQL'
+query($first: Int!, $after: Cursor) {
+  packageSpecs(first: $first, after: $after) {
+    pageInfo { hasNextPage endCursor }
+    edges { node { id name contentSetName } }
+  }
+}
+GQL;
+
+    /**
+     * Package names available to run as an action (quarantine, restart, …).
+     *
+     * @return array<int,array{id:string,name:string,contentSet:string}>
+     */
+    public function getPackageSpecs(): array {
+        $prevTimeout   = $this->timeout;
+        $this->timeout = 25;
+        try {
+            $packages = [];
+            $after    = null;
+            $guard    = 0;
+
+            do {
+                $data = $this->graphql(self::PACKAGE_SPECS_QUERY, ['first' => 500, 'after' => $after]);
+                $conn = $data['packageSpecs'] ?? [];
+                foreach ($conn['edges'] ?? [] as $edge) {
+                    $node = $edge['node'] ?? null;
+                    $name = trim((string)($node['name'] ?? ''));
+                    if ($name === '') {
+                        continue;
+                    }
+                    $packages[$name] = [
+                        'id'         => (string)($node['id'] ?? ''),
+                        'name'       => $name,
+                        'contentSet' => (string)($node['contentSetName'] ?? ''),
+                    ];
+                }
+                $hasNext = (bool)($conn['pageInfo']['hasNextPage'] ?? false);
+                $after   = $conn['pageInfo']['endCursor'] ?? null;
+            } while ($hasNext && $after !== null && ++$guard < 40);
+
+            ksort($packages, SORT_NATURAL | SORT_FLAG_CASE);
+            return array_values($packages);
+        } catch (\Throwable) {
+            return [];
+        } finally {
+            $this->timeout = $prevTimeout;
+        }
+    }
+
+    private const MY_API_TOKENS_QUERY = <<<'GQL'
+query {
+  myAPITokens {
+    tokens { id created expiration lastUsed notes }
+    error { message }
+  }
+}
+GQL;
+
+    /**
+     * Expiration date of the API token, straight from Tanium.
+     *
+     * The plugin warns before a token expires, but the date was a `type=date`
+     * input somebody filled in by hand — so the warning was only as good as
+     * that memory, and on this tenant it was simply never filled.
+     *
+     * Tanium does not reveal token strings, so there is no way to match the
+     * configured token to a row. When the session owns exactly one token the
+     * answer is unambiguous; with several, the earliest expiration is the
+     * honest choice, since that is the first date the integration can break.
+     *
+     * @return array{expiration:?string,count:int,notes:string}|null null when
+     *         the query is unavailable (permission, older Gateway) so callers
+     *         can leave the manual field alone.
+     */
+    public function getTokenExpiration(): ?array {
+        $prevTimeout   = $this->timeout;
+        $this->timeout = 15;
+        try {
+            $data = $this->graphql(self::MY_API_TOKENS_QUERY);
+            $node = $data['myAPITokens'] ?? null;
+            if (!is_array($node) || !empty($node['error']['message'])) {
+                return null;
+            }
+
+            $tokens = array_values(array_filter(
+                $node['tokens'] ?? [],
+                static fn($t) => is_array($t) && !empty($t['expiration'])
+            ));
+            if ($tokens === []) {
+                return null;
+            }
+
+            usort($tokens, static fn($a, $b) => strcmp((string)$a['expiration'], (string)$b['expiration']));
+            $first = $tokens[0];
+            $ts    = strtotime((string)$first['expiration']);
+
+            return [
+                'expiration' => $ts ? date('Y-m-d', $ts) : null,
+                'count'      => count($tokens),
+                'notes'      => (string)($first['notes'] ?? ''),
+            ];
+        } catch (\Throwable) {
+            return null;
+        } finally {
+            $this->timeout = $prevTimeout;
+        }
+    }
+
     // ── Connection test ───────────────────────────────────────────────────
 
     public function testConnection(): array {
