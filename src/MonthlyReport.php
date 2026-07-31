@@ -11,6 +11,20 @@ use CronTask;
  */
 class MonthlyReport {
 
+    /**
+     * GLPI reads this to describe the task in Setup > Automatic actions.
+     * Without it the row shows up bare, with no hint of what it does or why
+     * it is registered hourly when the report goes out once a month.
+     */
+    public static function cronInfo(string $name): array {
+        return match ($name) {
+            'monthlyreport' => [
+                'description' => __('Tanium — monthly security report by email. Runs hourly and only sends on the configured day of the month, from the weekly report hour on.', 'tanium'),
+            ],
+            default => [],
+        };
+    }
+
     // ── GLPI cron entry point ─────────────────────────────────────────────
 
     /**

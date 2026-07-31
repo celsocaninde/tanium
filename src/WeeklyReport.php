@@ -8,6 +8,20 @@ use Toolbox;
 
 class WeeklyReport {
 
+    /**
+     * GLPI reads this to describe the task in Setup > Automatic actions.
+     * Without it the row shows up bare, with no hint of what it does or why
+     * it is registered hourly when the report goes out once a week.
+     */
+    public static function cronInfo(string $name): array {
+        return match ($name) {
+            'weeklyreport' => [
+                'description' => __('Tanium — weekly security report by email. Runs hourly and only sends on the configured day and hour.', 'tanium'),
+            ],
+            default => [],
+        };
+    }
+
     // ── GLPI cron entry point ─────────────────────────────────────────────
 
     /**

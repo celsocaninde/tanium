@@ -19,6 +19,20 @@ class PatchDeploy extends CommonGLPI {
         return __('Tanium Patch Deployment', 'tanium');
     }
 
+    /**
+     * GLPI reads this to describe the task in Setup > Automatic actions.
+     * Without it the row shows up bare, with no hint of why a Tanium task
+     * runs every five minutes.
+     */
+    public static function cronInfo(string $name): array {
+        return match ($name) {
+            'checkdeployments' => [
+                'description' => __('Tanium — poll active patch deployments and auto-close the ticket when the deployment finishes.', 'tanium'),
+            ],
+            default => [],
+        };
+    }
+
     // ── GLPI approval (TicketValidation) hook ────────────────────────────────
 
     /**

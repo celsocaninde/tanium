@@ -569,10 +569,16 @@ class Config extends CommonDBTM {
         ]);
         $notifyUsersDropdown = ob_get_clean();
 
+        // No recipient anywhere means every alert and both reports are dropped
+        // in silence — the cron logs "No notification email configured" and
+        // returns 0. Mark the field itself, not just the banner below.
+        $noRecipients = self::resolveNotifyRecipients($config) === [];
+
         $this->renderField(
             __('Notification recipients (GLPI users)', 'tanium'),
             $notifyUsersDropdown,
-            __('Pick registered GLPI users — their account email is used automatically.', 'tanium')
+            __('Pick registered GLPI users — their account email is used automatically.', 'tanium'),
+            $noRecipients ? 'tanium-field-empty' : ''
         );
 
         // Visible warning for picked users that would be silently skipped
@@ -594,6 +600,17 @@ class Config extends CommonDBTM {
             "<input type='text' name='notify_email' class='tanium-input' value='" . htmlspecialchars($config['notify_email'] ?? '') . "' placeholder='security@company.com, admin@company.com'/>",
             __('Comma-separated list of extra emails (e.g. distribution lists not registered as GLPI users). Leave both fields blank to disable email alerts.', 'tanium')
         );
+
+        // Red, not yellow: with both fields empty the weekly and monthly
+        // reports never send and every critical-CVE alert is discarded without
+        // a trace. Silence here looks identical to "nothing happened".
+        if ($noRecipients) {
+            echo "<div style='background:rgba(232,33,42,.10);border:1px solid rgba(232,33,42,.55);border-left:4px solid #e8212a;"
+               . "border-radius:6px;padding:10px 14px;margin:0 0 14px;font-size:.85rem;color:#ff4d57'>"
+               . '&#128308; '
+               . __('No notification recipient is configured. The weekly and monthly reports are not being sent, and critical alerts are discarded in silence. Fill in one of the two fields above.', 'tanium')
+               . '</div>';
+        }
 
         // ── TV / Kiosk mode ───────────────────────────────────────────────
         echo "<div class='tanium-section-title'>" . __('TV / Kiosk mode', 'tanium') . "</div>";
@@ -766,10 +783,11 @@ class Config extends CommonDBTM {
         return $html;
     }
 
-    private function renderField(string $label, string $input, string $hint = ''): void {
+    private function renderField(string $label, string $input, string $hint = '', string $wrapClass = ''): void {
+        $wrap = trim('tanium-input-wrap ' . $wrapClass);
         echo "<div class='tanium-field'>";
         echo "<label class='tanium-label'>{$label}</label>";
-        echo "<div class='tanium-input-wrap'>{$input}";
+        echo "<div class='{$wrap}'>{$input}";
         if ($hint) {
             echo "<span class='tanium-hint'>{$hint}</span>";
         }
