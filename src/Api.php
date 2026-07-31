@@ -1108,6 +1108,121 @@ GQL;
         }
     }
 
+    // ── Undo ──────────────────────────────────────────────────────────────
+    //
+    // Everything the plugin could start, it could not stop. A patch deployment
+    // aimed at the wrong group, or a quarantine approved by mistake, had to be
+    // chased down in the Tanium console — which is exactly the moment nobody
+    // wants to be hunting for another browser tab.
+
+    /**
+     * Stops a running action (quarantine, restart, …).
+     *
+     * @return array{ok:bool,message:string}
+     */
+    public function stopAction(string $actionId): array {
+        try {
+            $data = $this->graphql(
+                'mutation($id: ID!) { actionStop(ref: {id: $id}) { id error { message } } }',
+                ['id' => $actionId]
+            );
+            $err = $data['actionStop']['error']['message'] ?? null;
+            if ($err) {
+                return ['ok' => false, 'message' => (string)$err];
+            }
+            return ['ok' => true, 'message' => __('Action stopped in Tanium.', 'tanium')];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Stops a patch deployment. Only the id is requested back: the documented
+     * response carries the whole deployment object, and asking for fields this
+     * tenant's schema may not have would fail the mutation after it already ran.
+     *
+     * @return array{ok:bool,message:string}
+     */
+    public function stopPatchDeployment(string $deploymentId): array {
+        try {
+            $data = $this->graphql(
+                'mutation($id: ID!) { patchStopDeployment(ref: {id: $id}) { deployment { id } error { message } } }',
+                ['id' => $deploymentId]
+            );
+            $err = $data['patchStopDeployment']['error']['message'] ?? null;
+            if ($err) {
+                return ['ok' => false, 'message' => (string)$err];
+            }
+            return ['ok' => true, 'message' => __('Deployment stopped in Tanium.', 'tanium')];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Marks a Threat Response alert as Resolved in Tanium.
+     *
+     * Alert import was one-way: the plugin opened a GLPI ticket and the alert
+     * stayed open in Tanium forever, so the two consoles disagreed about what
+     * was still outstanding. Closing the ticket now closes the loop.
+     *
+     * @return array{ok:bool,message:string}
+     */
+    public function resolveThreatAlert(string $guid): array {
+        try {
+            $data = $this->graphql(
+                'mutation($guid: ID) { threatResponseAlertResolve(ref: {guid: $guid}) { resolved guid error } }',
+                ['guid' => $guid]
+            );
+            $node = $data['threatResponseAlertResolve'] ?? [];
+            $err  = $node['error'] ?? null;
+            if (!empty($err)) {
+                return ['ok' => false, 'message' => is_string($err) ? $err : json_encode($err)];
+            }
+            return [
+                'ok'      => !empty($node['resolved']),
+                'message' => !empty($node['resolved'])
+                    ? __('Alert resolved in Tanium.', 'tanium')
+                    : __('Tanium did not confirm the alert as resolved.', 'tanium'),
+            ];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Who the token authenticates as, and under which persona.
+     *
+     * Permission problems used to surface mid-sync, as a block silently
+     * dropped from the results. Asking up front lets the settings screen say
+     * which identity the token carries before anything depends on it.
+     *
+     * @return array{user:string,persona:string}|null
+     */
+    public function getCurrentUserContext(): ?array {
+        try {
+            $data = $this->graphql(
+                'query { currentUserContext { user { id username displayName } persona { id name } } }'
+            );
+            $ctx = $data['currentUserContext'] ?? null;
+            if (!is_array($ctx)) {
+                return null;
+            }
+            // displayName comes back as an empty string rather than null when
+            // the account has none, so `??` never falls through to username —
+            // it has to be an emptiness test, not a null test.
+            $display = trim((string)($ctx['user']['displayName'] ?? ''));
+            $login   = trim((string)($ctx['user']['username'] ?? ''));
+
+            return [
+                'user'    => $display !== '' ? $display : $login,
+                'persona' => trim((string)($ctx['persona']['name'] ?? '')),
+            ];
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     // ── Connection test ───────────────────────────────────────────────────
 
     public function testConnection(): array {
@@ -1115,10 +1230,20 @@ GQL;
             $data = $this->graphql('{ endpoints(first: 1) { totalRecords } }');
             if (isset($data['endpoints'])) {
                 $total = $data['endpoints']['totalRecords'] ?? '?';
-                return [
-                    'ok'      => true,
-                    'message' => sprintf(__('Connection successful. %s endpoints found in Tanium.', 'tanium'), $total),
-                ];
+                $msg   = sprintf(__('Connection successful. %s endpoints found in Tanium.', 'tanium'), $total);
+
+                // Naming the identity turns "it connected" into "it connected
+                // as whom" — the difference that matters when a block comes
+                // back empty later because the persona cannot read it.
+                $who = $this->getCurrentUserContext();
+                if ($who !== null && $who['user'] !== '') {
+                    $msg .= ' ' . sprintf(
+                        __('Authenticated as %s.', 'tanium'),
+                        $who['persona'] !== '' ? "{$who['user']} ({$who['persona']})" : $who['user']
+                    );
+                }
+
+                return ['ok' => true, 'message' => $msg];
             }
             return ['ok' => false, 'message' => __('Unexpected API response structure.', 'tanium')];
         } catch (\RuntimeException $e) {

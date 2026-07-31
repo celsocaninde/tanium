@@ -248,10 +248,14 @@ class Diagnostics {
                 __('not available', 'tanium'),
                 __('The Gateway rejected the hygiene block, so disk encryption and Defender health are missing — and the health grade cannot judge them.', 'tanium'));
         }
-        if (empty($config['caps_groups'])) {
+        // Only worth warning about while the admin still wants the feature.
+        // A missing capability nobody asked for is not a problem, and a warning
+        // that cannot be acted on is the kind that teaches people to skim past
+        // this whole page. Turning group sync off is the action — respect it.
+        if (empty($config['caps_groups']) && !empty($config['sync_group_membership'])) {
             $out[] = self::row('caps_groups', __('Gateway: computer groups', 'tanium'), self::WARN,
                 __('not available', 'tanium'),
-                __('The Gateway does not expose computerGroupMemberships, so group-to-entity mapping cannot run.', 'tanium'));
+                __('The Gateway does not expose computerGroupMemberships, so group-to-entity mapping cannot run. Turn off "Sync Tanium group membership" in the settings if you do not need it — the documented alternative is to filter endpoints per group with memberOf, which this plugin does not do.', 'tanium'));
         }
 
         if ($out === []) {

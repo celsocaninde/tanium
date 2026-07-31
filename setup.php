@@ -13,7 +13,7 @@ use GlpiPlugin\Tanium\CentralWidget as TaniumCentralWidget;
 use GlpiPlugin\Tanium\PatchDeploy as TaniumPatchDeploy;
 use GlpiPlugin\Tanium\Vulnerability;
 
-define('PLUGIN_TANIUM_VERSION', '2.20.0');
+define('PLUGIN_TANIUM_VERSION', '2.21.0');
 define('PLUGIN_TANIUM_MIN_GLPI', '11.0.0');
 define('PLUGIN_TANIUM_MAX_GLPI', '11.99.99');
 
@@ -77,6 +77,7 @@ function plugin_init_tanium(): void {
     // rejected when REFUSED. Fires on both add and update of the validation record.
     $PLUGIN_HOOKS[Hooks::ITEM_UPDATE]['tanium'] = [
         'TicketValidation' => 'plugin_tanium_validation_update',
+        'Ticket'           => 'plugin_tanium_ticket_update',
     ];
     $PLUGIN_HOOKS[Hooks::ITEM_ADD]['tanium'] = [
         'TicketValidation' => 'plugin_tanium_validation_update',
@@ -239,6 +240,14 @@ function plugin_init_tanium(): void {
 function plugin_tanium_validation_update($validation): void {
     \GlpiPlugin\Tanium\PatchDeploy::onValidationUpdate($validation);
     \GlpiPlugin\Tanium\RemoteAction::onValidationUpdate($validation);
+}
+
+// Fired when a Ticket is updated. Closing a ticket that came from a Threat
+// Response alert now resolves that alert in Tanium too — the import used to be
+// one-way, so the alert stayed open there forever and the two consoles
+// disagreed about what was still outstanding.
+function plugin_tanium_ticket_update($ticket): void {
+    \GlpiPlugin\Tanium\ThreatResponse::onTicketUpdate($ticket);
 }
 
 function plugin_version_tanium(): array {

@@ -137,6 +137,60 @@ class PatchDeploy extends CommonGLPI {
 
     // ── Trigger Tanium deployment ───────────────────────────────────────────
 
+    /**
+     * Stops a deployment that is already running in Tanium.
+     *
+     * Everything this plugin could start, it could not stop: a deployment
+     * aimed at the wrong group had to be chased down in the Tanium console,
+     * which is the worst moment to be hunting for another browser tab.
+     *
+     * A deployment that never reached Tanium (no `tanium_deployment_id`) is
+     * cancelled locally — there is nothing on the other side to stop.
+     *
+     * @return array{success:bool,error?:string,message?:string}
+     */
+    public static function cancelDeploy(int $depId, int $cancelledBy): array {
+        global $DB;
+
+        $res = $DB->doQuery(
+            "SELECT * FROM `glpi_plugin_tanium_patch_deployments` WHERE id = {$depId} LIMIT 1"
+        );
+        if (!$res || !($dep = $res->fetch_assoc())) {
+            return ['success' => false, 'error' => 'Deployment record not found'];
+        }
+
+        if (in_array($dep['status'], ['deployed', 'failed', 'rejected', 'cancelled'], true)) {
+            return ['success' => false, 'error' => 'Este deployment já terminou — não há o que cancelar.'];
+        }
+
+        $taniumId = trim((string)($dep['tanium_deployment_id'] ?? ''));
+
+        if ($taniumId === '') {
+            $DB->update('glpi_plugin_tanium_patch_deployments', [
+                'status'        => 'cancelled',
+                'error_message' => 'Cancelado no GLPI antes de ser enviado ao Tanium.',
+            ], ['id' => $depId]);
+            return ['success' => true, 'message' => 'Deployment cancelado (ainda não havia sido enviado ao Tanium).'];
+        }
+
+        $config = Config::getConfig();
+        if (empty($config['api_url']) || empty($config['api_token'])) {
+            return ['success' => false, 'error' => 'Tanium API not configured'];
+        }
+
+        $out = (new Api($config['api_url'], $config['api_token']))->stopPatchDeployment($taniumId);
+        if (!$out['ok']) {
+            return ['success' => false, 'error' => $out['message']];
+        }
+
+        $DB->update('glpi_plugin_tanium_patch_deployments', [
+            'status'        => 'cancelled',
+            'error_message' => sprintf('Cancelado no GLPI por users_id=%d.', $cancelledBy),
+        ], ['id' => $depId]);
+
+        return ['success' => true, 'message' => $out['message']];
+    }
+
     public static function triggerDeploy(int $depId, int $approvedBy): array {
         global $DB;
 

@@ -177,6 +177,73 @@ class ThreatResponse {
     }
 
     /**
+     * The other direction: a GLPI ticket reaching Solved/Closed resolves the
+     * Tanium alert it came from.
+     *
+     * Import was one-way. An analyst who worked an alert to completion in GLPI
+     * left it open in Tanium, so the two consoles disagreed about the backlog
+     * and the Tanium queue only ever grew.
+     *
+     * Deliberately quiet: a Tanium that is unreachable, or a token without the
+     * permission, must never block someone from closing a ticket. The failure
+     * goes to the plugin log and the ticket closes regardless.
+     */
+    public static function onTicketUpdate($ticket): void {
+        global $DB;
+
+        if (!is_object($ticket) || empty($ticket->fields['id'])) {
+            return;
+        }
+        // Only act on the transition into a resolved state.
+        if (!in_array((int)($ticket->fields['status'] ?? 0), [Ticket::SOLVED, Ticket::CLOSED], true)) {
+            return;
+        }
+        if (!array_key_exists('status', (array)($ticket->updates ?? []))
+            && !in_array('status', (array)($ticket->updates ?? []), true)) {
+            return; // status untouched by this update
+        }
+
+        self::ensureTable();
+        $row = $DB->request([
+            'SELECT' => ['id', 'alert_id', 'status'],
+            'FROM'   => self::$table,
+            'WHERE'  => ['tickets_id' => (int)$ticket->fields['id']],
+            'LIMIT'  => 1,
+        ])->current();
+
+        if ($row === null
+            || empty($row['alert_id'])
+            || in_array((string)$row['status'], ['resolved', 'closed', 'suppressed'], true)) {
+            return;
+        }
+
+        $config = Config::getConfig();
+        if (empty($config['api_url']) || empty($config['api_token'])) {
+            return;
+        }
+
+        try {
+            $res = (new Api($config['api_url'], $config['api_token']))
+                ->resolveThreatAlert((string)$row['alert_id']);
+
+            if ($res['ok']) {
+                $DB->update(self::$table, [
+                    'status'   => 'resolved',
+                    'date_mod' => date('Y-m-d H:i:s'),
+                ], ['id' => (int)$row['id']]);
+            } else {
+                \Toolbox::logInFile('tanium', sprintf(
+                    "[Tanium] Alerta %s nao pode ser resolvido no Tanium: %s\n",
+                    $row['alert_id'],
+                    $res['message']
+                ));
+            }
+        } catch (\Throwable $e) {
+            \Toolbox::logInFile('tanium', '[Tanium] Falha ao resolver alerta no Tanium: ' . $e->getMessage() . "\n");
+        }
+    }
+
+    /**
      * Solve the GLPI ticket linked to an alert once the alert itself is
      * resolved/closed/suppressed on the Tanium side. Idempotent: tickets
      * already solved/closed (or deleted) are left untouched.

@@ -152,7 +152,7 @@ class Kiosk {
 
         $deploysActive = (int)($DB->doQuery("
             SELECT COUNT(*) AS cpt FROM glpi_plugin_tanium_patch_deployments
-            WHERE status NOT IN ('deployed', 'failed', 'rejected')
+            WHERE status NOT IN ('deployed', 'failed', 'rejected', 'cancelled')
         ")->fetch_assoc()['cpt'] ?? 0);
 
         $recentDeploys = [];

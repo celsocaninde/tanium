@@ -75,6 +75,7 @@ $deployStatus = static function (string $s): array {
         'deployed'         => ['Concluído', '#1eb464'],
         'failed'           => ['Falhou', '#e8212a'],
         'rejected'         => ['Recusado', '#7a8da8'],
+        'cancelled'        => ['Cancelado', '#7a8da8'],
         'pending_approval' => ['Aguardando aprovação', '#f0a030'],
         default            => ['Em andamento', '#4da3ff'],
     };

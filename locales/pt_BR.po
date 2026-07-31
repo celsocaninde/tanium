@@ -3039,3 +3039,42 @@ msgstr "Reduz volume em frota grande. Cuidado: achado cortado aqui nunca entra n
 #, php-format
 msgid "Last sync was less than the configured %dh ago. Skipping."
 msgstr "A última sincronização foi há menos que as %dh configuradas. Pulando."
+
+#, php-format
+msgid "%d sensors read from your Tanium — start typing to pick one."
+msgstr "%d sensores lidos do seu Tanium — comece a digitar para escolher."
+
+msgid "Action stopped in Tanium."
+msgstr "Ação interrompida no Tanium."
+
+msgid "Alert resolved in Tanium."
+msgstr "Alerta resolvido no Tanium."
+
+#, php-format
+msgid "Authenticated as %s."
+msgstr "Autenticado como %s."
+
+msgid "Deployment stopped in Tanium."
+msgstr "Deployment interrompido no Tanium."
+
+msgid "No notification recipient is configured. The weekly and monthly reports are not being sent, and critical alerts are discarded in silence. Fill in one of the two fields above."
+msgstr "Nenhum destinatário de notificação configurado. O relatório semanal e o mensal não estão sendo enviados, e os alertas críticos são descartados em silêncio. Preencha um dos dois campos acima."
+
+msgid "Tanium did not confirm the alert as resolved."
+msgstr "O Tanium não confirmou o alerta como resolvido."
+
+msgid "Tanium — monthly security report by email. Runs hourly and only sends on the configured day of the month, from the weekly report hour on."
+msgstr "Tanium — relatório mensal de segurança por e-mail. Roda de hora em hora e só envia no dia do mês configurado, a partir da hora do relatório semanal."
+
+msgid "Tanium — poll active patch deployments and auto-close the ticket when the deployment finishes."
+msgstr "Tanium — acompanha os deployments de patch ativos e fecha o chamado sozinho quando o deployment termina."
+
+msgid "Tanium — weekly security report by email. Runs hourly and only sends on the configured day and hour."
+msgstr "Tanium — relatório semanal de segurança por e-mail. Roda de hora em hora e só envia no dia e hora configurados."
+
+msgid "The Gateway does not expose computerGroupMemberships, so group-to-entity mapping cannot run. Turn off \"Sync Tanium group membership\" in the settings if you do not need it — the documented alternative is to filter endpoints per group with memberOf, which this plugin does not do."
+msgstr "O Gateway não expõe computerGroupMemberships, então o mapeamento de grupo para entidade não roda. Desligue \"Sincronizar participação em grupos do Tanium\" nas configurações se você não precisa disso — a alternativa documentada é filtrar endpoints por grupo com memberOf, o que este plugin não faz."
+
+#, php-format
+msgid "Token expiry read from Tanium: %s"
+msgstr "Validade do token lida do Tanium: %s"
