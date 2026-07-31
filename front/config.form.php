@@ -267,6 +267,20 @@ echo <<<'CSS'
 .select2-container--default .select2-search--dropdown .select2-search__field{background:#0a1628!important;border:1px solid #1e2d44!important;color:#e8edf5!important}
 .select2-container--default .select2-selection--single{background:#0a1628!important;border:1px solid #1e2d44!important}
 .select2-container--default .select2-selection--single .select2-selection__rendered{color:#e8edf5!important}
+/* Multi-select (destinatários de notificação). Faltava aqui: o GLPI pinta o
+   chip com --tblr-active-bg, claro no tema claro do GLPI, enquanto a cor de
+   texto da página escura do plugin cascateia para dentro dele — texto quase
+   branco sobre fundo quase branco. As regras equivalentes em tanium.css
+   perdiam por especificidade (0,4,0 contra 0,5,0 do GLPI), então a correção
+   mora aqui junto das outras, com !important, no mesmo padrão do bloco acima. */
+.select2-container--default .select2-selection--multiple{background:#0a1628!important;border:1px solid #1e2d44!important;min-height:38px!important}
+.select2-container--default .select2-selection--multiple .select2-selection__choice{background:rgba(26,109,255,.22)!important;border:1px solid rgba(26,109,255,.55)!important;color:#e8edf5!important;font-weight:600!important;padding:2px 8px!important;border-radius:4px!important}
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove{color:#9fb3cd!important;margin-right:6px!important}
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover{color:#ff4d57!important}
+.select2-container--default .select2-selection--multiple .select2-search__field{color:#e8edf5!important}
+.select2-container--default.select2-container--focus .select2-selection--multiple{border-color:#1a6dff!important}
+/* Sem nenhum destinatário resolvido, o próprio campo avisa — não só o banner. */
+.tanium-field-empty .select2-container--default .select2-selection--multiple{border-color:rgba(232,33,42,.65)!important;background:rgba(232,33,42,.08)!important}
 </style>
 CSS;
 echo "<div class='tanium-page-wrap'>";

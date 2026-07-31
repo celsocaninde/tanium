@@ -70,6 +70,41 @@ $sevClass = static fn(string $s): string => in_array($s, ['critical', 'high', 'm
 
 $riskColor = static fn(float $r): string => $r >= 70 ? '#e8212a' : ($r >= 40 ? '#f0a030' : '#1eb464');
 
+/**
+ * Compact headline strip for a slide.
+ *
+ * Every slide used to open straight into two tables, so the room had to derive
+ * the conclusion from rows it cannot read at that distance. The first attempt
+ * at fixing that over-corrected: one enormous number and a full sentence ate
+ * the top of the screen and said less than the tables did.
+ *
+ * This is the middle: a moderate lead figure, a short label, and the rest of
+ * the context as inline facts — more numbers on screen, less prose to read.
+ *
+ * @param array<string,string> $facts label => value, rendered inline
+ */
+$slideHead = static function (string|int $n, string $color, string $label, array $facts = []): void {
+    echo '<div class="slidehead">';
+    printf(
+        '<div class="lead"><span class="n" style="color:%s">%s</span><span class="l">%s</span></div>',
+        htmlspecialchars($color),
+        htmlspecialchars(is_int($n) ? number_format($n, 0, ',', '.') : $n),
+        htmlspecialchars($label)
+    );
+    if ($facts !== []) {
+        echo '<div class="facts">';
+        foreach ($facts as $k => $v) {
+            printf(
+                '<span class="fact"><b>%s</b><i>%s</i></span>',
+                htmlspecialchars((string)$v),
+                htmlspecialchars((string)$k)
+            );
+        }
+        echo '</div>';
+    }
+    echo '</div>';
+};
+
 $deployStatus = static function (string $s): array {
     return match ($s) {
         'deployed'         => ['Concluído', '#1eb464'],
@@ -195,7 +230,21 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-se
 @media(max-width:1100px){.herorow{grid-template-columns:1fr}}
 .herorow .grid.herogrid{grid-template-columns:repeat(3,1fr);padding:0}
 .tile.hero{display:flex;flex-direction:column;justify-content:center}
-.herovalue{font-size:clamp(64px,7vw,190px);font-weight:800;line-height:.95;letter-spacing:-.02em}
+/* 7vw / 190px foi longe demais: o número dominava a tela e sobrava menos
+ * informação do que antes. Grande o bastante para liderar, pequeno o bastante
+ * para o resto do painel continuar existindo. */
+.herovalue{font-size:clamp(52px,4.6vw,116px);font-weight:800;line-height:.95;letter-spacing:-.02em}
+/* Screen headline: every slide states its point before showing its tables.
+ * Without it each screen was two tables side by side and the room had to
+ * derive the conclusion from rows it cannot read at that distance. */
+.slidehead{display:flex;align-items:center;gap:clamp(16px,2vw,44px);padding:14px 32px 0;flex-wrap:wrap}
+.slidehead .lead{display:flex;align-items:baseline;gap:10px;flex:0 0 auto}
+.slidehead .n{font-size:clamp(30px,2.6vw,66px);font-weight:800;line-height:1;letter-spacing:-.02em}
+.slidehead .l{font-size:clamp(13px,1vw,26px);color:var(--muted);font-weight:600}
+.slidehead .facts{display:flex;gap:clamp(14px,1.6vw,36px);flex-wrap:wrap;margin-left:auto}
+.slidehead .fact{display:flex;flex-direction:column;line-height:1.1}
+.slidehead .fact b{font-size:clamp(17px,1.5vw,38px);font-weight:700;font-variant-numeric:tabular-nums}
+.slidehead .fact i{font-size:clamp(11px,.8vw,20px);color:var(--muted);font-style:normal;margin-top:2px}
 .tile.mini{padding:12px 18px}
 .tile.mini .value{font-size:var(--fs-mini)}
 /* The 2px surface gap is what separates touching segments — not a stroke around
@@ -376,6 +425,20 @@ td.num{font-variant-numeric:tabular-nums}
 
 <!-- ── Tela 2: Riscos ──────────────────────────────────────────────────── -->
 <section class="slide" data-title="Riscos &amp; exploração">
+  <?php
+  $rb = $d['risk_bands'];
+  $slideHead(
+      (int)$rb['critical'],
+      $rb['critical'] > 0 ? '#e8212a' : '#1eb464',
+      'em risco crítico (70+)',
+      [
+          'risco alto (40–69)' => number_format((int)$rb['high'], 0, ',', '.'),
+          'abaixo de 40'       => number_format((int)$rb['ok'], 0, ',', '.'),
+          'KEV explorados'     => number_format((int)$d['kev'], 0, ',', '.'),
+          'com ransomware'     => number_format((int)$d['ransomware'], 0, ',', '.'),
+      ]
+  );
+  ?>
   <div class="panels">
     <div class="panel">
       <h2>🔥 Top 10 endpoints por risco</h2>
@@ -425,6 +488,17 @@ td.num{font-variant-numeric:tabular-nums}
 
 <!-- ── Tela 3: CVEs críticos ───────────────────────────────────────────── -->
 <section class="slide" data-title="CVEs críticos">
+  <?php $slideHead(
+      (int)$sev['critical'],
+      $sev['critical'] > 0 ? '#e8212a' : '#1eb464',
+      'CVEs críticos abertos',
+      [
+          'altos'            => number_format((int)$sev['high'], 0, ',', '.'),
+          'médios'           => number_format((int)$sev['medium'], 0, ',', '.'),
+          'no catálogo KEV'  => number_format((int)$d['kev'], 0, ',', '.'),
+          'total de achados' => number_format((int)array_sum($sev), 0, ',', '.'),
+      ]
+  ); ?>
   <div class="panels">
     <div class="panel">
       <h2>🚨 CVEs críticos abertos (mais recentes)</h2>
@@ -432,13 +506,16 @@ td.num{font-variant-numeric:tabular-nums}
         <div class="empty">Nenhum CVE crítico aberto. 🎉</div>
       <?php else: ?>
       <table>
-        <thead><tr><th>CVE</th><th>Endpoint</th><th>CVSS</th><th>Detectado</th></tr></thead>
+        <?php // Sem coluna de CVSS: nesta tabela todo achado é crítico, então
+              // a nota é sempre 9.x e a coluna repetia o mesmo número seis
+              // vezes, roubando largura do nome do endpoint — que é a parte
+              // acionável. ?>
+        <thead><tr><th>CVE</th><th>Endpoint</th><th>Detectado</th></tr></thead>
         <tbody>
         <?php foreach ($d['recent_critical'] as $r): ?>
           <tr>
             <td class="cve"><?php echo htmlspecialchars((string)$r['cve_id']); ?></td>
             <td><?php echo htmlspecialchars((string)($r['tanium_name'] ?? '—')); ?></td>
-            <td class="num" style="color:#e8212a;font-weight:700"><?php echo htmlspecialchars((string)($r['cvss_score'] ?? '—')); ?></td>
             <td class="num" style="color:var(--muted)"><?php echo !empty($r['detected_at']) ? date('d/m H:i', strtotime($r['detected_at'])) : '—'; ?></td>
           </tr>
         <?php endforeach; ?>
@@ -472,6 +549,17 @@ td.num{font-variant-numeric:tabular-nums}
 
 <!-- ── Tela 4: SLA de remediação ───────────────────────────────────────── -->
 <section class="slide" data-title="SLA de remediação">
+  <?php $slideHead(
+      $slaLabel,
+      $slaColor,
+      'dentro do prazo',
+      [
+          'vencidos'                                  => number_format((int)$sla['breached'], 0, ',', '.'),
+          sprintf('vencem em %dd', (int)$sla['due_soon_days']) => number_format((int)$sla['due_soon'], 0, ',', '.'),
+          'no prazo'                                  => number_format((int)$sla['within'], 0, ',', '.'),
+          'MTTR 90d'                                  => $fmtDays($mttr['overall']),
+      ]
+  ); ?>
   <div class="grid g5">
     <div class="tile"><div class="label">SLA compliance</div><div class="value" style="color:<?php echo $slaColor; ?>"><?php echo htmlspecialchars($slaLabel); ?></div></div>
     <div class="tile"><div class="label">Vencidos</div><div class="value" style="color:<?php echo (int)$sla['breached'] > 0 ? '#e8212a' : '#1eb464'; ?>"><?php echo (int)$sla['breached']; ?></div></div>
@@ -525,6 +613,17 @@ td.num{font-variant-numeric:tabular-nums}
 
 <!-- ── Tela 5: Patches & deploys ───────────────────────────────────────── -->
 <section class="slide" data-title="Patches &amp; deploys">
+  <?php $slideHead(
+      (int)$d['patches']['critical'],
+      $d['patches']['critical'] > 0 ? '#e8212a' : '#1eb464',
+      'patches críticos ausentes',
+      [
+          'altos'            => number_format((int)$d['patches']['high'], 0, ',', '.'),
+          'ausentes no total'=> number_format((int)$d['patches']['total'], 0, ',', '.'),
+          'deploys ativos'   => number_format((int)$d['deploys_active'], 0, ',', '.'),
+          'endpoints'        => number_format((int)$d['endpoints'], 0, ',', '.'),
+      ]
+  ); ?>
   <div class="grid g4">
     <div class="tile"><div class="label">Patches ausentes</div><div class="value"><?php echo (int)$d['patches']['total']; ?></div></div>
     <div class="tile"><div class="label">Críticos</div><div class="value" style="color:<?php echo $d['patches']['critical'] > 0 ? '#e8212a' : '#1eb464'; ?>"><?php echo (int)$d['patches']['critical']; ?></div></div>
@@ -582,6 +681,17 @@ td.num{font-variant-numeric:tabular-nums}
 
 <!-- ── Tela 6: Postura & remediação ────────────────────────────────────── -->
 <section class="slide" data-title="Postura &amp; remediação">
+  <?php $slideHead(
+      (int)$d['remediated_7d'],
+      $d['remediated_7d'] > 0 ? '#1eb464' : '#7a8da8',
+      'remediados em 7 dias',
+      array_filter([
+          'MTTR 90d'    => $fmtDays($mttr['overall']),
+          'correções 90d' => number_format((int)$mttr['count'], 0, ',', '.'),
+          'plataformas' => $d['platform'] !== [] ? (string)count($d['platform']) : null,
+          'pior agora'  => $d['platform'] !== [] ? (string)$d['platform'][0]['os_platform'] : null,
+      ], static fn($v) => $v !== null)
+  ); ?>
   <div class="panels">
     <div class="panel">
       <h2>🧭 Postura por plataforma (pior primeiro)</h2>
@@ -591,7 +701,7 @@ td.num{font-variant-numeric:tabular-nums}
       <table>
         <thead><tr><th>Plataforma</th><th>Endpoints</th><th>Risco médio</th><th>Críticos abertos</th></tr></thead>
         <tbody>
-        <?php foreach (array_slice($d['platform'], 0, 8) as $r): $avg = (float)$r['avg_risk']; ?>
+        <?php foreach (array_slice($d['platform'], 0, 6) as $r): $avg = (float)$r['avg_risk']; ?>
           <tr>
             <td><?php echo htmlspecialchars((string)$r['os_platform']); ?></td>
             <td class="num"><?php echo (int)$r['endpoints']; ?></td>
@@ -626,6 +736,16 @@ td.num{font-variant-numeric:tabular-nums}
 
 <!-- ── Tela 7: Ameaças & agentes ───────────────────────────────────────── -->
 <section class="slide" data-title="Ameaças &amp; agentes">
+  <?php $slideHead(
+      (int)$d['threats'],
+      $d['threats'] > 0 ? '#e8212a' : '#1eb464',
+      'ameaças abertas',
+      [
+          sprintf('mudos >%dd', (int)$d['stale_days']) => number_format((int)$d['stale'], 0, ',', '.'),
+          'cobertura'  => $d['coverage_pct'] === null ? '—' : $d['coverage_pct'] . '%',
+          'endpoints'  => number_format((int)$d['endpoints'], 0, ',', '.'),
+      ]
+  ); ?>
   <div class="panels">
     <div class="panel">
       <h2>🛡️ Alertas de ameaça abertos (Threat Response)</h2>

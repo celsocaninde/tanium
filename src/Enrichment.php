@@ -137,7 +137,10 @@ class Enrichment {
             self::upsert($cve, [
                 'is_kev'         => 1,
                 'kev_date'       => !empty($v['dateAdded']) ? date('Y-m-d', strtotime($v['dateAdded'])) : null,
-                'kev_ransomware' => (stripos((string)($v['knownRansomwareCampaignUse'] ?? ''), 'known') !== false) ? 1 : 0,
+                // O campo do CISA vale "Known" ou "Unknown", e "Unknown" CONTÉM
+                // "known" — um stripos() de substring casava com os dois e
+                // marcava o catálogo inteiro como ransomware. Comparação exata.
+                'kev_ransomware' => strcasecmp(trim((string)($v['knownRansomwareCampaignUse'] ?? '')), 'known') === 0 ? 1 : 0,
                 'date_mod'       => $now,
             ]);
             $count++;

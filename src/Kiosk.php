@@ -81,6 +81,24 @@ class Kiosk {
             $topRisk[] = $r;
         }
 
+        // How many machines sit in the red band, not just which six are worst.
+        // The top-N table answers "who", never "how many" — and on a wall panel
+        // "42 endpoints in critical risk" is the sentence people act on.
+        $riskBands = ['critical' => 0, 'high' => 0, 'ok' => 0];
+        foreach ($DB->doQuery("
+            SELECT CASE WHEN risk_score >= 70 THEN 'critical'
+                        WHEN risk_score >= 40 THEN 'high'
+                        ELSE 'ok' END AS band,
+                   COUNT(*) AS cpt
+            FROM glpi_plugin_tanium_assets
+            WHERE retired_at IS NULL
+            GROUP BY band
+        ") as $r) {
+            if (isset($riskBands[$r['band']])) {
+                $riskBands[$r['band']] = (int)$r['cpt'];
+            }
+        }
+
         $recentCritical = [];
         foreach ($DB->doQuery("
             SELECT ec.cve_id, ec.detected_at, a.tanium_name, v.cvss_score
@@ -229,6 +247,7 @@ class Kiosk {
             'threats'            => ThreatResponse::countOpen(),
             'recent_threats'     => $recentThreats,
             'top_risk'           => $topRisk,
+            'risk_bands'         => $riskBands,
             'recent_critical'    => $recentCritical,
             'widest_cves'        => $widestCves,
             'patches'            => $patches,
