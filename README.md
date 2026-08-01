@@ -72,7 +72,8 @@ Plugin que conecta a plataforma **Tanium** ao **GLPI 11**, trazendo visibilidade
 | 🏷️ **Severidade unificada** | Windows, RHEL, Ubuntu e SUSE falam escalas diferentes; tudo é normalizado na entrada e o que não tem nota vira `unknown` explícito |
 | 🔎 **Campos nativos** | Nota de risco, último contato e criptografia expostos como critérios de busca do Computer — usáveis em listas salvas, dashboards e **regras de negócio** do GLPI |
 | 📺 **Kiosk com alerta** | A TV rompe o carrossel quando há o que dizer (exposição KEV nova, sync parado, agentes em silêncio) |
-| 🌐 **i18n completa** | 901 strings traduzidas para pt_BR (.mo compilado, sem dependência de `msgfmt`) |
+| 🎫 **Chamado já triado** | Categoria, técnico, grupo, origem e tipo definidos nas configurações e aplicados a **todo** chamado do plugin — inclusive os que o cron abre de madrugada, que antes chegavam sem categoria |
+| 🌐 **i18n completa** | 924 strings traduzidas para pt_BR (.mo compilado, sem dependência de `msgfmt`) |
 
 ### 🚀 Requisitos
 
@@ -114,6 +115,10 @@ glpi/plugins/
 | 🗑️ **Remover endpoints retirados** | Dias de carência antes de apagar os dados Tanium de uma máquina que sumiu da frota (0 = só marcar) |
 | 🧹 **Retenção de achados fechados** | Por quanto tempo CVEs remediados e patches instalados são guardados. Achados **abertos** nunca são expurgados (0 = guardar para sempre) |
 | 📺 **Alertas no Kiosk** | A TV interrompe o carrossel em eventos urgentes: nova exposição KEV, sincronização parada, agentes em silêncio |
+| 🗂️ **Categoria padrão** | Categoria ITIL aplicada a todo chamado do Tanium, com **override opcional por tipo** (CVE, patch/remediação, agente, ameaça, ação remota) |
+| 👷 **Técnico / grupo atribuído** | Preenche o campo "Atribuído a". Vazio mantém o comportamento antigo: o chamado fica atribuído à conta requerente (o usuário de automação) |
+| 🛎️ **Origem da requisição** | Preenche "Origem da requisição" — crie uma origem "Tanium" para separar esses chamados nos relatórios |
+| 🏷️ **Tipo do chamado** | Incidente ou Requisição para todos, ou "manter o padrão de cada chamado" (segurança = incidente, instalação de agente = requisição) |
 
 ### 🧪 Testes
 
@@ -330,7 +335,8 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | 🏷️ **Unified severity** | Windows, RHEL, Ubuntu and SUSE speak different scales; everything is normalised at ingest and anything unrated becomes an explicit `unknown` |
 | 🔎 **Native search fields** | Risk score, last seen and encryption exposed as Computer search options — usable in saved searches, dashboards and GLPI **business rules** |
 | 📺 **Kiosk alert mode** | The wall TV breaks out of the carousel when it has something to say (new KEV exposure, sync stopped, agents going silent) |
-| 🌐 **Full i18n** | 901 strings translated to pt_BR (compiled .mo, no `msgfmt` dependency) |
+| 🎫 **Pre-triaged tickets** | Category, technician, group, source and type set in the settings and applied to **every** ticket the plugin opens — including the ones the cron raises overnight, which used to arrive with no category |
+| 🌐 **Full i18n** | 924 strings translated to pt_BR (compiled .mo, no `msgfmt` dependency) |
 
 ### 🚀 Requirements
 
@@ -361,6 +367,10 @@ Plugin that connects the **Tanium** platform to **GLPI 11**, bringing full endpo
 | 🗑️ **Purge retired endpoints** | Grace period, in days, before deleting the Tanium data of a machine that left the fleet (0 = flag only) |
 | 🧹 **Closed-findings retention** | How long remediated CVEs and installed patches are kept. **Open** findings are never purged (0 = keep forever) |
 | 📺 **Kiosk alerts** | The wall TV breaks out of the carousel on urgent events: new KEV exposure, sync stopped, agents going silent |
+| 🗂️ **Default category** | ITIL category applied to every Tanium ticket, with an **optional override per kind** (CVE, patch/remediation, agent, threat, remote action) |
+| 👷 **Assigned technician / group** | Fills the "Assigned to" field. Left empty it keeps the old behaviour: the ticket stays assigned to the requester account (the automation user) |
+| 🛎️ **Request source** | Fills "Request source" — create a "Tanium" source to tell these tickets apart in reports |
+| 🏷️ **Ticket type** | Incident or Request for all of them, or "keep each ticket default" (security = incident, agent installation = request) |
 
 ### 🧪 Tests
 

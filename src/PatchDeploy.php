@@ -824,11 +824,7 @@ class PatchDeploy extends CommonGLPI {
             'priority'    => 5,
             'entities_id' => (int)($config['ticket_entity_id'] ?? 0),
         ];
-        $requester = Config::ticketRequesterId(0, $config);
-        if ($requester > 0) {
-            $ticketData['_users_id_requester'] = $requester;
-            $ticketData['_users_id_assign']    = $requester;
-        }
+        $ticketData = Config::applyTicketDefaults($ticketData, 'patch', $config);
 
         $ticket   = new Ticket();
         $ticketId = (int)$ticket->add($ticketData);

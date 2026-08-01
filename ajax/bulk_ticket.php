@@ -73,9 +73,8 @@ $entityId = (int)($config['ticket_entity_id'] ?? 0) > 0
     : ($_SESSION['glpiactive_entity'] ?? 0);
 
 // Create the ticket
-$requester = \GlpiPlugin\Tanium\Config::ticketRequesterId(Session::getLoginUserID(), $config);
-$ticket = new \Ticket();
-$ticketId = $ticket->add([
+$ticket   = new \Ticket();
+$ticketId = $ticket->add(\GlpiPlugin\Tanium\Config::applyTicketDefaults([
     'name'            => $title,
     'content'         => $ticketContent,
     'entities_id'     => $entityId,
@@ -83,9 +82,7 @@ $ticketId = $ticket->add([
     'priority'        => $priority,
     'urgency'         => $totalCritical > 0 ? 5 : ($totalHigh > 0 ? 4 : 3),
     'impact'          => $totalCritical > 0 ? 5 : ($totalHigh > 0 ? 4 : 3),
-    '_users_id_assign'=> $requester > 0 ? $requester : [],
-    '_users_id_requester' => $requester,
-]);
+], 'cve', $config, (int)Session::getLoginUserID()));
 
 if (!$ticketId) {
     echo json_encode(['success' => false, 'error' => 'Failed to create GLPI ticket']);

@@ -617,11 +617,7 @@ class Sync extends CommonGLPI {
                 'impact'      => 2,
                 'priority'    => 2,
             ];
-            $requester = Config::ticketRequesterId(0, $config);
-            if ($requester > 0) {
-                $ticketData['_users_id_requester'] = $requester;
-                $ticketData['_users_id_assign']    = $requester;
-            }
+            $ticketData = Config::applyTicketDefaults($ticketData, 'patch', $config);
 
             $ticketId = (int)$ticket->add($ticketData);
             if (!$ticketId) {
@@ -747,11 +743,7 @@ class Sync extends CommonGLPI {
             'urgency'     => 5,
             'impact'      => 5,
         ];
-        $requester = Config::ticketRequesterId(0, $config);
-        if ($requester > 0) {
-            $ticketData['_users_id_requester'] = $requester;
-            $ticketData['_users_id_assign']    = $requester;
-        }
+        $ticketData = Config::applyTicketDefaults($ticketData, 'cve', $config);
 
         $ticket   = new Ticket();
         $ticketId = (int)$ticket->add($ticketData);

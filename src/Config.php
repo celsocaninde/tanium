@@ -54,6 +54,16 @@ class Config extends CommonDBTM {
             'patch_limiting_group_id' => 0,
             'ticket_entity_id'        => 0,
             'ticket_requester_id'     => 0,
+            'ticket_category_id'        => 0,
+            'ticket_category_cve_id'    => 0,
+            'ticket_category_patch_id'  => 0,
+            'ticket_category_agent_id'  => 0,
+            'ticket_category_threat_id' => 0,
+            'ticket_category_action_id' => 0,
+            'ticket_tech_id'            => 0,
+            'ticket_group_id'           => 0,
+            'ticket_requesttype_id'     => 0,
+            'ticket_type'               => 0,
             'default_entity_id'       => 0,
             'sync_group_membership'   => 0,
             'agent_stale_days'        => 7,
@@ -252,6 +262,119 @@ class Config extends CommonDBTM {
         }
 
         return $fallback;
+    }
+
+    /**
+     * Ticket kinds the plugin opens. Each one can carry its own ITIL category,
+     * because a "critical CVE detected" and a "patches installed" record rarely
+     * belong in the same queue.
+     *
+     * @var array<string,string> kind => label shown in the settings screen
+     */
+    public const TICKET_KINDS = [
+        'cve'    => 'Vulnerabilidades / CVE',
+        'patch'  => 'Patches / remediação',
+        'agent'  => 'Agente sem comunicação / instalação',
+        'threat' => 'Ameaças (Threat Response)',
+        'action' => 'Ações remotas (quarentena, reinício)',
+    ];
+
+    /**
+     * Fills a ticket payload with the defaults configured in the plugin
+     * settings — category, assignee, source and type — right before
+     * Ticket::add().
+     *
+     * Every ticket the plugin opens goes through here, so a ticket raised by
+     * the cron at 3am lands in the service desk already triaged instead of
+     * arriving with an empty category and assigned to the automation account.
+     *
+     * What the caller already decided always wins: the manual modals let a
+     * human pick a category, and that choice is never overwritten.
+     *
+     * @param array  $data              payload about to be passed to Ticket::add()
+     * @param string $kind              one of TICKET_KINDS, '' for the global default only
+     * @param int    $requesterFallback requester when none is configured — the
+     *                                  session user for UI-triggered tickets, 0 for cron
+     */
+    public static function applyTicketDefaults(
+        array $data,
+        string $kind = '',
+        ?array $config = null,
+        int $requesterFallback = 0
+    ): array {
+        $config = $config ?? self::getConfig();
+
+        $requester = self::ticketRequesterId($requesterFallback, $config);
+        if ($requester > 0 && empty($data['_users_id_requester'])) {
+            $data['_users_id_requester'] = $requester;
+        }
+
+        // Per-kind category first, global default second.
+        if ((int)($data['itilcategories_id'] ?? 0) <= 0) {
+            $category = $kind !== '' ? (int)($config['ticket_category_' . $kind . '_id'] ?? 0) : 0;
+            if ($category <= 0) {
+                $category = (int)($config['ticket_category_id'] ?? 0);
+            }
+            $category = self::existingId('ITILCategory', $category, 'Categoria padrao dos chamados');
+            if ($category > 0) {
+                $data['itilcategories_id'] = $category;
+            }
+        }
+
+        // A configured technician/group replaces the historical behaviour of
+        // assigning the ticket to the requester account itself — which is how
+        // "Tanium Automação" ended up in the Assigned field of every ticket.
+        $tech  = self::existingId('User', (int)($config['ticket_tech_id'] ?? 0), 'Tecnico atribuido padrao');
+        $group = self::existingId('Group', (int)($config['ticket_group_id'] ?? 0), 'Grupo atribuido padrao');
+
+        if ($tech > 0) {
+            $data['_users_id_assign'] = $tech;
+        }
+        if ($group > 0) {
+            $data['_groups_id_assign'] = $group;
+        }
+        if ($tech <= 0 && $group <= 0 && $requester > 0 && empty($data['_users_id_assign'])) {
+            $data['_users_id_assign'] = $requester;
+        }
+
+        $source = self::existingId('RequestType', (int)($config['ticket_requesttype_id'] ?? 0), 'Origem da requisicao padrao');
+        if ($source > 0) {
+            $data['requesttypes_id'] = $source;
+        }
+
+        // 0 keeps whatever each ticket already decided (the agent-install
+        // ticket is a request, the security ones are incidents).
+        $type = (int)($config['ticket_type'] ?? 0);
+        if (in_array($type, [\Ticket::INCIDENT_TYPE, \Ticket::DEMAND_TYPE], true)) {
+            $data['type'] = $type;
+        }
+
+        return $data;
+    }
+
+    /**
+     * Guards a configured dropdown value against the item having been deleted
+     * in GLPI since: a dangling id would make Ticket::add() write a reference
+     * to something that no longer exists, and nobody would notice until the
+     * ticket looked wrong. Returns 0 (unset) and logs instead.
+     */
+    private static function existingId(string $itemtype, int $id, string $label): int {
+        if ($id <= 0) {
+            return 0;
+        }
+
+        $class = '\\' . $itemtype;
+        if (!class_exists($class)) {
+            return 0;
+        }
+
+        $item = new $class();
+        if ($item->getFromDB($id) && (int)($item->fields['is_deleted'] ?? 0) === 0) {
+            return $id;
+        }
+
+        Toolbox::logInFile('tanium', "[Tanium] {$label} id={$id} nao existe mais no GLPI -- campo ignorado no chamado.\n");
+        return 0;
     }
 
     /**
@@ -757,6 +880,102 @@ class Config extends CommonDBTM {
             __('GLPI user set as requester on every ticket the plugin opens — including automatic (cron) tickets for critical CVEs, silent agents, threats and KEV remediation, which otherwise have no requester. Leave empty to keep the default behaviour (the logged-in user for manual tickets, none for automatic ones).', 'tanium')
         );
 
+        // ── Ticket defaults ───────────────────────────────────────────────
+        // Everything the service desk would otherwise have to fill in by hand
+        // on each ticket the plugin opens, cron ones included.
+        echo "<div class='tanium-section-title'>" . __('Ticket defaults (category, assignee, source)', 'tanium') . "</div>";
+        echo "<p style='font-size:.82rem;color:var(--t-muted);margin:0 0 12px'>"
+           . __('Applied to every ticket opened by the plugin, including the automatic ones created by the cron. A category picked by hand in the CVE/patch modal always wins over these defaults.', 'tanium')
+           . "</p>";
+
+        $this->renderField(
+            __('Default category', 'tanium'),
+            $this->categoryDropdown('ticket_category_id', (int)($config['ticket_category_id'] ?? 0), $config),
+            __('ITIL category applied to every Tanium ticket that has no more specific category below. Leave empty to keep tickets uncategorised.', 'tanium')
+        );
+
+        $overrides = '';
+        foreach (self::TICKET_KINDS as $kind => $label) {
+            $overrides .= "<div style='flex:1;min-width:230px'>"
+                . "<label class='tanium-form-label'>" . htmlspecialchars($label) . "</label>"
+                . $this->categoryDropdown('ticket_category_' . $kind . '_id', (int)($config['ticket_category_' . $kind . '_id'] ?? 0), $config)
+                . "</div>";
+        }
+
+        $this->renderField(
+            __('Category per ticket kind (optional)', 'tanium'),
+            "<div style='display:flex;gap:14px;flex-wrap:wrap'>{$overrides}</div>",
+            __('Overrides the default above for that kind of ticket only. Left empty, the kind falls back to the default category.', 'tanium')
+        );
+
+        ob_start();
+        \User::dropdown([
+            'name'                => 'ticket_tech_id',
+            'value'               => (int)($config['ticket_tech_id'] ?? 0),
+            'right'               => 'own_ticket',
+            'entity'              => $_SESSION['glpiactiveentities'] ?? [],
+            'display_emptychoice' => true,
+            'width'               => '100%',
+        ]);
+        $techDropdown = ob_get_clean();
+
+        $this->renderField(
+            __('Default assigned technician', 'tanium'),
+            $techDropdown,
+            __('Technician set in the "Assigned to" field. Leave empty and the ticket keeps the previous behaviour — assigned to the requester account above, which is why automatic tickets used to show the automation user as the assignee.', 'tanium')
+        );
+
+        ob_start();
+        \Group::dropdown([
+            'name'                => 'ticket_group_id',
+            'value'               => (int)($config['ticket_group_id'] ?? 0),
+            'condition'           => ['is_assign' => 1],
+            'entity'              => $_SESSION['glpiactiveentities'] ?? [],
+            'display_emptychoice' => true,
+            'width'               => '100%',
+        ]);
+        $groupDropdown = ob_get_clean();
+
+        $this->renderField(
+            __('Default assigned group', 'tanium'),
+            $groupDropdown,
+            __('Group set in the "Assigned to" field — the service desk queue that owns Tanium tickets. Only groups flagged as "assignable to tickets" in GLPI are listed.', 'tanium')
+        );
+
+        ob_start();
+        \RequestType::dropdown([
+            'name'                => 'ticket_requesttype_id',
+            'value'               => (int)($config['ticket_requesttype_id'] ?? 0),
+            'display_emptychoice' => true,
+            'width'               => '100%',
+        ]);
+        $sourceDropdown = ob_get_clean();
+
+        $this->renderField(
+            __('Default request source', 'tanium'),
+            $sourceDropdown,
+            __('Fills the "Request source" field. Create a source such as "Tanium" in Setup > Dropdowns > Request sources to tell these tickets apart in reports.', 'tanium')
+        );
+
+        $curType    = (int)($config['ticket_type'] ?? 0);
+        $typeLabels = [
+            0                       => __('Keep each ticket default', 'tanium'),
+            \Ticket::INCIDENT_TYPE  => __('Incident', 'tanium'),
+            \Ticket::DEMAND_TYPE    => __('Request', 'tanium'),
+        ];
+        $typeSelect = "<select name='ticket_type' class='tanium-input tanium-select' style='width:auto'>";
+        foreach ($typeLabels as $val => $label) {
+            $sel         = $val === $curType ? ' selected' : '';
+            $typeSelect .= "<option value='{$val}'{$sel}>" . htmlspecialchars($label) . "</option>";
+        }
+        $typeSelect .= '</select>';
+
+        $this->renderField(
+            __('Ticket type', 'tanium'),
+            $typeSelect,
+            __('"Keep each ticket default" leaves security tickets as incidents and the agent-installation ticket as a request. Pick a value to force it on every Tanium ticket.', 'tanium')
+        );
+
         echo "<div class='tanium-actions'>";
         echo "<button type='submit' name='save' class='tanium-btn tanium-btn-primary'>&#128190; " . __('Save configuration', 'tanium') . "</button> ";
         echo "<button type='submit' name='test' class='tanium-btn tanium-btn-secondary'>&#128268; " . __('Test connection', 'tanium') . "</button> ";
@@ -857,6 +1076,25 @@ class Config extends CommonDBTM {
         }
         $html .= "</select>";
         return $html;
+    }
+
+    /**
+     * ITIL category picker, scoped to the entity where Tanium tickets are
+     * created — offering a category the ticket's entity cannot see would save
+     * a value that silently does nothing.
+     */
+    private function categoryDropdown(string $name, int $value, array $config): string {
+        $ticketEntity = (int)($config['ticket_entity_id'] ?? 0);
+
+        ob_start();
+        \ITILCategory::dropdown([
+            'name'                => $name,
+            'value'               => $value,
+            'entity'              => $ticketEntity > 0 ? $ticketEntity : ($_SESSION['glpiactiveentities'] ?? []),
+            'display_emptychoice' => true,
+            'width'               => '100%',
+        ]);
+        return (string)ob_get_clean();
     }
 
     private function renderField(string $label, string $input, string $hint = '', string $wrapClass = ''): void {

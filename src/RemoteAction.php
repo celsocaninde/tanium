@@ -127,8 +127,7 @@ class RemoteAction {
             ? (int)$config['ticket_entity_id']
             : (int)($_SESSION['glpiactive_entity'] ?? 0);
 
-        $requester = Config::ticketRequesterId(Session::getLoginUserID(), $config);
-        $ticket    = new Ticket();
+        $ticket     = new Ticket();
         $ticketData = [
             'name'                => sprintf('[Tanium] Ação remota — %s — %s', $meta['label'], $name),
             'content'             => $html,
@@ -139,11 +138,9 @@ class RemoteAction {
             'priority'            => $isQuarantine ? 5 : 3,
             'entities_id'         => $entityId,
             'requesttypes_id'     => 1,
-            '_users_id_requester' => $requester,
         ];
-        if ($requester > 0) {
-            $ticketData['_users_id_assign'] = $requester;
-        }
+        $ticketData = Config::applyTicketDefaults($ticketData, 'action', $config, (int)Session::getLoginUserID());
+
         $ticketId = (int)$ticket->add($ticketData);
         if (!$ticketId) {
             return ['success' => false, 'error' => 'Ticket creation failed'];

@@ -69,11 +69,8 @@ switch ($action) {
             'type'        => Ticket::DEMAND_TYPE,
             'priority'    => 3,
         ];
-        $requester = \GlpiPlugin\Tanium\Config::ticketRequesterId(Session::getLoginUserID(), $config);
-        if ($requester > 0) {
-            $ticketData['_users_id_requester'] = $requester;
-            $ticketData['_users_id_assign']    = $requester;
-        }
+        $ticketData = \GlpiPlugin\Tanium\Config::applyTicketDefaults($ticketData, 'agent', $config, (int)Session::getLoginUserID());
+
         $ticket   = new Ticket();
         $ticketId = (int)$ticket->add($ticketData);
         if (!$ticketId) {

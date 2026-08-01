@@ -3078,3 +3078,54 @@ msgstr "O Gateway não expõe computerGroupMemberships, então o mapeamento de g
 #, php-format
 msgid "Token expiry read from Tanium: %s"
 msgstr "Validade do token lida do Tanium: %s"
+
+msgid "Ticket defaults (category, assignee, source)"
+msgstr "Padrões dos chamados (categoria, atribuição, origem)"
+
+msgid "Applied to every ticket opened by the plugin, including the automatic ones created by the cron. A category picked by hand in the CVE/patch modal always wins over these defaults."
+msgstr "Aplicado a todo chamado aberto pelo plugin, inclusive os automáticos criados pelo cron. Uma categoria escolhida à mão no modal de CVE/patch sempre prevalece sobre estes padrões."
+
+msgid "Default category"
+msgstr "Categoria padrão"
+
+msgid "ITIL category applied to every Tanium ticket that has no more specific category below. Leave empty to keep tickets uncategorised."
+msgstr "Categoria ITIL aplicada a todo chamado do Tanium que não tiver uma categoria mais específica abaixo. Deixe vazio para manter os chamados sem categoria."
+
+msgid "Category per ticket kind (optional)"
+msgstr "Categoria por tipo de chamado (opcional)"
+
+msgid "Overrides the default above for that kind of ticket only. Left empty, the kind falls back to the default category."
+msgstr "Sobrescreve a categoria padrão acima apenas para aquele tipo de chamado. Se ficar vazio, o tipo usa a categoria padrão."
+
+msgid "Default assigned technician"
+msgstr "Técnico atribuído padrão"
+
+msgid "Technician set in the \"Assigned to\" field. Leave empty and the ticket keeps the previous behaviour — assigned to the requester account above, which is why automatic tickets used to show the automation user as the assignee."
+msgstr "Técnico preenchido no campo \"Atribuído a\". Deixando vazio, o chamado mantém o comportamento anterior — atribuído à conta requerente acima, que é o motivo de os chamados automáticos aparecerem atribuídos ao usuário de automação."
+
+msgid "Default assigned group"
+msgstr "Grupo atribuído padrão"
+
+msgid "Group set in the \"Assigned to\" field — the service desk queue that owns Tanium tickets. Only groups flagged as \"assignable to tickets\" in GLPI are listed."
+msgstr "Grupo preenchido no campo \"Atribuído a\" — a fila do service desk dona dos chamados do Tanium. Só aparecem grupos marcados no GLPI como \"atribuível a chamados\"."
+
+msgid "Default request source"
+msgstr "Origem da requisição padrão"
+
+msgid "Fills the \"Request source\" field. Create a source such as \"Tanium\" in Setup > Dropdowns > Request sources to tell these tickets apart in reports."
+msgstr "Preenche o campo \"Origem da requisição\". Crie uma origem como \"Tanium\" em Configurar > Listas suspensas > Origens da requisição para separar esses chamados nos relatórios."
+
+msgid "Keep each ticket default"
+msgstr "Manter o padrão de cada chamado"
+
+msgid "Incident"
+msgstr "Incidente"
+
+msgid "Request"
+msgstr "Requisição"
+
+msgid "Ticket type"
+msgstr "Tipo do chamado"
+
+msgid "\"Keep each ticket default\" leaves security tickets as incidents and the agent-installation ticket as a request. Pick a value to force it on every Tanium ticket."
+msgstr "\"Manter o padrão de cada chamado\" deixa os chamados de segurança como incidentes e o de instalação de agente como requisição. Escolha um valor para forçá-lo em todo chamado do Tanium."

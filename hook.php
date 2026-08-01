@@ -74,8 +74,12 @@ function plugin_tanium_install(): bool {
             'sla_high_days'        => 30,
             'sla_medium_days'      => 90,
         ]);
-    } else {
-        // Add missing columns
+    }
+
+    // Columns added after the CREATE TABLE above ships. Reconciled on every
+    // install — not only on upgrades — otherwise a fresh install is born
+    // missing every setting introduced since the original schema.
+    {
         $missing = [
             'sync_network'       => "tinyint(1) NOT NULL DEFAULT 1",
             'sync_os_details'    => "tinyint(1) NOT NULL DEFAULT 1",
@@ -148,6 +152,21 @@ function plugin_tanium_install(): bool {
             // Last fleet-wide id sweep — the only way an incremental sync can
             // learn which endpoints left.
             'last_retire_sweep'       => "timestamp NULL DEFAULT NULL",
+            // Ticket defaults: what every ticket the plugin opens should already
+            // carry (category, assignee, source, type). Before these, a cron
+            // ticket landed with no category and was assigned to the automation
+            // account, so the service desk had to triage each one by hand.
+            // 0 everywhere = previous behaviour.
+            'ticket_category_id'        => "int unsigned NOT NULL DEFAULT 0",
+            'ticket_category_cve_id'    => "int unsigned NOT NULL DEFAULT 0",
+            'ticket_category_patch_id'  => "int unsigned NOT NULL DEFAULT 0",
+            'ticket_category_agent_id'  => "int unsigned NOT NULL DEFAULT 0",
+            'ticket_category_threat_id' => "int unsigned NOT NULL DEFAULT 0",
+            'ticket_category_action_id' => "int unsigned NOT NULL DEFAULT 0",
+            'ticket_tech_id'            => "int unsigned NOT NULL DEFAULT 0",
+            'ticket_group_id'           => "int unsigned NOT NULL DEFAULT 0",
+            'ticket_requesttype_id'     => "int unsigned NOT NULL DEFAULT 0",
+            'ticket_type'               => "tinyint NOT NULL DEFAULT 0",
         ];
         foreach ($missing as $col => $def) {
             $res = $DB->doQuery("SHOW COLUMNS FROM `glpi_plugin_tanium_configs` LIKE '{$col}'");

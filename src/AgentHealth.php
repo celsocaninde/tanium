@@ -92,11 +92,7 @@ class AgentHealth {
             'urgency'     => 4,
             'impact'      => 4,
         ];
-        $requester = Config::ticketRequesterId(0, $config);
-        if ($requester > 0) {
-            $ticketData['_users_id_requester'] = $requester;
-            $ticketData['_users_id_assign']    = $requester;
-        }
+        $ticketData = Config::applyTicketDefaults($ticketData, 'agent', $config);
 
         $ticket   = new Ticket();
         $ticketId = (int)$ticket->add($ticketData);

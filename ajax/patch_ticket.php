@@ -92,7 +92,6 @@ $title        = sprintf('[Tanium] Remediação de Patches — %s (%d patch%s)', 
         : ($_SESSION['glpiactive_entity'] ?? 0);
 
     $ticket = new Ticket();
-    $requester  = \GlpiPlugin\Tanium\Config::ticketRequesterId(Session::getLoginUserID(), $config);
     $ticketData = [
         'name'             => $title,
         'content'          => $html,
@@ -103,11 +102,8 @@ $title        = sprintf('[Tanium] Remediação de Patches — %s (%d patch%s)', 
         'type'             => Ticket::INCIDENT_TYPE,
         'entities_id'      => $entityId,
         'requesttypes_id'  => 1, // Direct
-        '_users_id_requester' => $requester,
     ];
-    if ($requester > 0) {
-        $ticketData['_users_id_assign'] = $requester;
-    }
+    $ticketData = \GlpiPlugin\Tanium\Config::applyTicketDefaults($ticketData, 'patch', $config, (int)Session::getLoginUserID());
 
     $ticketId = $ticket->add($ticketData);
     if (!$ticketId) {

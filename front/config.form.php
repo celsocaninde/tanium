@@ -24,7 +24,13 @@ if (isset($_POST['save'])) {
         $kioskToken['kiosk_token'] = bin2hex(random_bytes(16));
     }
 
-    TaniumConfig::saveConfig($kioskToken + [
+    // One optional category per kind of ticket the plugin opens.
+    $ticketCategories = [];
+    foreach (array_keys(TaniumConfig::TICKET_KINDS) as $kind) {
+        $ticketCategories['ticket_category_' . $kind . '_id'] = max(0, (int)($_POST['ticket_category_' . $kind . '_id'] ?? 0));
+    }
+
+    TaniumConfig::saveConfig($kioskToken + $ticketCategories + [
         'kiosk_enabled'        => isset($_POST['kiosk_enabled']) ? 1 : 0,
         'api_url'              => trim($_POST['api_url']   ?? ''),
         'api_token'            => trim($_POST['api_token'] ?? ''),
@@ -49,6 +55,12 @@ if (isset($_POST['save'])) {
         'patch_limiting_group_id' => max(0, (int)($_POST['patch_limiting_group_id'] ?? 0)),
         'ticket_entity_id'        => max(0, (int)($_POST['ticket_entity_id'] ?? 0)),
         'ticket_requester_id'     => max(0, (int)($_POST['ticket_requester_id'] ?? 0)),
+        'ticket_category_id'      => max(0, (int)($_POST['ticket_category_id'] ?? 0)),
+        'ticket_tech_id'          => max(0, (int)($_POST['ticket_tech_id'] ?? 0)),
+        'ticket_group_id'         => max(0, (int)($_POST['ticket_group_id'] ?? 0)),
+        'ticket_requesttype_id'   => max(0, (int)($_POST['ticket_requesttype_id'] ?? 0)),
+        'ticket_type'             => in_array((int)($_POST['ticket_type'] ?? 0), [Ticket::INCIDENT_TYPE, Ticket::DEMAND_TYPE], true)
+            ? (int)$_POST['ticket_type'] : 0,
         'default_entity_id'       => max(0, (int)($_POST['default_entity_id'] ?? 0)),
         'sync_group_membership'   => isset($_POST['sync_group_membership']) ? 1 : 0,
         'agent_stale_days'        => max(1, (int)($_POST['agent_stale_days'] ?? 7)),

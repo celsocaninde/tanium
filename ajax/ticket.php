@@ -33,7 +33,6 @@ $config = \GlpiPlugin\Tanium\Config::getConfig();
 
 $ticket = new Ticket();
 
-$requester  = \GlpiPlugin\Tanium\Config::ticketRequesterId(Session::getLoginUserID(), $config);
 $ticketData = [
     'name'                => $title,
     'content'             => nl2br(htmlspecialchars($content)),
@@ -43,16 +42,19 @@ $ticketData = [
     'entities_id'         => (int)($config['ticket_entity_id'] ?? 0) > 0
                                 ? (int)$config['ticket_entity_id']
                                 : ($_SESSION['glpiactive_entity'] ?? 0),
-    '_users_id_requester' => $requester,
 ];
 
-if ($requester > 0) {
-    $ticketData['_users_id_assign'] = $requester;
-}
-
+// A category picked in the modal wins over the configured default.
 if ($itilcategoriesId > 0) {
     $ticketData['itilcategories_id'] = $itilcategoriesId;
 }
+
+$ticketData = \GlpiPlugin\Tanium\Config::applyTicketDefaults(
+    $ticketData,
+    $refType === 'patch' ? 'patch' : 'cve',
+    $config,
+    (int)Session::getLoginUserID()
+);
 
 // Link to GLPI computer if available
 if ($computersId > 0) {
